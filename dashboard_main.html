@@ -1,0 +1,510 @@
+<!DOCTYPE html><html><head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+<style>
+    .custom-select {
+  background-color: #f8f9fa;
+  border: 2px solid #007bff;
+  color: #007bff;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+    /* Reset default margins */c
+    body {
+        margin: 0;
+        padding: 0;
+        
+    }
+
+    /* Main container with curved edges */
+    .page-container {
+        background-color: #d3d3d3; /* Light grey */
+        border-radius: 30px;       /* Curved edges */
+        margin: 20px;              /* Space around the container */
+        padding: 20px;             /* Space inside the container */
+        min-height: 50vh;          /* Fill most of the viewport height */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1); /* Soft shadow for depth */
+    }
+
+.custom-select:focus {
+  border-color: #0056b3;
+}
+.banner {
+        background: linear-gradient(135deg, #4facfe, #00f2fe); /* Gradient background */
+        color: white;
+        text-align: center;
+        padding: 50px 20px;
+        font-size: 2.5rem;
+        font-weight: bold;
+        letter-spacing: 2px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+            .container {
+            position: relative;
+            height: 30vh; /* Full viewport height */
+        }
+        .center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            background-color: #d3d3d3;
+        }
+        .center1 {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 30%;
+}
+</style>
+<script>
+$(document).ready(function () {
+    $('#category').hide()
+$('#items').hide();
+//$('#dropdownContainer').hide();
+$('#dropdownContainer1').hide();
+
+        
+          var $select = $("#filter");
+
+    // Find the first visible option containing "All" (case-insensitive)
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase() === "all";
+    });
+
+    // If found, move it to the top
+    
+    if ($allOption.length) {
+        $allOption.detach().prependTo($select);
+    }
+          
+        // Find the first visible option containing "All" (case-insensitive)
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase().indexOf("350cc") !== -1 ;
+    });
+
+    // If found, move it to the top
+    //alert($allOption.length);
+    if ($allOption.length) {
+        $allOption.detach().detach().insertAfter($select.find("option").eq(0));
+
+    }
+          
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase().indexOf("450cc") !== -1 ;
+    });
+
+    // If found, move it to the top
+    
+    if ($allOption.length) {
+        $allOption.detach().detach().insertAfter($select.find("option").eq(1));
+
+    }
+                                   $('#filter option').each(function () {
+                     
+        if ($(this).text().includes('CC') || $(this).text().includes('All')  ) {
+            $(this).show(); // Show options containing 'CC'
+        } else {
+            $(this).hide(); // Hide other options
+        }
+  
+        });
+        
+        
+                    $("#filter option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+    
+    
+            $("#items1 option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+       $("#items option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+    
+    if($('#category').val().indexOf("Please") >=0)
+    {
+     //   $('#dropdownContainer').hide();
+        $('#dropdownContainer1').hide();
+    }
+    else
+    {
+        $('#dropdownContainer').show();
+        
+    }
+    
+    $("#myForm").on("submit", function (e) {
+        let isValid = true;
+
+        // Loop through all required selects
+        $(this).find("select[required]").each(function () {
+            if ($(this).val().indexOf("Please") >=0) {
+                $(this).addClass("error");
+                isValid = false;
+            } else {
+                $(this).removeClass("error");
+            }
+        });
+
+        if (!isValid) {
+            e.preventDefault(); // Stop form submission
+            alert("Please select an segment.");
+        }
+    });
+
+    $('#filter').on('change', function() {
+        $('#dropdownContainer1').show();
+            var selectedClass =      $(this).val()
+            let str = selectedClass;
+let match = str.match(/\d+/); 
+if(match)
+{
+
+                           $('#items1 option').each(function () {
+                     
+        if (($(this).val().includes(match[0]) || $(this).val().includes('All'))&& !$(this).text().includes("CC")  ) {
+            $(this).show(); // Show options containing 'CC'
+        } else {
+            $(this).hide(); // Hide other options
+        }
+  
+        });
+}
+                let selectedValue = $(this).val();
+
+        // Check if dropdown2 has an option with this value
+        if ($('#items option[value="' + selectedValue + '"]').length > 0) {
+            $('#items').val(selectedValue); // trigger change if needed
+        } else {
+            //$('#dropdown2').val(''); // reset if no match
+        }
+
+            $("#items1 option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+
+
+    });
+
+
+
+    $('#items1').on('change', function() {
+                    var selectedClass =      $(this).val();
+                    
+      
+      
+                    //alert(selectedClass)
+        if(selectedClass.indexOf("All")>=0)
+        {
+           // alert("1")
+        //var selectedIndex = $('#filter').prop('selectedIndex'); // Get index
+                let selectedValue = $('#filter').val();
+
+        // Check if dropdown2 has an option with this value
+        if ($('#items option[value="' + selectedValue + '"]').length > 0) {
+            $('#items').val(selectedValue); // trigger change if needed
+        } else {
+            //$('#dropdown2').val(''); // reset if no match
+        }
+
+        }
+        else
+        {
+                let selectedValue = $(this).val();
+
+        // Check if dropdown2 has an option with this value
+        if ($('#items option[value="' + selectedValue + '"]').length > 0) {
+            $('#items').val(selectedValue); // trigger change if needed
+        } else {
+            //$('#dropdown2').val(''); // reset if no match
+        }
+        }
+    });
+
+
+
+
+    
+    var allOptions = $('#items option');
+var allOptions1 = $('#items1 option');
+var allOptions2 = $('#filter option');
+    $('#category').on('change', function() {
+                $('#dropdownContainer').show();
+
+                        $("#filter").prop("selectedIndex", 0);
+      //  $('#items1').hide();
+        var selectedClass = $(this).val();
+        
+                // Reset and filter options
+
+        $('#items').empty().append(
+            allOptions.filter(function() {
+                // Always keep empty option OR match class
+                return !selectedClass || $(this).hasClass(selectedClass);
+            })
+
+        );
+        
+
+    
+        $('#items1').empty().append(
+            allOptions1.filter(function() {
+                // Always keep empty option OR match class
+                return !selectedClass || $(this).hasClass(selectedClass);
+            })
+
+        );
+        
+                $('#filter').empty().append(
+            allOptions2.filter(function() {
+                // Always keep empty option OR match class
+                return !selectedClass || $(this).hasClass(selectedClass);
+            })
+
+        );
+
+        
+                           $('#items1 option').each(function () {
+                     
+        if (!$(this).text().includes('CC') || $(this).text().includes('All')  ) {
+            $(this).show(); // Show options containing 'CC'
+        } else {
+            $(this).hide(); // Hide other options
+        }
+  
+        });
+           
+        
+                                   $('#filter option').each(function () {
+                     
+        if ($(this).text().includes('CC') || $(this).text().includes('All')  ) {
+            $(this).show(); // Show options containing 'CC'
+        } else {
+            $(this).hide(); // Hide other options
+        }
+  
+        });
+        
+               $("#filter option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+    
+    
+        
+    if($(this).val().indexOf("Please") >=0)
+    {
+                $('#dropdownContainer').hide();
+        $('#dropdownContainer1').hide();
+    }
+    else
+    {
+      //  $('#items').show();
+            $("#items1 option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+       $("#items option").filter(function () {
+        return $(this).text().trim() === "All" || $(this).text().trim() === "all";
+    }).prop("selected", true);
+    }
+      
+      
+          var $select = $("#filter");
+
+    // Find the first visible option containing "All" (case-insensitive)
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase() === "all";
+    });
+
+    // If found, move it to the top
+    
+    if ($allOption.length) {
+        $allOption.detach().prependTo($select);
+    }
+          
+        // Find the first visible option containing "All" (case-insensitive)
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase() === "350cc";
+    });
+
+    // If found, move it to the top
+    
+    if ($allOption.length) {
+        $allOption.detach().detach().insertAfter($select.find("option").eq(0));
+
+    }
+          
+    var $allOption = $select.find("option").filter(function () {
+        return $.trim($(this).text()).toLowerCase() === "450cc";
+    });
+
+    // If found, move it to the top
+    
+    if ($allOption.length) {
+        $allOption.detach().detach().insertAfter($select.find("option").eq(1));
+
+    }
+         
+        
+        
+        
+    });
+
+
+
+
+
+
+});
+</script>
+
+</head>
+<body><img src="https://info-leap.com/images/logo.png">
+
+
+    <form id="myForm" method="POST" action="read.php">
+
+    <div class="page-container">
+    <div class="banner">
+        Royal Enfield MIS Study Infoleap Dashboard 
+    </div>
+
+<table>
+    <tbody><tr><td><div><img class="center1" src="https://pngbaba.com/wp-content/uploads/2025/04/Royal-Enfield-Logo-PNG-5.png"></div>
+    </td></tr><tr></tr></tbody></table>
+
+
+
+<div class="container">
+
+        <div class="center">
+
+<div class="position-relative">
+<!--<label for="cars">Choose a segment:</label>-->
+  <select id="category" class="form-select custom-select" style="display: none;">
+  <option selected="">Please select the segment</option>
+                                                                                 
+       <option value="Final">                        Final</option>
+  </select>
+  <p>
+
+  
+  <i class="bi bi-chevron-down position-absolute end-0 me-3"></i>
+</p></div>
+    <div class="position-relative">
+ <div id="dropdownContainer">
+ <label for="cars">Please select the plaform:</label>
+ 
+  <select name="selectedFile1" id="filter" required="" class="form-select custom-select"><option class="Final" value="Final_All.csv">                        All    </option><option class="Final" value="Final_350CC.csv">                        J Platform (350CC)    </option><option class="Final" value="Final_450CC.csv">                        K Platform (450CC)    </option>
+<!--<option  value="Please">Please select the CC</option>          -->
+  <option class="Final" value="Final_Classic 650.csv" style="display: none;">                        Classic 650    </option><option class="Final" value="Final_Guerrilla 450.csv" style="display: none;">                        Guerrilla 450    </option><option class="Final" value="Final_Himalayan 450.csv" style="display: none;">                        Himalayan 450    </option><option class="Final" value="Final_Continental GT 650.csv" style="display: none;">                        Continental GT 650    </option><option class="Final" value="Final_Meteor 350.csv" style="display: none;">                        Meteor 350    </option><option class="Final" value="Final_Bear 650.csv" style="display: none;">                        Bear 650    </option><option class="Final" value="Final_Shotgun 650.csv" style="display: none;">                        Shotgun 650    </option><option class="Final" value="Final_Classic 350.csv" style="display: none;">                        Classic 350    </option><option class="Final" value="Final_Goan Classic 350.csv" style="display: none;">                        Goan Classic 350    </option><option class="Final" value="Final_Scram 450.csv" style="display: none;">                        Scram 450    </option><option class="Final" value="Final_Bullet 350.csv" style="display: none;">                        Bullet 350    </option><option class="Final" value="Final_650CC.csv">                        P Platform (650CC)    </option><option class="Final" value="Final_Hunter 350.csv" style="display: none;">                        Hunter 350    </option><option class="Final" value="Final_SuperMeteor 650.csv" style="display: none;">                        SuperMeteor 650    </option><option class="Final" value="Final_Interceptor 650.csv" style="display: none;">                        Interceptor 650    
+  </option></select>
+  <i class="bi bi-chevron-down position-absolute end-0 me-3"></i>
+</div>
+</div>
+<p></p>
+
+    <div class="position-relative">
+        <div id="dropdownContainer1" style="display: none;">
+<label for="cars">Choose a Model:</label>  <select name="selectedFile2" id="items1" class="form-select custom-select">
+    <!--<option class=ACCEPTOR selected>Please choose the model type</option>
+    <option class=REJECTOR selected>Please choose the model type</option> -->
+  <option class="Final" value="Final_Classic 650.csv">                        Classic 650</option>          
+
+    <option class="Final" value="Final_Guerrilla 450.csv">                        Guerrilla 450</option>          
+
+    <option class="Final" value="Final_Himalayan 450.csv">                        Himalayan 450</option>          
+
+    <option class="Final" value="Final_450CC.csv">                        450CC</option>          
+
+    <option class="Final" value="Final_Continental GT 650.csv">                        Continental GT 650</option>          
+
+    <option class="Final" value="Final_Meteor 350.csv">                        Meteor 350</option>          
+
+    <option class="Final" value="Final_Bear 650.csv">                        Bear 650</option>          
+
+    <option class="Final" value="Final_Shotgun 650.csv">                        Shotgun 650</option>          
+
+    <option class="Final" value="Final_Classic 350.csv">                        Classic 350</option>          
+
+    <option class="Final" value="Final_350CC.csv">                        350CC</option>          
+
+    <option class="Final" value="Final_Goan Classic 350.csv">                        Goan Classic 350</option>          
+
+    <option class="Final" value="Final_Scram 450.csv">                        Scram 440</option>          
+
+    <option class="Final" value="Final_Bullet 350.csv">                        Bullet 350</option>          
+
+    <option class="Final" value="Final_650CC.csv">                        650CC</option>          
+
+    <option class="Final" value="Final_All.csv">                        All</option>          
+
+    <option class="Final" value="Final_Hunter 350.csv">                        Hunter 350</option>          
+
+    <option class="Final" value="Final_SuperMeteor 650.csv">                        SuperMeteor 650</option>          
+
+    <option class="Final" value="Final_Interceptor 650.csv">                        Interceptor 650</option>          
+
+    </select>
+</div>
+  <i class="bi bi-chevron-down position-absolute end-0 me-3"></i>
+
+</div>
+<p></p>
+<p></p>
+    <div class="position-relative">
+  <select name="selectedFile" id="items" class="form-select custom-select" style="display: none;">
+    <!--<option class=ACCEPTOR selected>Please choose the model type</option>
+    <option class=REJECTOR selected>Please choose the model type</option> -->
+  <option class="Final" value="Final_Classic 650.csv">                        Classic 650</option>          
+
+    <option class="Final" value="Final_Guerrilla 450.csv">                        Guerrilla 450</option>          
+
+    <option class="Final" value="Final_Himalayan 450.csv">                        Himalayan 450</option>          
+
+    <option class="Final" value="Final_450CC.csv">                        450CC</option>          
+
+    <option class="Final" value="Final_Continental GT 650.csv">                        Continental GT 650</option>          
+
+    <option class="Final" value="Final_Meteor 350.csv">                        Meteor 350</option>          
+
+    <option class="Final" value="Final_Bear 650.csv">                        Bear 650</option>          
+
+    <option class="Final" value="Final_Shotgun 650.csv">                        Shotgun 650</option>          
+
+    <option class="Final" value="Final_Classic 350.csv">                        Classic 350</option>          
+
+    <option class="Final" value="Final_350CC.csv">                        350CC</option>          
+
+    <option class="Final" value="Final_Goan Classic 350.csv">                        Goan Classic 350</option>          
+
+    <option class="Final" value="Final_Scram 450.csv">                        Scram 450</option>          
+
+    <option class="Final" value="Final_Bullet 350.csv">                        Bullet 350</option>          
+
+    <option class="Final" value="Final_650CC.csv">                        650CC</option>          
+
+    <option class="Final" value="Final_All.csv">                        All</option>          
+
+    <option class="Final" value="Final_Hunter 350.csv">                        Hunter 350</option>          
+
+    <option class="Final" value="Final_SuperMeteor 650.csv">                        SuperMeteor 650</option>          
+
+    <option class="Final" value="Final_Interceptor 650.csv">                        Interceptor 650</option>          
+
+    </select>
+  <i class="bi bi-chevron-down position-absolute end-0 me-3"></i>
+</div>
+<p></p>
+  <button type="submit" class="btn btn-danger">Submit</button>
+</div>
+
+</div>
+
+  </div>
+ </form>
+</body></html>

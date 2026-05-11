@@ -1,0 +1,509 @@
+{
+    "platforms": [
+        {
+            "value": "Final_All.csv",
+            "text": "All"
+        },
+        {
+            "value": "Final_350CC.csv",
+            "text": "J Platform (350CC)"
+        },
+        {
+            "value": "Final_450CC.csv",
+            "text": "K Platform (450CC)"
+        },
+        {
+            "value": "Final_Classic 650.csv",
+            "text": "Classic 650"
+        },
+        {
+            "value": "Final_Guerrilla 450.csv",
+            "text": "Guerrilla 450"
+        },
+        {
+            "value": "Final_Himalayan 450.csv",
+            "text": "Himalayan 450"
+        },
+        {
+            "value": "Final_Continental GT 650.csv",
+            "text": "Continental GT 650"
+        },
+        {
+            "value": "Final_Meteor 350.csv",
+            "text": "Meteor 350"
+        },
+        {
+            "value": "Final_Bear 650.csv",
+            "text": "Bear 650"
+        },
+        {
+            "value": "Final_Shotgun 650.csv",
+            "text": "Shotgun 650"
+        },
+        {
+            "value": "Final_Classic 350.csv",
+            "text": "Classic 350"
+        },
+        {
+            "value": "Final_Goan Classic 350.csv",
+            "text": "Goan Classic 350"
+        },
+        {
+            "value": "Final_Scram 450.csv",
+            "text": "Scram 450"
+        },
+        {
+            "value": "Final_Bullet 350.csv",
+            "text": "Bullet 350"
+        },
+        {
+            "value": "Final_650CC.csv",
+            "text": "P Platform (650CC)"
+        },
+        {
+            "value": "Final_Hunter 350.csv",
+            "text": "Hunter 350"
+        },
+        {
+            "value": "Final_SuperMeteor 650.csv",
+            "text": "SuperMeteor 650"
+        },
+        {
+            "value": "Final_Interceptor 650.csv",
+            "text": "Interceptor 650"
+        }
+    ],
+    "models": [
+        {
+            "value": "Final_Classic 650.csv",
+            "text": "Classic 650"
+        },
+        {
+            "value": "Final_Guerrilla 450.csv",
+            "text": "Guerrilla 450"
+        },
+        {
+            "value": "Final_Himalayan 450.csv",
+            "text": "Himalayan 450"
+        },
+        {
+            "value": "Final_450CC.csv",
+            "text": "450CC"
+        },
+        {
+            "value": "Final_Continental GT 650.csv",
+            "text": "Continental GT 650"
+        },
+        {
+            "value": "Final_Meteor 350.csv",
+            "text": "Meteor 350"
+        },
+        {
+            "value": "Final_Bear 650.csv",
+            "text": "Bear 650"
+        },
+        {
+            "value": "Final_Shotgun 650.csv",
+            "text": "Shotgun 650"
+        },
+        {
+            "value": "Final_Classic 350.csv",
+            "text": "Classic 350"
+        },
+        {
+            "value": "Final_350CC.csv",
+            "text": "350CC"
+        },
+        {
+            "value": "Final_Goan Classic 350.csv",
+            "text": "Goan Classic 350"
+        },
+        {
+            "value": "Final_Scram 450.csv",
+            "text": "Scram 440"
+        },
+        {
+            "value": "Final_Bullet 350.csv",
+            "text": "Bullet 350"
+        },
+        {
+            "value": "Final_650CC.csv",
+            "text": "650CC"
+        },
+        {
+            "value": "Final_All.csv",
+            "text": "All"
+        },
+        {
+            "value": "Final_Hunter 350.csv",
+            "text": "Hunter 350"
+        },
+        {
+            "value": "Final_SuperMeteor 650.csv",
+            "text": "SuperMeteor 650"
+        },
+        {
+            "value": "Final_Interceptor 650.csv",
+            "text": "Interceptor 650"
+        }
+    ],
+    "tabs": [
+        "Overall",
+        "Acceptor",
+        "Rejector",
+        "Booked but Cancelled"
+    ],
+    "views": [],
+    "sample_tables": [
+        {
+            "name": "Age",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        },
+        {
+            "name": "Education",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        },
+        {
+            "name": "Occupation",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        },
+        {
+            "name": "Household income",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        },
+        {
+            "name": "Type of Buyer",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        },
+        {
+            "name": "Additional + Replaced - CC Wise",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Additional+Replacement_Total_All",
+                "1955",
+                "252",
+                "429",
+                "201",
+                "235",
+                "148",
+                "189",
+                "199",
+                "166",
+                "136",
+                "681",
+                "584",
+                "554"
+            ]
+        },
+        {
+            "name": "Additional + Replaced - Brand Wise",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Additional+Replacement_Total_All",
+                "1955",
+                "252",
+                "429",
+                "201",
+                "235",
+                "148",
+                "189",
+                "199",
+                "166",
+                "136",
+                "681",
+                "584",
+                "554"
+            ]
+        },
+        {
+            "name": "Brand Owned - CC Wise",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "2547",
+                "280",
+                "460",
+                "302",
+                "337",
+                "151",
+                "261",
+                "279",
+                "225",
+                "252",
+                "740",
+                "790",
+                "765"
+            ]
+        },
+        {
+            "name": "Brand Owned - Brand Wise",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "2547",
+                "280",
+                "460",
+                "302",
+                "337",
+                "151",
+                "261",
+                "279",
+                "225",
+                "252",
+                "740",
+                "790",
+                "765"
+            ]
+        },
+        {
+            "name": "Brand Considered - CC wise",
+            "headers": [
+                "",
+                "ALL",
+                "AUGUST'2025",
+                "SEPTEMBER'2025",
+                "OCTOBER'2025",
+                "NOVEMBER'2025",
+                "DECEMBER'2025",
+                "JANUARY'2026",
+                "FEBRUARY'2026",
+                "MARCH'2026",
+                "APRIL'2026",
+                "JAS'25",
+                "OND'25",
+                "JFM'26"
+            ],
+            "sample_row": [
+                "Base : Total_All",
+                "3619",
+                "366",
+                "678",
+                "413",
+                "468",
+                "238",
+                "375",
+                "396",
+                "324",
+                "361",
+                "1044",
+                "1119",
+                "1095"
+            ]
+        }
+    ]
+}

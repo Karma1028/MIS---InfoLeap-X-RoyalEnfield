@@ -1,0 +1,5 @@
+.streamlit/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/processed_data.csv
