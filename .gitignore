@@ -1,0 +1,27 @@
+# Secrets — never commit
+.streamlit/secrets.toml
+data/.settings_key
+data/api_keys.enc
+
+# Raw research data — proprietary, never commit
+data/
+
+# Caches / build artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+graphify-out/
+
+# Local logs / scratch / verification screenshots
+*.log
+*.txt
+!requirements.txt
+*.png
+*.html
+page_dump.html
+
+# Old/inactive prototype code (kept locally, not part of the deployed app)
+docs/
+tests/
+scrape_fresh.py
+build_methodology_doc.py

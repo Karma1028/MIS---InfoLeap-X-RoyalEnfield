@@ -1,0 +1,12 @@
+streamlit
+pandas
+plotly
+altair
+openpyxl
+xlrd
+groq
+cryptography
+playwright
+beautifulsoup4
+requests
+pytest
