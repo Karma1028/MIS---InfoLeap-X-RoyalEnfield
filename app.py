@@ -110,14 +110,12 @@ elif time_mode == "Quarter (Financial Calendar)":
     quarters = st.sidebar.multiselect("Quarter (Apr-Mar FY)", FY_QUARTER_ORDER, default=FY_QUARTER_ORDER, key="quarters")
     selected_months = [m for m in MONTH_ORDER if month_label_to_fy_quarter(m) in quarters]
 
-# Per user request — matches the live site's own behavior (confirmed via a
-# fresh scrape, 2026-06-22): every table always carries extra combined
-# columns for each completed Indian-FY quarter (e.g. "JAS'25" = Jul-Aug-Sep
-# 2025), in addition to the individual months. Optional toggle since the
-# user said "if you want to add a filter you can add so" — default on to
-# match live exactly.
-show_quarter_cols = st.sidebar.toggle("Show Quarter-Combined Columns", value=True,
-                                       help="Adds JAS'25/OND'25/JFM'26-style columns (Jul-Sep/Oct-Dec/Jan-Mar) after the monthly columns, same as the live dashboard. Only shown in 'All Months' view.")
+# Removed per explicit user request ("remove the quarter combined column
+# it was not something that i asked for") — the table builders still know
+# how to compute these (quarter_combined_groups()), but this flag being
+# False means _trim_to_selected_months() always strips them out, same as
+# the toggle being off.
+show_quarter_cols = False
 
 show_sig = st.sidebar.toggle("Significance vs Rest of Sample (95%/90%)", value=True,
                               help="Marks each category as significantly higher/lower than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
