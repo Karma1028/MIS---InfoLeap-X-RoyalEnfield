@@ -1,0 +1,1234 @@
+{
+  "1": {
+    "model": "ROYAL ENFIELD BULLET 350",
+    "brand": "RE",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "2": {
+    "model": "ROYAL ENFIELD CLASSIC 350",
+    "brand": "RE",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "3": {
+    "model": "ROYAL ENFIELD METEOR 350",
+    "brand": "RE",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "4": {
+    "model": "ROYAL ENFIELD GOAN CLASSIC 350",
+    "brand": "RE",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "5": {
+    "model": "ROYAL ENFIELD SCRAM 440",
+    "brand": "RE",
+    "cc": "450",
+    "cc_revised": "450 and above",
+    "cc_netting": "351 and above"
+  },
+  "6": {
+    "model": "ROYAL ENFIELD HIMALAYAN 450",
+    "brand": "RE",
+    "cc": "450",
+    "cc_revised": "450 and above",
+    "cc_netting": "351 and above"
+  },
+  "7": {
+    "model": "ROYAL ENFIELD GUERRILLA 450",
+    "brand": "RE",
+    "cc": "450",
+    "cc_revised": "450 and above",
+    "cc_netting": "351 and above"
+  },
+  "8": {
+    "model": "ROYAL ENFIELD CONTINENTAL GT 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "9": {
+    "model": "ROYAL ENFIELD INTERCEPTOR 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "10": {
+    "model": "ROYAL ENFIELD SUPERMETEOR 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "11": {
+    "model": "ROYAL ENFIELD BEAR 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "12": {
+    "model": "ROYAL ENFIELD SHOTGUN 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "13": {
+    "model": "ROYAL ENFIELD CLASSIC 650",
+    "brand": "RE",
+    "cc": "650",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "14": {
+    "model": "ROYAL ENFIELD HUNTER 350",
+    "brand": "RE",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "15": {
+    "model": "HERO HF 100",
+    "brand": "HERO",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "16": {
+    "model": "HERO HF DELUXE",
+    "brand": "HERO",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "17": {
+    "model": "HERO PASSION PRO 110 / PASSION XTEC",
+    "brand": "HERO",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "18": {
+    "model": "HERO SPLENDOR +",
+    "brand": "HERO",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "19": {
+    "model": "HERO GLAMOUR XTEC",
+    "brand": "HERO",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "20": {
+    "model": "HERO SUPER SPLENDOR",
+    "brand": "HERO",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "21": {
+    "model": "HERO XTREME 160R",
+    "brand": "HERO",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "22": {
+    "model": "HERO XPULSE 200",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "23": {
+    "model": "HERO XTREME 200S",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "24": {
+    "model": "HERO MAESTRO EDGE",
+    "brand": "HERO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "25": {
+    "model": "HERO PLEASURE+ / PLEASURE+ XTEC",
+    "brand": "HERO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "26": {
+    "model": "HERO DESTINI 125",
+    "brand": "HERO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "27": {
+    "model": "HERO MAESTRO EDGE 125",
+    "brand": "HERO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "28": {
+    "model": "HERO XTREME 125R",
+    "brand": "HERO",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "29": {
+    "model": "HERO GLAMOUR NEW/CLASSIC",
+    "brand": "HERO",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "30": {
+    "model": "HERO SUPER SPLENDOR XTEC",
+    "brand": "HERO",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "31": {
+    "model": "HERO SPLENDOR ISMART 110CC",
+    "brand": "HERO",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "32": {
+    "model": "HERO KARIZMA XMR",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "33": {
+    "model": "HERO XTREME 200S 4V",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "34": {
+    "model": "HERO XPULSE 200 4V",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "35": {
+    "model": "HERO XPULSE 200T 4V",
+    "brand": "HERO",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "36": {
+    "model": "HERO XTREME 160R 4V",
+    "brand": "HERO",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "37": {
+    "model": "HERO ELECTRIC",
+    "brand": "HERO",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "38": {
+    "model": "BAJAJ CT-100",
+    "brand": "BAJAJ",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "ELECTRIC"
+  },
+  "39": {
+    "model": "BAJAJ CT-110",
+    "brand": "BAJAJ",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "ELECTRIC"
+  },
+  "40": {
+    "model": "BAJAJ PLATINA",
+    "brand": "BAJAJ",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "ELECTRIC"
+  },
+  "41": {
+    "model": "BAJAJ PLATINA 110",
+    "brand": "BAJAJ",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "ELECTRIC"
+  },
+  "42": {
+    "model": "BAJAJ CT125",
+    "brand": "BAJAJ",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "ELECTRIC"
+  },
+  "43": {
+    "model": "BAJAJ PULSAR 125 NEON",
+    "brand": "BAJAJ",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "ELECTRIC"
+  },
+  "44": {
+    "model": "BAJAJ AVENGER 160 STREET",
+    "brand": "BAJAJ",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "ELECTRIC"
+  },
+  "45": {
+    "model": "BAJAJ PULSAR 150",
+    "brand": "BAJAJ",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "46": {
+    "model": "BAJAJ PULSAR 180",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "180",
+    "cc_netting": "150-199"
+  },
+  "47": {
+    "model": "BAJAJ PULSAR NS160",
+    "brand": "BAJAJ",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "48": {
+    "model": "BAJAJ AVENGER 220",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "49": {
+    "model": "BAJAJ DOMINAR 250",
+    "brand": "BAJAJ",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "50": {
+    "model": "BAJAJ DOMINAR 400",
+    "brand": "BAJAJ",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "51": {
+    "model": "BAJAJ PULSAR N125",
+    "brand": "BAJAJ",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "52": {
+    "model": "BAJAJ PULSAR NS125",
+    "brand": "BAJAJ",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "53": {
+    "model": "BAJAJ PULSAR 220F",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "54": {
+    "model": "BAJAJ PULSAR NS200",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "55": {
+    "model": "BAJAJ PULSAR N160",
+    "brand": "BAJAJ",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "56": {
+    "model": "BAJAJ PULSAR 200 NS",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "57": {
+    "model": "BAJAJ PULSAR 220",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "58": {
+    "model": "BAJAJ PULSAR F250",
+    "brand": "BAJAJ",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "59": {
+    "model": "BAJAJ PULSAR N250",
+    "brand": "BAJAJ",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "60": {
+    "model": "BAJAJ PULSAR RS200",
+    "brand": "BAJAJ",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "61": {
+    "model": "BAJAJ CHETAK",
+    "brand": "BAJAJ",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "62": {
+    "model": "TVS STAR SPORTS",
+    "brand": "TVS",
+    "cc": "100",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "63": {
+    "model": "TVS RADEON",
+    "brand": "TVS",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "64": {
+    "model": "TVS STAR CITY+",
+    "brand": "TVS",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "65": {
+    "model": "TVS VICTOR",
+    "brand": "TVS",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "66": {
+    "model": "TVS RAIDER 125",
+    "brand": "TVS",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "67": {
+    "model": "TVS APACHE RTR 160 2V",
+    "brand": "TVS",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "68": {
+    "model": "TVS APACHE RTR 160 4V",
+    "brand": "TVS",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "69": {
+    "model": "TVS APACHE RTR 180",
+    "brand": "TVS",
+    "cc": "180 - 220",
+    "cc_revised": "180",
+    "cc_netting": "150-199"
+  },
+  "70": {
+    "model": "TVS APACHE RR310",
+    "brand": "TVS",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "71": {
+    "model": "TVS APACHE RTR200 4V",
+    "brand": "TVS",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "72": {
+    "model": "TVS RONIN",
+    "brand": "TVS",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "73": {
+    "model": "TVS JUPITER",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "74": {
+    "model": "TVS SCOOTY PEP",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "75": {
+    "model": "TVS SCOOTY ZEST",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "76": {
+    "model": "TVS WEGO",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "77": {
+    "model": "TVS JUPITER 125",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "78": {
+    "model": "TVS NTORQ",
+    "brand": "TVS",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "79": {
+    "model": "TVS  MOPED",
+    "brand": "TVS",
+    "cc": "MOPED",
+    "cc_revised": "MOPED",
+    "cc_netting": "MOPED"
+  },
+  "80": {
+    "model": "TVS ELECTRIC ( IQUBE)",
+    "brand": "TVS",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "81": {
+    "model": "HONDA DREAM CD 110",
+    "brand": "HONDA",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "82": {
+    "model": "HONDA DREAM NEO",
+    "brand": "HONDA",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "83": {
+    "model": "HONDA DREAM YUGA",
+    "brand": "HONDA",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "84": {
+    "model": "HONDA LIVO",
+    "brand": "HONDA",
+    "cc": "110",
+    "cc_revised": "100/110",
+    "cc_netting": "0-125"
+  },
+  "85": {
+    "model": "HONDA SHINE 125",
+    "brand": "HONDA",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "86": {
+    "model": "HONDA SP 125",
+    "brand": "HONDA",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "87": {
+    "model": "HONDA HORNET 2.0",
+    "brand": "HONDA",
+    "cc": "180 - 220",
+    "cc_revised": "180",
+    "cc_netting": "150-199"
+  },
+  "88": {
+    "model": "HONDA UNICORN 160",
+    "brand": "HONDA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "89": {
+    "model": "HONDA XBLADE",
+    "brand": "HONDA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "90": {
+    "model": "HONDA CB 200X",
+    "brand": "HONDA",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "91": {
+    "model": "HONDA SP 160",
+    "brand": "HONDA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "92": {
+    "model": "HONDA HNESS CB350",
+    "brand": "HONDA",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "93": {
+    "model": "HONDA ACTIVA 110",
+    "brand": "HONDA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "94": {
+    "model": "HONDA DIO",
+    "brand": "HONDA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "95": {
+    "model": "HONDA ACTIVA 125",
+    "brand": "HONDA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "96": {
+    "model": "HONDA GRAZIA",
+    "brand": "HONDA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "97": {
+    "model": "KTM 125 DUKE",
+    "brand": "KTM",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "98": {
+    "model": "KTM RC 125",
+    "brand": "KTM",
+    "cc": "125",
+    "cc_revised": "125",
+    "cc_netting": "0-125"
+  },
+  "99": {
+    "model": "KTM 200 DUKE",
+    "brand": "KTM",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "100": {
+    "model": "KTM 250 ADVENTURE",
+    "brand": "KTM",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "101": {
+    "model": "KTM 250 DUKE",
+    "brand": "KTM",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "102": {
+    "model": "KTM 390 DUKE",
+    "brand": "KTM",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "103": {
+    "model": "KTM ADVENTURE 390",
+    "brand": "KTM",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "104": {
+    "model": "KTM RC 200",
+    "brand": "KTM",
+    "cc": "180 - 220",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "105": {
+    "model": "KTM RC 390",
+    "brand": "KTM",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "106": {
+    "model": "YAMAHA FZ / FZ-S",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "107": {
+    "model": "YAMAHA MT-15",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "108": {
+    "model": "YAMAHA R15",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "109": {
+    "model": "YAMAHA MT 15 V2",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "110": {
+    "model": "YAMAHA FZ \u2013 S FI V3",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "111": {
+    "model": "YAMAHA FZ \u2013 S FI V4",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "112": {
+    "model": "YAMAHA FZ-FI NEW",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "113": {
+    "model": "YAMAHA YZFR-15",
+    "brand": "YAMAHA",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "114": {
+    "model": "YAMAHA FZ-25",
+    "brand": "YAMAHA",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "115": {
+    "model": "YAMAHA FZS-25",
+    "brand": "YAMAHA",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "116": {
+    "model": "YAMAHA AEROX 155",
+    "brand": "YAMAHA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "117": {
+    "model": "YAMAHA FASCINO 125",
+    "brand": "YAMAHA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "118": {
+    "model": "YAMAHA RAY ZR 125",
+    "brand": "YAMAHA",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "119": {
+    "model": "SUZUKI GIXXER 150",
+    "brand": "SUZUKI",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "120": {
+    "model": "SUZUKI GIXXER 250",
+    "brand": "SUZUKI",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "121": {
+    "model": "SUZUKI V-STROM SX",
+    "brand": "SUZUKI",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "200-249"
+  },
+  "122": {
+    "model": "SUZUKI INTRUDER",
+    "brand": "SUZUKI",
+    "cc": "150 - 160",
+    "cc_revised": "150",
+    "cc_netting": "150-199"
+  },
+  "123": {
+    "model": "SUZUKI GIXXER SF 250",
+    "brand": "SUZUKI",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "124": {
+    "model": "SUZUKI ACCESS",
+    "brand": "SUZUKI",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "125": {
+    "model": "SUZUKI AVENIS 125",
+    "brand": "SUZUKI",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "126": {
+    "model": "SUZUKI BURGMAN",
+    "brand": "SUZUKI",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "127": {
+    "model": "TRIUMPH TIGER 1200 RANGE",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "128": {
+    "model": "TRIUMPH 900 RANGE",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "129": {
+    "model": "TRIUMPH SPORT 660",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "130": {
+    "model": "TRIUMPH SCRAMBLER 400 XC",
+    "brand": "TRIUMPH",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "131": {
+    "model": "TRIUMPH NEW SPEED T4",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "132": {
+    "model": "TRIUMPH SPEED TWIN 1200",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "133": {
+    "model": "TRIUMPH SPEED TWIN 900",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "134": {
+    "model": "TRIUMPH SPEED 400",
+    "brand": "TRIUMPH",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "135": {
+    "model": "TRIUMPH SCRAMBLER 400 X",
+    "brand": "TRIUMPH",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "136": {
+    "model": "TRIUMPH BONNEVILLE T100",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "137": {
+    "model": "TRIUMPH SCRAMBLER 900",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "138": {
+    "model": "TRIUMPH SCRAMBLER 1200",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "139": {
+    "model": "TRIUMPH BONNEVILLE T120",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "140": {
+    "model": "TRIUMPH BONNEVILLE BOBBER",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "141": {
+    "model": "TRIUMPH BONNEVILLE SPEEDMASTER",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "142": {
+    "model": "TRIUMPH NEW SPEED TRIPLE 1200 RS",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "143": {
+    "model": "TRIUMPH NEW TRIDENT 660",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "144": {
+    "model": "TRIUMPH STREET TRIPLE 765",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "145": {
+    "model": "TRIUMPH SPEED TRIPLE 1200 RS",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "146": {
+    "model": "TRIUMPH ROCKET 3 STORM",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "147": {
+    "model": "TRIUMPH ALL NEW DAYTONA 660",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "148": {
+    "model": "TRIUMPH ICON EDITIONS",
+    "brand": "TRIUMPH",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "149": {
+    "model": "JAWA 42 FJ",
+    "brand": "JAWA",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "150": {
+    "model": "JAWA 350",
+    "brand": "JAWA",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "151": {
+    "model": "JAWA 42",
+    "brand": "JAWA",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "152": {
+    "model": "JAWA 42 BOBBER",
+    "brand": "JAWA",
+    "cc": "350 - 440",
+    "cc_revised": "350 and above",
+    "cc_netting": "351 and above"
+  },
+  "153": {
+    "model": "JAWA PERAK",
+    "brand": "JAWA",
+    "cc": "220+ - 349",
+    "cc_revised": "200-349",
+    "cc_netting": "250-350"
+  },
+  "154": {
+    "model": "HARLEY DAVIDSON X",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "155": {
+    "model": "HARLEY DAVIDSON STREET GLIDE",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "156": {
+    "model": "HARLEY DAVIDSON ROAD GLIDE",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "157": {
+    "model": "HARLEY DAVIDSON CVO STREET GLIDE",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "158": {
+    "model": "HARLEY DAVIDSON CVO ROAD GLIDE",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "159": {
+    "model": "HARLEY DAVIDSON STREET BOB",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "160": {
+    "model": "HARLEY DAVIDSON BREAKOUT",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "161": {
+    "model": "HARLEY DAVIDSON FAT BOY",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "162": {
+    "model": "HARLEY DAVIDSON HERITAGE CLASSIC",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "163": {
+    "model": "HARLEY DAVIDSON PAN AMERICA 1250 SPECIAL",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "164": {
+    "model": "HARLEY DAVIDSON NIGHTSTER",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "165": {
+    "model": "HARLEY DAVIDSON NIGHTSTER SPECIAL",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "166": {
+    "model": "HARLEY DAVIDSON SPORTSTER S",
+    "brand": "HARLEY DAVIDSON",
+    "cc": "650+",
+    "cc_revised": "650 and above",
+    "cc_netting": "351 and above"
+  },
+  "167": {
+    "model": "PIAGGIO APRILIA SR125 / STORM 125",
+    "brand": "PIAGGIO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "168": {
+    "model": "PIAGGIO APRILIA SR150 / SR 160",
+    "brand": "PIAGGIO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "169": {
+    "model": "PIAGGIO VESPA 125 / 150",
+    "brand": "PIAGGIO",
+    "cc": "SCOOTER",
+    "cc_revised": "SCOOTER",
+    "cc_netting": "SCOOTER"
+  },
+  "170": {
+    "model": "OKINAWA",
+    "brand": "OKINAWA",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "171": {
+    "model": "ATHER",
+    "brand": "ATHER",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "172": {
+    "model": "OLA ELECTRIC",
+    "brand": "OLA",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "173": {
+    "model": "AMPERE",
+    "brand": "AMPERE",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "174": {
+    "model": "PURE EV",
+    "brand": "PURE EV",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "175": {
+    "model": "REVOLT",
+    "brand": "REVOLT",
+    "cc": "ELECTRIC",
+    "cc_revised": "ELECTRIC",
+    "cc_netting": "ELECTRIC"
+  },
+  "176": {
+    "model": "Others",
+    "brand": null,
+    "cc": null,
+    "cc_revised": null,
+    "cc_netting": null
+  }
+}

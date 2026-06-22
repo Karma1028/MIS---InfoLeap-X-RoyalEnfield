@@ -3,8 +3,16 @@
 data/.settings_key
 data/api_keys.enc
 
-# Raw research data — proprietary, never commit
-data/
+# Raw research data — proprietary. This repo is PRIVATE (confirmed before
+# this exception was added), so the specific required runtime files below
+# are allowed through; everything else in data/ (monthly_drops/, generated
+# caches, etc.) stays ignored.
+data/*
+!data/Enroute_Fourth Wave_Masterfile_Base_4010_AUG-MAY.xlsx
+!data/MIS_datamap.xlsx
+!data/Enroute_AP_V2_netting.xlsx
+!data/dq2_netting_codebook.json
+!data/users.xlsx
 
 # Caches / build artifacts
 __pycache__/
