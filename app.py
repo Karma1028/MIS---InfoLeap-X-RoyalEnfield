@@ -292,9 +292,13 @@ def _trim_to_selected_months(tbl):
         cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
     # The custom Year+Month combined column is independent of the "View by"
     # time-period filter above — always keep it if present, regardless of
-    # which month-window mode is active.
-    if custom_col_name and custom_col_name in tbl.columns and custom_col_name not in cols:
-        cols = cols + [custom_col_name]
+    # which month-window mode is active. Placed right after 'All' (not at
+    # the end) per user request, so it sits next to the column it's most
+    # directly comparable to.
+    if custom_col_name and custom_col_name in tbl.columns:
+        cols = [c for c in cols if c != custom_col_name]
+        insert_at = cols.index("All") + 1
+        cols = cols[:insert_at] + [custom_col_name] + cols[insert_at:]
     return tbl[cols]
 
 
