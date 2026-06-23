@@ -289,12 +289,20 @@ class DataEngine:
         dt = pd.to_datetime(self.df['SubmissionDate'], errors='coerce')
         self.df['month_label'] = dt.dt.strftime("%B'%Y")
 
-    def quarter_combined_groups(self):
+    def quarter_combined_groups(self, extra_groups=None):
         """{display_label: [month_labels]} for the live site's always-shown
         quarter-combined columns (e.g. 'JAS\\'25') — see QUARTER_INITIALS.
         The trailing (most recent, still-filling) quarter is excluded, same
         as live: confirmed it shows JAS'25/OND'25/JFM'26 but NOT the current
-        Apr-Jun quarter even though Apr/May already have rows."""
+        Apr-Jun quarter even though Apr/May already have rows.
+
+        extra_groups: optional {label: [month_labels]} merged in on top —
+        used for the user-defined custom Year+Month combined comparison
+        column (app.py's sidebar picker). Passed in PER CALL rather than
+        stored on `self`, since `engine` is a @st.cache_resource singleton
+        shared across every concurrent session — mutating instance state
+        from one user's filter selection would leak into everyone else's
+        tables."""
         groups = {}
         for m in self.month_order:
             q = month_label_to_fy_quarter(m)
@@ -308,6 +316,8 @@ class DataEngine:
             qnum = int(q.split()[0][1:])
             year_suffix = months[0].split("'")[1][2:]
             out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
+        if extra_groups:
+            out.update(extra_groups)
         return out
 
     @staticmethod
@@ -388,16 +398,17 @@ class DataEngine:
     # Household Income share this shape: one categorical column, decode via
     # datamap value_maps, base row + category rows, columns = All + months).
     # ------------------------------------------------------------------
-    def distribution_table(self, df, code_col, base_label, display_groups=None, numeric=False):
+    def distribution_table(self, df, code_col, base_label, display_groups=None, numeric=False, extra_groups=None):
         """
         display_groups: optional {code: display_label or None}. Codes mapping
         to the same label are summed together; None drops that code from the
         chart (used to match the live dashboard's collapsed category display).
         numeric: return raw floats instead of "NN%" strings (for chart use).
+        extra_groups: see quarter_combined_groups() docstring.
         """
         value_map = self.value_maps.get(code_col, {})
         base_n = df[code_col].notna().sum()
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
@@ -466,8 +477,11 @@ class DataEngine:
         regardless of its value — matching the live site's own ordering.
         Groups each rollup row with its member rows that follow (the table
         builders already emit rollup-then-members blocks in that shape),
-        sorts the blocks by the rollup's own 'All' value, and always puts
-        the 'Other' block last."""
+        sorts the BLOCKS by the rollup's own 'All' value (descending,
+        'Other' always last), and ALSO sorts each block's member rows by
+        their own 'All' value descending — per follow-up request ('the
+        models should also be in descending order of value to see within
+        the brands which are leading and which are not')."""
         base_row = table_df.iloc[[0]]
         rest = table_df.iloc[1:]
         blocks = []
@@ -487,7 +501,9 @@ class DataEngine:
         normal_blocks.sort(key=lambda b: float(b[1][0]['All']), reverse=True)
         ordered_rows = [base_row]
         for _, block_rows in normal_blocks + other_blocks:
-            ordered_rows.append(pd.DataFrame(block_rows))
+            rollup_row, member_rows = block_rows[0], block_rows[1:]
+            member_rows.sort(key=lambda r: float(r['All']), reverse=True)
+            ordered_rows.append(pd.DataFrame([rollup_row] + member_rows))
         return pd.concat(ordered_rows, ignore_index=True)
 
     @staticmethod
@@ -504,11 +520,11 @@ class DataEngine:
         normal = rollups[rollups['Unnamed: 0'] != "Other"].sort_values('All', ascending=False)
         return pd.concat([base_row, normal, other], ignore_index=True)
 
-    def age_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'age_grp', base_label, numeric=numeric)
+    def age_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'age_grp', base_label, numeric=numeric, extra_groups=extra_groups)
 
-    def education_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'dq3', base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric)
+    def education_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'dq3', base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
 
     @staticmethod
     def sort_by_value(table_df):
@@ -523,12 +539,12 @@ class DataEngine:
         rest = rest.sort_values('_sort', ascending=False).drop(columns=['_sort'])
         return pd.concat([base_row, rest], ignore_index=True)
 
-    def occupation_table(self, df, base_label="All", numeric=False):
-        tbl = self.distribution_table(df, 'dq4', base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric)
+    def occupation_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        tbl = self.distribution_table(df, 'dq4', base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
         return self.sort_by_value(tbl) if numeric else tbl
 
-    def household_income_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'dq6', base_label, numeric=numeric)
+    def household_income_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'dq6', base_label, numeric=numeric, extra_groups=extra_groups)
 
     # ------------------------------------------------------------------
     # Type of Buyer — dq1a (prior 2W usage) x dq1b (additional vs replaced).
@@ -541,9 +557,9 @@ class DataEngine:
     # the same ~10% overall base gap documented elsewhere in this file).
     # See docs/DATA_FIELD_MAPPING.md Addendum 5.
     # ------------------------------------------------------------------
-    def type_of_buyer_table(self, df, base_label="All", numeric=False):
+    def type_of_buyer_table(self, df, base_label="All", numeric=False, extra_groups=None):
         base_n = df['dq1a'].notna().sum()
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
         for col in MONTH_ORDER + extra_cols:
@@ -591,7 +607,7 @@ class DataEngine:
     # this, though the "All Owners" base technically also includes
     # purchase-confirmed Cancelled respondents per the spec.
     # ------------------------------------------------------------------
-    def brand_owned_table(self, df, by="brand", base_label="All", numeric=False):
+    def brand_owned_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         """FIX (2026-06-19): base/model-column must be segment-aware. The
         live site's Acceptor tab DOES show a 'Brand Owned' table too (base
         ~segment size, RE=100% trivially, broken into which RE model) —
@@ -619,12 +635,19 @@ class DataEngine:
         if is_acceptor_only:
             sub = df
         else:
-            owners_mask = (df['grida'] == 2) | ((df['grida'] == 3) & (df['aq1b'] == 1))
+            # FIX (2026-06-23): live's fresh Overview scrape shows "Brand
+            # Owned" All base = 2938, not 2244 — confirmed = 694 (grida==1,
+            # Acceptors trivially own their RE model) + 1789 (grida==2,
+            # full Rejector) + 455 (grida==3 & aq1b==1, Cancelled-confirmed-
+            # owners). The old mask omitted grida==1 entirely, which is
+            # invisible on single-segment Rejector/Cancelled tabs (no
+            # grida==1 rows there) but silently undercounted Overview.
+            owners_mask = (df['grida'] == 1) | (df['grida'] == 2) | ((df['grida'] == 3) & (df['aq1b'] == 1))
             sub = df[owners_mask]
         base_n = len(sub)
         acc_map = self.value_maps.get('acc', {})
         model_col = 'owned_brand_code'
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
@@ -687,7 +710,7 @@ class DataEngine:
     # like the earlier Type of Buyer approximation used. See
     # docs/DATA_FIELD_MAPPING.md Addendum 7.
     # ------------------------------------------------------------------
-    def additional_replaced_table(self, df, by="brand", base_label="All", numeric=False):
+    def additional_replaced_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         """FIXED (2026-06-19): two real bugs found against
         docs/investigation/full_scraped_data.json's 'All | All' section.
         (1) 'Additional Vehicle'/'Replaced Vehicle' rows were being mixed
@@ -706,9 +729,13 @@ class DataEngine:
         with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
             codebook = {int(k): v for k, v in json.load(f).items()}
 
-        sub = df[df['dq1b'].notna()]
+        # Base FIXED (2026-06-23): dq1b.notna() gave 878 vs live's fresh
+        # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
+        # vehicle", 2="Replaced existing vehicle") matches live exactly.
+        # dq1b is a narrower follow-up field, not the segmentation gate.
+        sub = df[df['dq1a'].isin([1, 2])]
         base_n = len(sub)
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
         for col in MONTH_ORDER + extra_cols:
@@ -780,10 +807,10 @@ class DataEngine:
     # no fix needed (7.6% vs 7%, 4.0% vs 3%), confirming the bug is
     # RE-self-match specific, not a base/denominator problem.
     # ------------------------------------------------------------------
-    def brand_considered_table(self, df, by="brand", base_label="All", numeric=False):
+    def brand_considered_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         base_n = len(df)
         acc_map = self.value_maps.get('acc', {})
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]

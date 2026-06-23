@@ -8,6 +8,61 @@ from styles.theme import RE_RED, CHART_SEQUENCE, BORDER, MUTED
 
 PLOTLY_CONFIG = {"displayModeBar": False, "staticPlot": False}
 
+# Soothing mix of RE + Infoleap brand colors — per user feedback ("colouring
+# of the charts are not at all visible... use lighter colours... subtle and
+# soothing"). Each entry blends a brand hue toward white so it reads as a
+# pastel tint rather than the saturated solid brand swatch (which is right
+# for logos/buttons but too harsh stacked across a whole chart).
+def _lighten(hex_color, amount=0.45):
+    """Blends hex_color toward white by `amount` (0=no change, 1=white)."""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    r = round(r + (255 - r) * amount)
+    g = round(g + (255 - g) * amount)
+    b = round(b + (255 - b) * amount)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _blend(hex1, hex2, t=0.5):
+    """Blends two hex colors — t=0 is hex1, t=1 is hex2."""
+    hex1, hex2 = hex1.lstrip('#'), hex2.lstrip('#')
+    r = round(int(hex1[0:2], 16) * (1 - t) + int(hex2[0:2], 16) * t)
+    g = round(int(hex1[2:4], 16) * (1 - t) + int(hex2[2:4], 16) * t)
+    b = round(int(hex1[4:6], 16) * (1 - t) + int(hex2[4:6], 16) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+SOOTHING_PALETTE = [
+    _lighten("#C8102E", 0.45),  # RE red
+    _lighten("#2E3192", 0.45),  # Infoleap blue
+    _lighten("#F7941D", 0.40),  # Infoleap orange
+    _lighten("#39B54A", 0.45),  # Infoleap green
+    _lighten("#662D91", 0.45),  # Infoleap purple
+    _lighten("#1B8A8A", 0.40),  # teal
+    _lighten("#8C8C8C", 0.35),  # neutral grey
+    _lighten("#D4A017", 0.40),  # gold
+    _lighten("#5B7DB1", 0.40),  # steel blue
+    _lighten("#A65A8C", 0.40),  # mauve
+]
+
+# Soft fill tints for significant bars/segments — deeper-but-still-muted
+# for 95% confidence, barely-there for the 90% directional tier, so a
+# significant slice reads as "highlighted" without turning the chart into
+# a traffic light.
+SIG_FILL_95_UP = "#8FCB9B"
+SIG_FILL_90_UP = "#D6EEDA"
+SIG_FILL_95_DOWN = "#E3A0A0"
+SIG_FILL_90_DOWN = "#F6DCDC"
+
+
+def _sig_fill(marker):
+    """Fill-color override for a significant bar/segment, or None to keep
+    the category's own base color."""
+    return {
+        '▲': SIG_FILL_95_UP, '△': SIG_FILL_90_UP,
+        '▼': SIG_FILL_95_DOWN, '▽': SIG_FILL_90_DOWN,
+    }.get(marker)
+
 
 def _sig_border(marker):
     """Maps a compare_to_baseline() marker to a (line_color, line_width)
@@ -38,18 +93,24 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
     rows = table_df.iloc[1:]
     values = rows['All'].astype(float)
 
+    # Lighter, soothing fill — per user feedback ("colouring of the charts
+    # are not at all visible... use lighter colours... subtle and
+    # soothing"); the caller's accent (RE red / Infoleap blue/purple/teal)
+    # still sets the hue, just blended toward a pastel instead of solid.
+    base_fill = _lighten(color, 0.40)
     labels = []
-    border_colors, border_widths = [], []
+    fill_colors, border_colors, border_widths = [], [], []
     for i, v in enumerate(values):
         marker = sig_markers[i] if sig_markers and i < len(sig_markers) else ''
         labels.append(f"{v:.0f}% {marker}".strip())
         bc, bw = _sig_border(marker)
         border_colors.append(bc)
         border_widths.append(bw)
+        fill_colors.append(_sig_fill(marker) or base_fill)
 
     fig = go.Figure(go.Bar(
         x=values, y=rows['Unnamed: 0'], orientation='h',
-        marker=dict(color=color, line=dict(color=border_colors, width=border_widths), cornerradius=4),
+        marker=dict(color=fill_colors, line=dict(color=border_colors, width=border_widths), cornerradius=4),
         text=labels, textposition='outside',
         textfont=dict(size=12, color="#1A1A1A", family="Inter, Segoe UI, sans-serif"),
         hovertemplate="<b>%{y}</b><br>%{x:.1f}% of base<extra></extra>",
@@ -72,6 +133,122 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
     return fig
 
 
+# Distinct 10-color qualitative palette — demographics categories (Age
+# bands, Education levels, etc) can run to 6-8 rows, and CHART_SEQUENCE's
+# 6 brand colors started repeating/clashing. Per user feedback ("bit
+# cluttered and hard to understand") on the stacked bars — uses
+# SOOTHING_PALETTE (defined above) for the same reason the rest of this
+# module now does: lighter, soothing tints instead of solid brand swatches.
+HIGHLIGHT_COL_TINT = "#F2C14E"  # warm gold wash for the custom combined column
+
+
+def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None):
+    """Stacked column chart for Demographics — one stacked column per
+    period (All + each selected month), segments = the category rows
+    (Age bands, Education levels, etc). Replaces the old single-period
+    bar/donut per user request ('in place of column charts they want to
+    see stacked bar chart').
+
+    highlight_col: the user's custom Year+Month combined comparison
+    column (app.py sidebar) — every segment's fill in that one column
+    gets washed toward a warm gold tint (distinct from both the category
+    palette and the green/red significance fills) so it's visually
+    findable for comparison against the regular per-month columns.
+    Significance still takes priority where both apply.
+
+    Decluttered per follow-up feedback ('cluttered and hard to
+    understand'): no more inline %-value text on every slice (the exact
+    numbers are already in the data table directly below — this was pure
+    duplication and the main source of overlap); significant segments
+    (vs the unfiltered Overview baseline, per-month) now get BOTH a
+    thick colored border AND a bold marker glyph centered in the slice,
+    so they're visible against the rest of the stack rather than relying
+    on a thin border alone; legend moved to a scrollable right-side
+    column instead of a wrapped top strip so categories stay one-per-line
+    and readable instead of run-together.
+    """
+    base_n = table_df.iloc[0]['All']
+    cat_rows = table_df.iloc[1:].reset_index(drop=True)
+    cols = [c for c in table_df.columns if c != 'Unnamed: 0']
+    seq = color_seq or SOOTHING_PALETTE
+
+    fig = go.Figure()
+    for i, (_, row) in enumerate(cat_rows.iterrows()):
+        label = row['Unnamed: 0']
+        ys = [float(row[c]) for c in cols]
+        base_color = seq[i % len(seq)]
+        fill_colors, border_colors, border_widths, texts, text_sizes = [], [], [], [], []
+        for c in cols:
+            markers = (col_sig_markers or {}).get(c)
+            marker = markers[i] if markers and i < len(markers) else ''
+            bc, bw = _sig_border(marker)
+            # Thicker than distribution_bar's borders — a 2-3px line gets
+            # lost in a tight multi-segment stack, so significant slices
+            # get a visibly heavier outline (5px / 4px) instead.
+            if not bw and highlight_col and c == highlight_col:
+                bc, bw = "#B8860B", 2  # darker gold outline, visible even with a subtle fill wash
+            border_colors.append(bc)
+            border_widths.append(bw + 2 if bw else 0)
+            # Significant slices get their FILL shaded by significance
+            # (soft green/red), not just a border — per user request to
+            # "highlight by the shade of the significance" so it reads at
+            # a glance, not just on close inspection of the edge.
+            sig_fill = _sig_fill(marker)
+            if sig_fill:
+                fill_colors.append(sig_fill)
+            elif highlight_col and c == highlight_col:
+                fill_colors.append(_blend(base_color, HIGHLIGHT_COL_TINT, 0.55))
+            else:
+                fill_colors.append(base_color)
+            v = float(row[c])
+            texts.append(marker if (marker and v >= 4) else "")
+            text_sizes.append(15)
+        fig.add_trace(go.Bar(
+            name=label, x=cols, y=ys,
+            marker=dict(color=fill_colors, line=dict(color=border_colors, width=border_widths)),
+            text=texts, textposition='inside',
+            textfont=dict(size=text_sizes, color="#1A1A1A", family="Inter, Segoe UI, sans-serif"),
+            insidetextanchor='middle',
+            hovertemplate=f"<b>{label}</b><br>%{{x}}: %{{y:.1f}}%<extra></extra>",
+        ))
+    # Reserve real room for the horizontal legend below the plot. Previous
+    # attempt computed `y` as a fraction of the TOTAL figure height
+    # (plot+legend combined) which is circular and always under-shoots —
+    # Plotly's legend y/x default to PAPER coordinates spanning the whole
+    # canvas including margins, so a fixed, generously-sized negative y
+    # plus a matching fixed bottom margin is the reliable way to keep it
+    # clear of both the bars above and the table rendered right after.
+    # Assume only 2 entries/row (long category labels like income
+    # brackets wrap sooner than short ones) — overshooting the margin is
+    # harmless (just whitespace), undershooting causes the reported
+    # overlap, so bias generous.
+    legend_rows = -(-len(cat_rows) // 2)  # ceil, 2 entries/row
+    bottom_margin = 70 + legend_rows * 38
+    plot_height = max(360, 50 + 32 * len(cat_rows))
+    fig.update_layout(
+        barmode='stack',
+        title=dict(text=f"{title}  <span style='font-size:11px;color:{MUTED}'>(n={base_n:,.0f})</span>",
+                    font=dict(size=15, color="#1A1A1A", family="Oswald, Inter, sans-serif")),
+        # Legend moved BELOW the plot (not beside it) and the data table
+        # underneath gets rendered right after this figure — per user
+        # request to put the legend "in between the stacked bar chart and
+        # table" rather than off to the side of the chart itself.
+        height=plot_height + bottom_margin,
+        margin=dict(l=10, r=10, t=44, b=bottom_margin),
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        yaxis=dict(title=None, showgrid=False, zeroline=False, ticksuffix="%", range=[0, 105],
+                   tickfont=dict(size=11, color=MUTED)),
+        xaxis=dict(showgrid=False, tickfont=dict(size=12, color="#2B2B2B", family="Inter, Segoe UI, sans-serif")),
+        font=dict(color="#2B2B2B", family="Inter, Segoe UI, sans-serif"),
+        legend=dict(orientation="h", yanchor="top", y=-0.18 - 0.16 * legend_rows,
+                    xanchor="center", x=0.5, font=dict(size=11), tracegroupgap=18,
+                    entrywidthmode="fraction", entrywidth=0.30, itemsizing="constant",
+                    itemwidth=44),
+        bargap=0.28,
+    )
+    return fig
+
+
 def donut_chart(table_df, title, color_seq=None, sig_markers=None):
     """Donut chart for compositional metrics (few mutually-exclusive
     buckets, e.g. Income brackets, Type of Buyer) — per user feedback
@@ -85,7 +262,7 @@ def donut_chart(table_df, title, color_seq=None, sig_markers=None):
     base_n = table_df.iloc[0]['All']
     rows = table_df.iloc[1:]
     values = rows['All'].astype(float)
-    colors = color_seq or CHART_SEQUENCE
+    colors = color_seq or SOOTHING_PALETTE
     border_colors, border_widths = [], []
     for i in range(len(rows)):
         marker = sig_markers[i] if sig_markers and i < len(sig_markers) else ''
@@ -158,7 +335,7 @@ def _month_header(m):
     return f"{name[:3]}'{year[2:]}"
 
 
-def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None):
+def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None):
     """Renders a compact bordered HTML table matching the live dashboard's
     report-table look, with cells colour-highlighted for significance (deep
     green = 95% confidence, light green = 90% directional; red shades for
@@ -189,10 +366,18 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     # quite clean looking even when it is long', not just functionally
     # complete.
     is_long = len(table_df) > 12
+    # The custom Year+Month combined comparison column (app.py sidebar)
+    # gets a warm gold wash on every cell in its column, header included
+    # — so it reads as a distinct, comparable column at a glance rather
+    # than just another month.
+    HIGHLIGHT_BG = "#FBE9C6"
+    HIGHLIGHT_HEADER_BG = "#F2C14E"
     header_cells = "".join(
-        f"<th style='padding:7px 10px;text-align:left;background:#F3F1ED;border-bottom:2px solid {BORDER};"
+        f"<th style='padding:7px 10px;text-align:left;"
+        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#F3F1ED'};"
+        f"border-bottom:2px solid {BORDER};"
         f"white-space:nowrap;position:sticky;top:0;z-index:1;'>"
-        f"{'Category' if c == 'Unnamed: 0' else ('All' if c == 'All' else _month_header(c))}</th>"
+        f"{'Category' if c == 'Unnamed: 0' else ('All' if c == 'All' else (f'★ {c}' if c == highlight_col else _month_header(c)))}</th>"
         for c in cols
     )
     body_rows = []
@@ -226,7 +411,20 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # glance, easy to mistake for missing/broken data — a
                     # dash makes "genuinely zero" visually distinct from a
                     # small-but-real percentage.
-                    txt = f"{val:,.0f}" if is_base else ("-" if val == 0 else f"{val:.0f}%")
+                    # Member rows in brand-wise tables get 1 decimal place —
+                    # per user feedback, many small competitor models round
+                    # to the same "0%"/"1%" at 0 decimals, which makes a
+                    # correctly-descending-sorted list LOOK unsorted (ties
+                    # that aren't really ties). Base/rollup/plain rows stay
+                    # whole-number, matching the live site's own style.
+                    if is_base:
+                        txt = f"{val:,.0f}"
+                    elif val == 0:
+                        txt = "-"
+                    elif is_member:
+                        txt = f"{val:.1f}%"
+                    else:
+                        txt = f"{val:.0f}%"
                 except (ValueError, TypeError):
                     txt = str(val)
                 if is_base:
@@ -254,6 +452,12 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                         style += f"background:{SIG_DEEP_RED};color:white;font-weight:700;"
                     elif marker == '▽':
                         style += f"background:{SIG_LIGHT_RED};color:#1A1A1A;font-weight:600;"
+                # Custom combined column tint — only when significance
+                # didn't already color this cell (sig stays the priority
+                # signal; the gold wash is just "this is the custom
+                # comparison column" context, not a finding).
+                if highlight_col and c == highlight_col and "background:" not in style:
+                    style += f"background:{HIGHLIGHT_BG};"
             cells.append(f"<td style='{style}border-bottom:1px solid {BORDER};'>{txt}</td>")
         if is_base:
             bg = "background:#FAFAF8;"
@@ -317,7 +521,7 @@ def brand_rollup_bar(rollup_table_df, title, color=RE_RED):
     return distribution_bar(rollup_table_df, f"{title} — Brand Comparison", color=color)
 
 
-def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None):
+def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None, highlight_col=None):
     """Renders the chart, then the underlying data table right below it
     (per user requirement: tabular data must accompany every chart, not
     just the chart alone, and match the live site's table layout).
@@ -344,11 +548,13 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     all_zero = table_df.iloc[1:]['All'].astype(float).sum() == 0
     if base_n == 0 or all_zero:
         st.info(f"{title}: base n=0 for the current selection — this table doesn't apply here (e.g. Acceptors have no 'brand owned instead of RE'). Table shown below for completeness.")
-        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels)
+        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
         return
     # Per user request: significance legend lives ONLY in the sidebar now,
     # not repeated as a per-chart popover.
-    if chart_type == "donut":
+    if chart_type == "stacked_bar":
+        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col)
+    elif chart_type == "donut":
         fig = donut_chart(table_df, title)
     elif chart_type == "treemap":
         fig = treemap_chart(table_df, title)
@@ -361,7 +567,13 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     else:
         fig = distribution_bar(table_df, title, color=color)
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
-    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels)
+    if chart_type == "stacked_bar":
+        # Extra DOM-level breathing room — the figure's own bottom margin
+        # already reserves space for the legend, but a thin visual gap
+        # here guards against the legend's last row still looking glued
+        # to the table that immediately follows.
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
 
 
 def overlay_radar_chart(tables, title):

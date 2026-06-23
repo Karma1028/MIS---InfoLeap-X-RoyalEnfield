@@ -117,6 +117,30 @@ elif time_mode == "Quarter (Financial Calendar)":
 # the toggle being off.
 show_quarter_cols = False
 
+# Custom Year+Month combined comparison column — per later, separate user
+# request: alongside (not replacing) the "View by" control above, pick any
+# mix of years and months and get ONE extra column at the end of every
+# table/chart showing that combination's combined base, named by the user,
+# highlighted distinctly for comparison against the regular per-month
+# columns. Computed fresh per script run from the widget state, never
+# stored on the cached `engine` singleton (see quarter_combined_groups()
+# docstring for why that would leak across concurrent sessions).
+st.sidebar.markdown("### Custom Combined Column")
+_available_years = sorted({m.split("'")[1] for m in MONTH_ORDER})
+_available_month_names = list(dict.fromkeys(m.split("'")[0] for m in MONTH_ORDER))
+custom_years = st.sidebar.multiselect("Years", _available_years, default=[], key="custom_years")
+custom_month_names = st.sidebar.multiselect("Months", _available_month_names, default=[], key="custom_months")
+custom_col_name = None
+custom_group = {}
+if custom_years and custom_month_names:
+    custom_months = [m for m in MONTH_ORDER if m.split("'")[0] in custom_month_names and m.split("'")[1] in custom_years]
+    if custom_months:
+        custom_label_input = st.sidebar.text_input("Combined column name", value="Custom Combined", key="custom_col_label").strip()
+        custom_col_name = custom_label_input or "Custom Combined"
+        custom_group = {custom_col_name: custom_months}
+        custom_months_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in custom_months]
+        st.sidebar.caption(f"Combines: {', '.join(custom_months_short)}")
+
 show_sig = st.sidebar.toggle("Significance vs Rest of Sample (95%/90%)", value=True,
                               help="Marks each category as significantly higher/lower than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
 with st.sidebar.popover("ℹ️ What do the colors mean?", use_container_width=True):
@@ -260,11 +284,18 @@ def _trim_to_selected_months(tbl):
     the 'Show Quarter-Combined Columns' toggle."""
     if time_mode == "All Months":
         if show_quarter_cols:
-            return tbl
-        quarter_cols = set(engine.quarter_combined_groups().keys())
-        return tbl[[c for c in tbl.columns if c not in quarter_cols]]
-    keep_cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
-    return tbl[keep_cols]
+            cols = list(tbl.columns)
+        else:
+            quarter_cols = set(engine.quarter_combined_groups().keys())
+            cols = [c for c in tbl.columns if c not in quarter_cols]
+    else:
+        cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
+    # The custom Year+Month combined column is independent of the "View by"
+    # time-period filter above — always keep it if present, regardless of
+    # which month-window mode is active.
+    if custom_col_name and custom_col_name in tbl.columns and custom_col_name not in cols:
+        cols = cols + [custom_col_name]
+    return tbl[cols]
 
 
 def _extra_views(title, table_fn):
@@ -333,13 +364,13 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     # (and the quarter-combined columns, same rule, same n>=30 gate —
     # their base is always well over 30 so they're virtually always
     # eligible when shown).
-    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else [])
+    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
     chart_tbl = engine.cap_rows(tbl, **cap_chart) if cap_chart else tbl
     with st.container(border=True):
         if caption:
             st.caption(caption)
-        render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set)
+        render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
         cat_rows = tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         # Per user feedback ("vague... not based on the table being shown,
@@ -404,7 +435,7 @@ def brand_wise_section(title, table_fn, color, caption=None):
     # (and the quarter-combined columns, same rule, same n>=30 gate —
     # their base is always well over 30 so they're virtually always
     # eligible when shown).
-    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else [])
+    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
 
     sorted_tbl = engine.sort_brand_table(tbl, rollup_set)
@@ -428,7 +459,7 @@ def brand_wise_section(title, table_fn, color, caption=None):
             st.caption(caption)
         render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
                                  chart_type="brand_rollup", col_sig_markers=sorted_col_markers,
-                                 table_df_html=sorted_tbl, rollup_labels=rollup_set)
+                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
         cat_rows = sorted_tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         sig_hits = []
@@ -484,20 +515,16 @@ def reasons_placeholder(label, segment_hint):
 #   Additional+Replaced (CC, Brand), Brand Owned (CC, Brand),
 #   Brand Considered (CC, Brand), Reasons.
 st.markdown("### Demographics")
-col1, col2 = st.columns(2)
-with col1:
-    section("Age", lambda d, s: engine.age_table(d, base_label=s, numeric=True))
-with col2:
-    section("Education", lambda d, s: engine.education_table(d, base_label=s, numeric=True))
-
-col3, col4 = st.columns(2)
-with col3:
-    section("Occupation", lambda d, s: engine.occupation_table(d, base_label=s, numeric=True), chart_type="donut")
-with col4:
-    section("Household Income", lambda d, s: engine.household_income_table(d, base_label=s, numeric=True), chart_type="donut")
+# One subsection at a time (not a 2-column grid) per user feedback —
+# the stacked-bar charts are wide (right-side legend) and cramped
+# side-by-side; full-width, one-below-the-other reduces clutter.
+section("Age", lambda d, s: engine.age_table(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
+section("Education", lambda d, s: engine.education_table(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
+section("Occupation", lambda d, s: engine.occupation_table(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
+section("Household Income", lambda d, s: engine.household_income_table(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
 
 st.markdown("### Type of Buyer")
-section("Type of Buyer", lambda d, s: engine.type_of_buyer_table(d, base_label=s, numeric=True), chart_type="donut")
+section("Type of Buyer", lambda d, s: engine.type_of_buyer_table(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="donut")
 
 # Treemaps rank+cap by 'All' value, so brand ROLLUP rows ("RE", "HERO",
 # "BAJAJ"...) must be excluded before capping — otherwise a rollup sits
@@ -516,27 +543,27 @@ BRAND_CONSIDERED_COLOR = "#1B8A8A"  # teal, distinct from both
 
 st.markdown("### Additional + Replaced")
 section("Additional + Replaced — CC Wise",
-        lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True),
+        lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
         color=ADD_REPL_COLOR)
 brand_wise_section("Additional + Replaced — Brand Wise",
-                    lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True),
+                    lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                     color=ADD_REPL_COLOR)
 
 st.markdown("### Brand Owned")
 section("Brand Owned — CC Wise",
-        lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True),
+        lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
         color=BRAND_OWNED_COLOR)
 brand_wise_section("Brand Owned — Brand Wise",
-                    lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True),
+                    lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                     color=BRAND_OWNED_COLOR)
 
 st.markdown("### Brand Considered")
 section("Brand Considered — CC Wise",
-        lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True),
+        lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
         caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.",
         color=BRAND_CONSIDERED_COLOR)
 brand_wise_section("Brand Considered — Brand Wise",
-                    lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True),
+                    lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                     color=BRAND_CONSIDERED_COLOR,
                     caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.")
 

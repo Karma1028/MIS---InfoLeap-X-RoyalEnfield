@@ -26,9 +26,12 @@ RATE_LIMITS = {"groq": 2.0, "gemini": 4.0, "openrouter": 5.0}
 DEFAULT_MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "gemini": "gemini-1.5-flash",
-    # Largest genuinely-free ($0/$0) model available as of the 2026-06-22
-    # catalog pull — best analysis quality among the free tier. Settings'
-    # model picker can still override this per-session.
+    # Stale-snapshot fallback ONLY — OpenRouter's free catalog changes
+    # over time (models get pulled or repriced), so this string is never
+    # trusted as-is. call_llm() always re-checks it (and any
+    # session-picked model) against the LIVE free-models list before
+    # using it, per user instruction ('should be free at this moment
+    # always for openrouter').
     "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
 }
 
@@ -89,8 +92,19 @@ def call_llm(provider, model, system_prompt, user_prompt, max_tokens=300, temper
         return f"No {provider.title()} API key saved — add one under Settings."
 
     model = model or DEFAULT_MODELS.get(provider)
-    if provider == "openrouter" and not model:
-        return "Pick a free OpenRouter model in Settings first."
+    if provider == "openrouter":
+        # Always re-verify against OpenRouter's LIVE free-model catalog
+        # (cached 1h) right before the call — a model picked in Settings
+        # or hardcoded as a fallback can stop being free (repriced or
+        # delisted) between sessions. If the current pick isn't on the
+        # live $0/$0 list anymore, swap to one that is, instead of
+        # silently risking a paid call or a 404.
+        free_models = list_openrouter_free_models(api_key)
+        if not free_models:
+            return "No free OpenRouter models available right now — check your key or try again shortly."
+        if not model or model not in free_models:
+            preferred = DEFAULT_MODELS.get("openrouter")
+            model = preferred if preferred in free_models else free_models[0]
 
     try:
         if provider == "groq":
