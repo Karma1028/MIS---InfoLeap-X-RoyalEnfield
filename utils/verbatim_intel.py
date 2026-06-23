@@ -15,7 +15,7 @@ mq2c/mq2d for "why considered RE" [Rejector/Cancelled], mq3a/mq3b for
 import json
 import re
 import streamlit as st
-from utils.ai_providers import call_llm
+from utils.ai_providers import call_llm, get_active_provider
 
 QUESTION_PAIRS = {
     "Acceptor": [
@@ -111,7 +111,7 @@ Respondent answer-pairs:
 
 def render_verbatim_intelligence_page(engine):
     st.markdown("<h1>Verbatim Intelligence (AI)</h1>", unsafe_allow_html=True)
-    provider = st.session_state.get("active_ai_provider", "groq")
+    provider = get_active_provider()
     model = st.session_state.get("or_model_choice") if provider == "openrouter" else None
     st.caption(
         "Beyond Infoleap's live dashboard scope — joins each respondent's broad reason with their "

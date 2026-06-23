@@ -36,6 +36,26 @@ DEFAULT_MODELS = {
 }
 
 
+def get_active_provider():
+    """Single source of truth for 'which AI provider should this feature
+    use right now' — every AI feature (AI Summary, Verbatim Intelligence)
+    used to independently default to st.session_state.get("active_ai_provider",
+    "groq"), which is WRONG whenever the user has only configured a
+    DIFFERENT provider's key and hasn't happened to visit Settings yet
+    this session (Settings is the only place that ever sets
+    active_ai_provider in session_state) — every feature would still try
+    Groq, fail with 'No Groq API key saved', even with a perfectly valid
+    OpenRouter key sitting in Cloud Secrets. Falls back to whichever
+    provider actually HAS a key configured (OpenRouter > Groq > Gemini),
+    only landing on the Groq default if truly nothing is set anywhere."""
+    if "active_ai_provider" in st.session_state:
+        return st.session_state["active_ai_provider"]
+    for provider in ("openrouter", "groq", "gemini"):
+        if get_api_key(provider):
+            return provider
+    return "groq"
+
+
 def _rate_limit_wait(provider):
     """Blocks (sleeps) until this provider's cooldown has elapsed, rather
     than bailing out with a 'try again' message — per-chart AI blurbs are

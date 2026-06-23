@@ -8,7 +8,7 @@ Routes through utils/ai_providers.py so it works with whichever provider
 """
 import json
 import streamlit as st
-from utils.ai_providers import call_llm
+from utils.ai_providers import call_llm, get_active_provider
 
 # Per explicit instruction ("do not make the analysis of charts a generic
 # one, see the content, understand the scope they are working and data is
@@ -56,7 +56,7 @@ Data:
 
 
 def render_ai_summary_button(facts: dict, key):
-    provider = st.session_state.get("active_ai_provider", "groq")
+    provider = get_active_provider()
     model = st.session_state.get("or_model_choice") if provider == "openrouter" else None
     if st.button("Generate AI Summary of this view", key=f"ai_summary_btn_{key}"):
         with st.spinner(f"Asking {provider.title()} for an unbiased summary of the current filtered data..."):
@@ -118,7 +118,7 @@ def render_chart_ai_blurb(facts: dict, key):
     auto-generate-on-load after that design exhausted Groq's free daily
     token cap (100k TPD) in a single session. Cached by the exact facts
     payload, so re-clicking on an unchanged view doesn't re-spend quota."""
-    provider = st.session_state.get("active_ai_provider", "groq")
+    provider = get_active_provider()
     model = st.session_state.get("or_model_choice") if provider == "openrouter" else None
     if st.button("🤖 Analyse this chart", key=f"chart_ai_btn_{key}"):
         with st.spinner(f"Asking {provider.title()} for a rich analysis of this chart..."):

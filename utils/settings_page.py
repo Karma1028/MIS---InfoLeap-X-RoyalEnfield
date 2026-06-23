@@ -7,7 +7,7 @@ models too with specifically refreshing the free module'."""
 import streamlit as st
 import pandas as pd
 from utils.secure_settings import save_api_key, clear_api_key, get_api_key
-from utils.ai_providers import list_openrouter_free_models, RATE_LIMITS, DEFAULT_MODELS
+from utils.ai_providers import list_openrouter_free_models, RATE_LIMITS, DEFAULT_MODELS, get_active_provider
 from auth import list_users
 
 
@@ -99,7 +99,7 @@ def render_settings_page():
     st.markdown("---")
     st.markdown("### Active provider for AI features")
     providers = ["groq", "gemini", "openrouter"]
-    default_provider = "openrouter" if get_api_key("openrouter") else "groq"
+    default_provider = get_active_provider()
     st.selectbox(
         "AI Summary / Verbatim Intelligence will use this provider",
         providers,
