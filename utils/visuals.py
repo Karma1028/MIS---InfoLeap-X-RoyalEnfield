@@ -372,12 +372,27 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     # than just another month.
     HIGHLIGHT_BG = "#FBE9C6"
     HIGHLIGHT_HEADER_BG = "#F2C14E"
+
+    def _header_html(c):
+        if c == 'Unnamed: 0':
+            return 'Category'
+        if c == 'All':
+            return 'All'
+        if c == highlight_col:
+            # Cap the header to a fixed width with ellipsis — a long
+            # user-typed custom label (e.g. "My Custom Combined Months")
+            # was stretching this one column much wider than every other
+            # month column. Full name still available via title= tooltip.
+            return f"<span title='{c}' style='display:inline-block;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;'>★ {c}</span>"
+        return _month_header(c)
+
     header_cells = "".join(
         f"<th style='padding:7px 10px;text-align:left;"
         f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#F3F1ED'};"
         f"border-bottom:2px solid {BORDER};"
+        f"{'max-width:90px;' if c == highlight_col else ''}"
         f"white-space:nowrap;position:sticky;top:0;z-index:1;'>"
-        f"{'Category' if c == 'Unnamed: 0' else ('All' if c == 'All' else (f'★ {c}' if c == highlight_col else _month_header(c)))}</th>"
+        f"{_header_html(c)}</th>"
         for c in cols
     )
     body_rows = []
@@ -456,8 +471,10 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 # didn't already color this cell (sig stays the priority
                 # signal; the gold wash is just "this is the custom
                 # comparison column" context, not a finding).
-                if highlight_col and c == highlight_col and "background:" not in style:
-                    style += f"background:{HIGHLIGHT_BG};"
+                if highlight_col and c == highlight_col:
+                    if "background:" not in style:
+                        style += f"background:{HIGHLIGHT_BG};"
+                    style += "max-width:90px;"
             cells.append(f"<td style='{style}border-bottom:1px solid {BORDER};'>{txt}</td>")
         if is_base:
             bg = "background:#FAFAF8;"
