@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch
-from utils.verbatim_classify import dedupe_pairs, classify_verbatims_batch
+from utils.verbatim_classify import dedupe_pairs, classify_verbatims_batch, ERROR_CATEGORY
 
 
 def test_dedupe_pairs_collapses_identical_text_keeps_first_occurrence_order():
@@ -49,9 +49,24 @@ def test_classify_verbatims_batch_handles_no_match():
     assert result[0]["category"] == "No match"
 
 
-def test_classify_verbatims_batch_handles_malformed_llm_json_gracefully():
+def test_classify_verbatims_batch_flags_malformed_llm_json_as_error_not_no_match():
+    # Distinct from "No match" (a genuine LLM decision) — unparseable
+    # output means the classification itself never happened, so it must
+    # be visibly distinguishable, not silently folded into "No match".
     pairs = [{"broad_reason": "Good looks", "elaboration": None}]
     taxonomy_flat = ["Visual Appearance > Body Design"]
     with patch("utils.verbatim_classify.call_llm", return_value="not valid json"):
         result = classify_verbatims_batch(pairs, taxonomy_flat, provider="groq", model=None)
-    assert result[0]["category"] == "No match"
+    assert result[0]["category"] == ERROR_CATEGORY
+
+
+def test_classify_verbatims_batch_flags_call_llm_failure_string_as_error():
+    # call_llm() never raises on failure (missing key, provider down) —
+    # it returns a plain error string instead (see utils/ai_providers.py).
+    # That string fails json.loads just like malformed JSON does, and
+    # must be flagged the same way, not silently reported as "No match".
+    pairs = [{"broad_reason": "Good looks", "elaboration": None}]
+    taxonomy_flat = ["Visual Appearance > Body Design"]
+    with patch("utils.verbatim_classify.call_llm", return_value="No Groq API key saved — add one under Settings."):
+        result = classify_verbatims_batch(pairs, taxonomy_flat, provider="groq", model=None)
+    assert result[0]["category"] == ERROR_CATEGORY

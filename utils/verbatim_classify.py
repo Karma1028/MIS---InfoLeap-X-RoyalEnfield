@@ -10,6 +10,12 @@ BATCH_SIZE = 25  # respondents per LLM call — keeps prompt token count
 # manageable alongside the taxonomy list, well within Groq's free-tier
 # per-request token limits.
 
+# Distinct from "No match" (a genuine LLM classification decision) —
+# marks a batch where the LLM call itself failed (bad/missing API key,
+# rate limit, provider outage) so callers/UI can surface it as an error
+# instead of silently presenting it as confident "nothing fit" data.
+ERROR_CATEGORY = "⚠ Classification unavailable"
+
 
 def dedupe_pairs(pairs):
     """Collapses pairs with IDENTICAL (broad_reason, elaboration) text —
@@ -55,9 +61,17 @@ Respond with ONLY valid JSON in this exact shape:
     try:
         parsed = json.loads(content)
         by_index = {c["index"]: c.get("category", "No match") for c in parsed.get("classifications", [])}
+        return [by_index.get(i, "No match") for i in range(len(batch))]
     except Exception:
-        by_index = {}
-    return [by_index.get(i, "No match") for i in range(len(batch))]
+        # call_llm() never raises on failure (missing key, rate limit,
+        # provider down) — it returns a plain error string instead (see
+        # utils/ai_providers.py), which fails json.loads and lands here.
+        # Without this distinct marker, a failed API call and a genuine
+        # "nothing in the taxonomy fits" classification were both
+        # indistinguishable "No match" results — silently presenting an
+        # outage as confident classification data. See code review,
+        # 2026-07-24.
+        return [ERROR_CATEGORY] * len(batch)
 
 
 def classify_verbatims_batch(pairs, taxonomy_flat, provider, model):
@@ -66,7 +80,9 @@ def classify_verbatims_batch(pairs, taxonomy_flat, provider, model):
     flatten_supernet_net()). Dedupes identical text before calling the LLM
     — one classification per UNIQUE text, mapped back to every original
     pair. Returns a list (same length/order as `pairs`) of
-    {**pair, "category": "Supernet > Net" | "No match"}."""
+    {**pair, "category": "Supernet > Net" | "No match" | ERROR_CATEGORY}
+    (ERROR_CATEGORY marks a batch whose LLM call itself failed, distinct
+    from a genuine "no taxonomy entry fits" decision)."""
     if not pairs:
         return []
     unique_pairs, index_map = dedupe_pairs(pairs)
