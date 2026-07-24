@@ -28,12 +28,18 @@ def load_netting_taxonomy(masterfile_path, sheet_name):
     columns are dropped (v1 classifies to Supernet+Net only). Net names
     deduplicated within each Supernet, insertion order preserved."""
     wb = openpyxl.load_workbook(masterfile_path, read_only=True, data_only=True)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(
+            f"Netting sheet {sheet_name!r} not found in {masterfile_path!r}. "
+            f"Available sheets: {wb.sheetnames}. Check SEGMENT_SHEETS against "
+            f"the current Masterfile — sheet names can drift across monthly drops."
+        )
     ws = wb[sheet_name]
     taxonomy = {}
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
             continue  # header row: Supernet, Net, Sub-net, Codelist, Codes
-        if row is None or len(row) < 2:
+        if len(row) < 2:
             continue
         supernet, net = row[0], row[1]
         if not supernet or not net:
