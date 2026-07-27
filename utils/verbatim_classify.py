@@ -57,7 +57,12 @@ Respond with ONLY valid JSON in this exact shape:
     content = call_llm(
         provider, model,
         "You are a precise survey-response classifier. Output ONLY valid JSON, no markdown fences.",
-        prompt, temperature=0.1, max_tokens=1500, json_mode=True,
+        # 6000, not 1500: today's free-tier models reason through each item
+        # in the batch before emitting the final JSON (observed on real
+        # 25-item batches, 2026-07-27) -- 1500 was consumed entirely by
+        # that reasoning text, truncating before any JSON came out, which
+        # made every real classification attempt land on ERROR_CATEGORY.
+        prompt, temperature=0.1, max_tokens=6000, json_mode=True,
     )
     try:
         parsed = json.loads(content)
