@@ -72,6 +72,38 @@ def test_classify_verbatims_batch_flags_call_llm_failure_string_as_error():
     assert result[0]["category"] == ERROR_CATEGORY
 
 
+def test_classify_verbatims_batch_flags_missing_index_as_error_not_no_match():
+    # LLM response parses fine but is missing an index (e.g. max_tokens
+    # truncated the JSON array mid-batch) -- a failed classification for
+    # that item, not a genuine "nothing fit" decision.
+    pairs = [
+        {"broad_reason": "Good looks", "elaboration": None},
+        {"broad_reason": "Too expensive", "elaboration": None},
+    ]
+    taxonomy_flat = ["Visual Appearance > Body Design", "Overall price > Value for money"]
+    fake_llm_response = json.dumps({
+        "classifications": [{"index": 0, "category": "Visual Appearance > Body Design"}]
+    })
+    with patch("utils.verbatim_classify.call_llm", return_value=fake_llm_response):
+        result = classify_verbatims_batch(pairs, taxonomy_flat, provider="groq", model=None)
+    assert result[0]["category"] == "Visual Appearance > Body Design"
+    assert result[1]["category"] == ERROR_CATEGORY
+
+
+def test_classify_verbatims_batch_flags_hallucinated_category_as_error():
+    # LLM returns a category string that isn't "No match" and isn't in
+    # the fixed taxonomy list it was given -- must not be trusted verbatim,
+    # since aggregate_by_supernet would mint a fake Supernet bucket from it.
+    pairs = [{"broad_reason": "Good looks", "elaboration": None}]
+    taxonomy_flat = ["Visual Appearance > Body Design"]
+    fake_llm_response = json.dumps({
+        "classifications": [{"index": 0, "category": "Made Up Category > Not Real"}]
+    })
+    with patch("utils.verbatim_classify.call_llm", return_value=fake_llm_response):
+        result = classify_verbatims_batch(pairs, taxonomy_flat, provider="groq", model=None)
+    assert result[0]["category"] == ERROR_CATEGORY
+
+
 def test_aggregate_by_supernet_produces_base_plus_category_rows():
     classified = [
         {"broad_reason": "a", "elaboration": None, "category": "Visual Appearance > Body Design"},

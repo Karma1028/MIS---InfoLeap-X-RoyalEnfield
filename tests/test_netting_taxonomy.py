@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from utils.netting_taxonomy import load_netting_taxonomy, SEGMENT_SHEETS, flatten_supernet_net
+from utils.netting_taxonomy import load_netting_taxonomy, SEGMENT_SHEETS, flatten_supernet_net, sheet_for
 
 
 def _fake_sheet_rows():
@@ -66,3 +66,27 @@ def test_flatten_supernet_net_produces_readable_list():
         "Visual Appearance > Design Language",
         "Overall price > Value for money",
     ]
+
+
+def test_sheet_for_acceptor_always_uses_kbf_sheet():
+    assert sheet_for("Acceptor", "mq2a") == "MQ2a+MQ2b_KBF"
+
+
+def test_sheet_for_rejector_mq2_pair_uses_kbf_sheet_not_rejecter_sheet():
+    # Rejector's mq2c/mq2d pair asks "why they considered/liked RE" —
+    # same positive framing as Acceptor's KBF questions, so it must be
+    # classified against the KBF taxonomy, NOT the Rejecter (negative
+    # framing) sheet, even though the segment is "Rejector".
+    assert sheet_for("Rejector", "mq2c") == "MQ2a+MQ2b_KBF"
+
+
+def test_sheet_for_rejector_mq3_pair_uses_rejecter_sheet():
+    assert sheet_for("Rejector", "mq3a") == "MQ3a+MQ3b_Rejecter"
+
+
+def test_sheet_for_cancelled_mq2_pair_uses_kbf_sheet():
+    assert sheet_for("Cancelled", "mq2c") == "MQ2a+MQ2b_KBF"
+
+
+def test_sheet_for_cancelled_mq3_pair_uses_cancelled_sheet():
+    assert sheet_for("Cancelled", "mq3a") == "MQ3a+MQ3b_Booked and cancelled"

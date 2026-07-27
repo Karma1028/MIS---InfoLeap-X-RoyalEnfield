@@ -25,7 +25,7 @@ import json
 import re
 import streamlit as st
 from utils.ai_providers import call_llm, get_active_provider
-from utils.netting_taxonomy import SEGMENT_SHEETS, load_netting_taxonomy, flatten_supernet_net
+from utils.netting_taxonomy import sheet_for, load_netting_taxonomy, flatten_supernet_net
 from utils.verbatim_classify import classify_verbatims_batch, aggregate_by_supernet, ERROR_CATEGORY
 from utils.visuals import treemap_chart, PLOTLY_CONFIG
 from utils.data_engine import MASTERFILE_PATH
@@ -171,8 +171,7 @@ Respondent answer-pairs:
 
 
 @st.cache_data(show_spinner=False)
-def _cached_taxonomy(segment):
-    sheet_name = SEGMENT_SHEETS[segment]
+def _cached_taxonomy(sheet_name):
     return load_netting_taxonomy(MASTERFILE_PATH, sheet_name)
 
 
@@ -279,7 +278,7 @@ def render_verbatim_intelligence_page(engine, platform=None, re_model=None):
         "call, different cost."
     )
     if st.button("Classify Against Live Site Taxonomy", type="secondary"):
-        taxonomy = _cached_taxonomy(segment)
+        taxonomy = _cached_taxonomy(sheet_for(segment, broad_prefix))
         taxonomy_flat = flatten_supernet_net(taxonomy)
         with st.spinner(f"Asking {provider.title()} to classify {len(pairs)} answers against {len(taxonomy_flat)} categories..."):
             classified = _cached_classification(

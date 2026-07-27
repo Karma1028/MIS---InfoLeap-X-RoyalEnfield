@@ -62,7 +62,27 @@ Respond with ONLY valid JSON in this exact shape:
     try:
         parsed = json.loads(content)
         by_index = {c["index"]: c.get("category", "No match") for c in parsed.get("classifications", [])}
-        return [by_index.get(i, "No match") for i in range(len(batch))]
+        valid_categories = set(taxonomy_flat)
+        results = []
+        for i in range(len(batch)):
+            category = by_index.get(i)
+            if category is None:
+                # Missing from the response — a truncated batch (e.g.
+                # max_tokens cut the JSON array short) is a failed
+                # classification, not a "nothing fit" decision. Flagging
+                # it ERROR_CATEGORY keeps it distinct from a genuine
+                # "No match" the same way a total parse failure already is.
+                results.append(ERROR_CATEGORY)
+            elif category == "No match" or category in valid_categories:
+                results.append(category)
+            else:
+                # LLM returned a string that isn't in the fixed taxonomy
+                # and isn't "No match" — a hallucinated/paraphrased
+                # category. Flagging it rather than trusting it verbatim
+                # keeps aggregate_by_supernet from minting a fake Supernet
+                # bucket that doesn't exist in Infoleap's taxonomy.
+                results.append(ERROR_CATEGORY)
+        return results
     except Exception:
         # call_llm() never raises on failure (missing key, rate limit,
         # provider down) — it returns a plain error string instead (see

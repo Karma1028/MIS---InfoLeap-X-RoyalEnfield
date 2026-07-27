@@ -23,6 +23,19 @@ SEGMENT_SHEETS = {
 }
 
 
+def sheet_for(segment, broad_prefix):
+    """Rejector/Cancelled each offer 2 question pairs: an mq2*-prefixed
+    positive pair ("why considered/liked RE" — same framing as Acceptor's
+    KBF questions) and an mq3*-prefixed negative pair ("why rejected/
+    cancelled" — that segment's own Reasons sheet). SEGMENT_SHEETS alone
+    only has one sheet per segment, which is right for Acceptor (only ever
+    asked mq2*) but wrong for the mq2* pair under Rejector/Cancelled — this
+    routes by the ACTUAL question framing, not just the segment."""
+    if broad_prefix.startswith("mq2"):
+        return SEGMENT_SHEETS["Acceptor"]
+    return SEGMENT_SHEETS[segment]
+
+
 def load_netting_taxonomy(masterfile_path, sheet_name):
     """Returns {Supernet: [Net, Net, ...]} — Sub-net and Codelist/Codes
     columns are dropped (v1 classifies to Supernet+Net only). Net names
