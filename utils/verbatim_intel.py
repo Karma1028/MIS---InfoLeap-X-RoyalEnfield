@@ -278,16 +278,16 @@ def render_verbatim_intelligence_page(engine, platform=None, re_model=None):
                 json.dumps(taxonomy_flat), provider, model,
             )
         agg_df = aggregate_by_supernet(classified, base_label=segment)
+        _no_match_n = sum(1 for c in classified if c.get("category") == "No match")
+        _error_n = sum(1 for c in classified if c.get("category") == ERROR_CATEGORY)
+        if _error_n:
+            st.warning(f"{_error_n} of {len(classified)} sampled answers failed to classify (API error) — results are incomplete. Try again.")
         if len(agg_df) <= 1:
             st.info("No classified categories to show (all answers were 'No match' or sample was empty).")
         else:
             fig = treemap_chart(agg_df, f"{broad_label} — Category Breakdown")
             st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG,
                              key=f"netting_treemap_{segment}_{choice_idx}")
-            _no_match_n = sum(1 for c in classified if c.get("category") == "No match")
-            _error_n = sum(1 for c in classified if c.get("category") == ERROR_CATEGORY)
-            if _error_n:
-                st.warning(f"{_error_n} of {len(classified)} sampled answers failed to classify (API error) — results are incomplete. Try again.")
             if _no_match_n:
                 st.caption(f"{_no_match_n} of {len(classified)} sampled answers didn't match any taxonomy category.")
 
