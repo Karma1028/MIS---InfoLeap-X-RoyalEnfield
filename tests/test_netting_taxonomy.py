@@ -73,6 +73,26 @@ def test_load_code_map_zero_pads_short_codes():
     assert code_map == {"002": ("Visual Appearance", "Body Design")}
 
 
+def test_load_code_map_keeps_row_with_blank_net_falling_back_to_supernet():
+    # Real data-quality gap found in the Rejecter sheet (2026-07-27): the
+    # "Waiting Period" Supernet's row has a real Code but a blank Net cell
+    # -- dropping the whole row (as the old code did) silently erased an
+    # entire real category (21% of Rejectors, confirmed against the live
+    # dashboard), not just a rounding difference.
+    rows = [
+        ("Supernet", "Net", "Sub-net", "Codelist", "Codes"),
+        ("Waiting Period", None, None, "Very long waiting period", "183"),
+    ]
+    mock_ws = MagicMock()
+    mock_ws.iter_rows.return_value = rows
+    mock_wb = MagicMock()
+    mock_wb.sheetnames = ["MQ3a+MQ3b_Rejecter"]
+    mock_wb.__getitem__.return_value = mock_ws
+    with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
+        code_map = load_code_map("fake_path.xlsx", "MQ3a+MQ3b_Rejecter")
+    assert code_map == {"183": ("Waiting Period", "Waiting Period")}
+
+
 def test_load_code_map_raises_clear_error_for_missing_sheet():
     mock_wb = MagicMock()
     mock_wb.sheetnames = ["SomeOtherSheet"]

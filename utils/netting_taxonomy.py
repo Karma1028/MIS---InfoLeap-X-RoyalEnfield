@@ -66,8 +66,16 @@ def load_code_map(masterfile_path, sheet_name):
         if len(row) < 5:
             continue
         supernet, net, code = row[0], row[1], row[4]
-        if not supernet or not net or code is None:
+        # Net is required for a real category label, but not required to
+        # KEEP the row -- some Supernets (e.g. Rejecter sheet's "Waiting
+        # Period") have a real Supernet + Code but a blank Net cell (a
+        # data-quality gap in Infoleap's own sheet, confirmed 2026-07-27).
+        # Dropping those rows silently erased an entire real category
+        # (21% of Rejectors -- a live-site-confirmed gap, not a rounding
+        # difference). Fall back to the Supernet name itself as the Net
+        # label when Net is blank.
+        if not supernet or code is None:
             continue
         code_str = str(code).strip().zfill(3)
-        code_map[code_str] = (supernet, net)
+        code_map[code_str] = (supernet, net or supernet)
     return code_map
