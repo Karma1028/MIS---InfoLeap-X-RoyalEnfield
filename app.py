@@ -1551,12 +1551,21 @@ _REASONS_LABELS = {
 if segment_value in _REASONS_LABELS:
     _reasons_label = _REASONS_LABELS[segment_value]
     st.caption(f"{_reasons_label} — decoded from each respondent's own Infoleap-assigned netting code, matching the live dashboard exactly (not an AI approximation).")
-    section(f"{_reasons_label} — Category Wise",
-            lambda d, s: engine.reasons_table(d, base_label=s, by="supernet", numeric=True, extra_groups=custom_group),
-            color=REASONS_COLOR, chart_type="stacked_bar")
-    section(f"{_reasons_label} — Detailed",
-            lambda d, s: engine.reasons_table(d, base_label=s, by="net", numeric=True, extra_groups=custom_group),
-            color=REASONS_COLOR, chart_type="stacked_bar")
+    # Can't use the shared section() helper here -- it always computes a
+    # significance-vs-baseline table too, and that baseline (the OTHER
+    # segments combined) can span multiple segments at once (e.g.
+    # Rejector+Cancelled together). reasons_table() correctly rejects a
+    # mixed-segment df -- each segment's Reasons codes come from a
+    # DIFFERENT netting sheet/question, so "vs the other segments combined"
+    # isn't a coherent comparison for this table the way it is for Age/
+    # Education. Render this segment's own table only, no baseline compare.
+    for _r_title, _r_by in ((f"{_reasons_label} — Category Wise", "supernet"),
+                             (f"{_reasons_label} — Detailed", "net")):
+        _r_tbl = _trim_to_selected_months(
+            engine.reasons_table(df, base_label=segment_value, by=_r_by, numeric=True, extra_groups=custom_group))
+        with st.container(border=True):
+            render_chart_with_table(_r_tbl, _r_title, color=REASONS_COLOR, key=f"chart_{_r_title}", chart_type="stacked_bar")
+        trend_map[_r_title] = _r_tbl
 else:
     reasons_placeholder("Key Buying Factors / Reasons for Rejection / Reasons for Cancelling", "this segment")
 
