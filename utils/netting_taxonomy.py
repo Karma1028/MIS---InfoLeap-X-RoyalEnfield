@@ -2,17 +2,23 @@
 questions (Key Buying Factors / Reasons for Rejection / Reasons for
 Cancelling) from the 3 hidden reference sheets in the Masterfile workbook.
 
-These sheets (`Supernet | Net | Sub-net | Codelist | Codes`) are a real
-market-research netting scheme — almost certainly how the live Infoleap
-dashboard's Reasons sections were actually coded (confirmed via live-site
-scrape structure analysis, 2026-07-24: same 3-level Top/Mid/leaf hierarchy).
+These sheets (`Supernet | Net | Sub-net | Codelist | Codes`) are the real
+market-research netting scheme Infoleap's human coders used — confirmed
+exact match against the live dashboard's scraped Acceptor numbers (9/11
+Supernet categories, 2026-07-27).
 
-No respondent-level linkage to these codes exists anywhere in the Masterfile
-(checked directly, 2026-07-24 — see docs/superpowers/specs/2026-07-24-
-verbatim-netting-reproduction-design.md) — these sheets are reference-only.
-`utils/verbatim_intel.py` uses this taxonomy to classify sampled respondent
-verbatim text via LLM, approximating (not exactly reproducing) the live
-site's category breakdowns."""
+CORRECTION (2026-07-27): an earlier investigation (2026-07-24) concluded no
+respondent-level linkage to these codes existed anywhere in the Masterfile —
+that was WRONG. `data_updated` has 3 columns literally named
+`MQ2a+MQ2b_KBF` / `MQ3a+MQ3b_Rejecter` / `MQ3a+MQ3b_Booked and cancelled`
+holding each respondent's own assigned codes as a concatenated 3-digit
+string (e.g. "001020117176180" = codes 001, 020, 117...). `load_code_map()`
+below decodes those against this sheet's `Codes` column — used by
+`utils.data_engine.DataEngine.reasons_table()` for an exact, deterministic
+reproduction. `utils/verbatim_intel.py` separately uses `load_netting_taxonomy()`
++ LLM classification for a genuinely different, complementary approximation
+over sampled verbatim TEXT (for segments/questions where no such link is
+needed) — that feature is unaffected by this correction."""
 import openpyxl
 from utils.data_engine import MASTERFILE_PATH
 
@@ -67,3 +73,35 @@ def flatten_supernet_net(taxonomy):
     """['Supernet > Net', ...] — the exact strings shown to the LLM as its
     fixed classification target list."""
     return [f"{supernet} > {net}" for supernet, nets in taxonomy.items() for net in nets]
+
+
+def load_code_map(masterfile_path, sheet_name):
+    """{code (3-digit zero-padded string): (Supernet, Net)} — decodes the
+    numeric Codes column of the netting sheet into a lookup usable against
+    the per-respondent code strings in data_updated's MQ2a+MQ2b_KBF/
+    MQ3a+MQ3b_Rejecter/MQ3a+MQ3b_Booked and cancelled columns (each a
+    concatenation of 3-digit codes, e.g. "001020117" = codes 001, 020,
+    117). Codes are zero-padded to 3 digits since the sheet's own Codes
+    column isn't always consistently formatted (sometimes "2", sometimes
+    "002") but the respondent-level strings always use fixed 3-digit
+    chunks."""
+    wb = openpyxl.load_workbook(masterfile_path, read_only=True, data_only=True)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(
+            f"Netting sheet {sheet_name!r} not found in {masterfile_path!r}. "
+            f"Available sheets: {wb.sheetnames}. Check SEGMENT_SHEETS against "
+            f"the current Masterfile — sheet names can drift across monthly drops."
+        )
+    ws = wb[sheet_name]
+    code_map = {}
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue  # header row: Supernet, Net, Sub-net, Codelist, Codes
+        if len(row) < 5:
+            continue
+        supernet, net, code = row[0], row[1], row[4]
+        if not supernet or not net or code is None:
+            continue
+        code_str = str(code).strip().zfill(3)
+        code_map[code_str] = (supernet, net)
+    return code_map

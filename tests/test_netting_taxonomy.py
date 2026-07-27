@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from utils.netting_taxonomy import load_netting_taxonomy, SEGMENT_SHEETS, flatten_supernet_net, sheet_for
+from utils.netting_taxonomy import load_netting_taxonomy, SEGMENT_SHEETS, flatten_supernet_net, sheet_for, load_code_map
 
 
 def _fake_sheet_rows():
@@ -90,3 +90,41 @@ def test_sheet_for_cancelled_mq2_pair_uses_kbf_sheet():
 
 def test_sheet_for_cancelled_mq3_pair_uses_cancelled_sheet():
     assert sheet_for("Cancelled", "mq3a") == "MQ3a+MQ3b_Booked and cancelled"
+
+
+def test_load_code_map_keys_by_zero_padded_code():
+    mock_ws = MagicMock()
+    mock_ws.iter_rows.return_value = _fake_sheet_rows()
+    mock_wb = MagicMock()
+    mock_wb.sheetnames = ["MQ2a+MQ2b_KBF"]
+    mock_wb.__getitem__.return_value = mock_ws
+    with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
+        code_map = load_code_map("fake_path.xlsx", "MQ2a+MQ2b_KBF")
+    assert code_map == {
+        "002": ("Visual Appearance", "Body Design"),
+        "011": ("Visual Appearance", "Design Language"),
+        "045": ("Overall price", "Value for money"),
+    }
+
+
+def test_load_code_map_zero_pads_short_codes():
+    rows = [
+        ("Supernet", "Net", "Sub-net", "Codelist", "Codes"),
+        ("Visual Appearance", "Body Design", "Front profile", "Liked headlight", "2"),
+    ]
+    mock_ws = MagicMock()
+    mock_ws.iter_rows.return_value = rows
+    mock_wb = MagicMock()
+    mock_wb.sheetnames = ["MQ2a+MQ2b_KBF"]
+    mock_wb.__getitem__.return_value = mock_ws
+    with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
+        code_map = load_code_map("fake_path.xlsx", "MQ2a+MQ2b_KBF")
+    assert code_map == {"002": ("Visual Appearance", "Body Design")}
+
+
+def test_load_code_map_raises_clear_error_for_missing_sheet():
+    mock_wb = MagicMock()
+    mock_wb.sheetnames = ["SomeOtherSheet"]
+    with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
+        with pytest.raises(ValueError, match="not found"):
+            load_code_map("fake_path.xlsx", "MQ2a+MQ2b_KBF")

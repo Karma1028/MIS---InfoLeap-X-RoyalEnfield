@@ -130,9 +130,12 @@ class DataEngine:
     # Load + decode
     # ------------------------------------------------------------------
     def load_data(self):
+        import datetime
+        self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
         # header=1: row 0 of the Masterfile is a merged group-header row
         # (e.g. "Segment", "Acceptor / Brand Owned"), real column codes are row 1.
         self.df = pd.read_excel(self.masterfile_path, header=1)
+        self._merge_reasons_codes()
         self._ingest_monthly_drops()
 
         dm = pd.read_excel(self.datamap_path, skiprows=2)
@@ -192,6 +195,43 @@ class DataEngine:
         dedup_cols = [c for c in ('SubmissionDate', 'deviceid', 'username') if c in self.df.columns]
         if dedup_cols:
             self.df = self.df.drop_duplicates(subset=dedup_cols, keep='last').reset_index(drop=True)
+
+    # Names of the 3 respondent-level netting-code columns in data_updated
+    # -- same names as the 3 reference netting sheets, but holding each
+    # respondent's OWN assigned codes (concatenated 3-digit chunks, e.g.
+    # "001020117" = codes 001, 020, 117), not the taxonomy itself. See
+    # DataEngine.reasons_table() and utils/netting_taxonomy.load_code_map().
+    REASONS_CODE_COLUMNS = {
+        "kbf_codes": "MQ2a+MQ2b_KBF",
+        "rejecter_codes": "MQ3a+MQ3b_Rejecter",
+        "cancelled_codes": "MQ3a+MQ3b_Booked and cancelled",
+    }
+
+    def _merge_reasons_codes(self):
+        """Pulls the 3 respondent-level netting-code columns onto self.df.
+        Must be read with dtype=str: Excel/pandas silently mangles the long
+        concatenated digit strings into float/scientific-notation otherwise
+        (e.g. "022031038042079166172173175176198210211216217" -> a garbage
+        float), losing the exact codes. Joined on SubmissionDate rather than
+        concatenated positionally -- validated (2026-07-27) to produce
+        exactly len(self.df) rows with no duplication, even though
+        SubmissionDate isn't globally unique in the raw file (the
+        duplicates only exist among rows load_data() drops as incomplete)."""
+        src_cols = list(self.REASONS_CODE_COLUMNS.values())
+        try:
+            raw = pd.read_excel(self.masterfile_path, header=1,
+                                 usecols=['SubmissionDate'] + src_cols,
+                                 dtype={c: str for c in src_cols})
+        except Exception:
+            # Sheet name drift across monthly Masterfile drops -- degrade to
+            # "no Reasons data" rather than breaking the whole app load.
+            for dest_col in self.REASONS_CODE_COLUMNS:
+                self.df[dest_col] = ""
+            return
+        raw = raw.rename(columns={v: k for k, v in self.REASONS_CODE_COLUMNS.items()})
+        self.df = self.df.merge(raw, on='SubmissionDate', how='left')
+        for dest_col in self.REASONS_CODE_COLUMNS:
+            self.df[dest_col] = self.df[dest_col].fillna("")
 
     def _parse_value_labels(self, dm2):
         current_var = None
@@ -289,12 +329,20 @@ class DataEngine:
         dt = pd.to_datetime(self.df['SubmissionDate'], errors='coerce')
         self.df['month_label'] = dt.dt.strftime("%B'%Y")
 
-    def quarter_combined_groups(self):
+    def quarter_combined_groups(self, extra_groups=None):
         """{display_label: [month_labels]} for the live site's always-shown
         quarter-combined columns (e.g. 'JAS\\'25') — see QUARTER_INITIALS.
         The trailing (most recent, still-filling) quarter is excluded, same
         as live: confirmed it shows JAS'25/OND'25/JFM'26 but NOT the current
-        Apr-Jun quarter even though Apr/May already have rows."""
+        Apr-Jun quarter even though Apr/May already have rows.
+
+        extra_groups: optional {label: [month_labels]} merged in on top —
+        used for the user-defined custom Year+Month combined comparison
+        column (app.py's sidebar picker). Passed in PER CALL rather than
+        stored on `self`, since `engine` is a @st.cache_resource singleton
+        shared across every concurrent session — mutating instance state
+        from one user's filter selection would leak into everyone else's
+        tables."""
         groups = {}
         for m in self.month_order:
             q = month_label_to_fy_quarter(m)
@@ -308,6 +356,8 @@ class DataEngine:
             qnum = int(q.split()[0][1:])
             year_suffix = months[0].split("'")[1][2:]
             out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
+        if extra_groups:
+            out.update(extra_groups)
         return out
 
     @staticmethod
@@ -323,21 +373,10 @@ class DataEngine:
     # ------------------------------------------------------------------
     # Filtering
     # ------------------------------------------------------------------
-    def filter_df(self, segment=None, platform=None, model_code=None, owned_brand_code=None):
-        """Segment pages re-scope `df` independently per the live site's own
-        (non-exclusive) tab rules — confirmed 2026-06-19 by re-scraping the
-        live dashboard fresh: Acceptor tab=1997 (aq3_po 1-14), Rejector
-        tab=1789 (grida==2, FULL — no Acceptor carve-out), Cancelled
-        tab=1527 (grida==3, FULL). A respondent can legitimately appear on
-        both the Acceptor tab AND the Rejector/Cancelled tab — that's the
-        live site's actual behavior, not a bug to "fix" into exclusivity.
-        Each branch recomputes re_model_code/owned_brand_code/segment for
-        the returned slice, since the same respondent's "relevant model"
-        differs by which tab is asking (e.g. one of the ~1,303 overlap rows
-        shows their REJECTED model on the Rejector tab, but their BOUGHT
-        model on the Acceptor tab).
-        'All' (no segment) keeps the global mutually-exclusive columns from
-        _derive_segment, for Overview and "rest of sample" baselines."""
+    def _segment_slice(self, segment):
+        """One segment's full (unfiltered) tab rows with segment/re_model_code/
+        owned_brand_code/re_platform/owned_manufacturer set — see filter_df
+        docstring for why each segment is scoped independently."""
         if segment == "Acceptor":
             df = self.df[self.df['aq3_po'].between(1, 14)].copy()
             df['segment'] = 'Acceptor'
@@ -354,17 +393,58 @@ class DataEngine:
             df['re_model_code'] = df['can']
             df['owned_brand_code'] = df['aq3']
         else:
-            df = self.df
-        if segment in ("Acceptor", "Rejector", "Cancelled"):
-            df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
-            df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
-        if platform and platform != "All":
-            df = df[df['re_platform'] == platform]
-        if model_code:
-            df = df[df['re_model_code'] == model_code]
-        if owned_brand_code:
-            df = df[df['owned_brand_code'] == owned_brand_code]
+            raise ValueError(segment)
+        df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
+        df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
         return df
+
+    def filter_df(self, segment=None, platform=None, model_code=None, owned_brand_code=None):
+        """Segment pages re-scope `df` independently per the live site's own
+        (non-exclusive) tab rules — confirmed 2026-06-19 by re-scraping the
+        live dashboard fresh: Acceptor tab=1997 (aq3_po 1-14), Rejector
+        tab=1789 (grida==2, FULL — no Acceptor carve-out), Cancelled
+        tab=1527 (grida==3, FULL). A respondent can legitimately appear on
+        both the Acceptor tab AND the Rejector/Cancelled tab — that's the
+        live site's actual behavior, not a bug to "fix" into exclusivity.
+        Each branch recomputes re_model_code/owned_brand_code/segment for
+        the returned slice, since the same respondent's "relevant model"
+        differs by which tab is asking (e.g. one of the ~1,303 overlap rows
+        shows their REJECTED model on the Rejector tab, but their BOUGHT
+        model on the Acceptor tab).
+
+        'All' (no segment) with NO platform/model/owned_brand filter keeps
+        the global mutually-exclusive columns from _derive_segment (matches
+        live Overview base 4010 exactly — confirmed unfiltered).
+
+        'All' WITH a platform/model/owned_brand filter instead unions the
+        three segments' independently-filtered rows (live Overview's base
+        is the union of what the 3 tabs each show for that filter, NOT the
+        mutually-exclusive count — confirmed 2026-06-25 by re-scraping
+        Bullet 350: live Overview=562, union of filtered tabs=565 (within
+        residual noise), old mutually-exclusive count=480, way off)."""
+        def _apply_filters(d):
+            if platform and platform != "All":
+                d = d[d['re_platform'] == platform]
+            if model_code:
+                d = d[d['re_model_code'] == model_code]
+            if owned_brand_code:
+                d = d[d['owned_brand_code'] == owned_brand_code]
+            return d
+
+        if segment in ("Acceptor", "Rejector", "Cancelled"):
+            return _apply_filters(self._segment_slice(segment))
+        if (platform and platform != "All") or model_code or owned_brand_code:
+            # Filter each segment's tab independently first, THEN union the
+            # matching rows — filtering the deduped union instead would lose
+            # a respondent's match in segment B if segment A's row (picked
+            # by the dedup) doesn't also match the filter.
+            filtered = [
+                _apply_filters(self._segment_slice(s))
+                for s in ("Acceptor", "Rejector", "Cancelled")
+            ]
+            df = pd.concat(filtered)
+            return df[~df.index.duplicated(keep='first')]
+        return self.df
 
     def manufacturers(self):
         """Sorted list of every manufacturer present in owned_brand_name
@@ -388,16 +468,17 @@ class DataEngine:
     # Household Income share this shape: one categorical column, decode via
     # datamap value_maps, base row + category rows, columns = All + months).
     # ------------------------------------------------------------------
-    def distribution_table(self, df, code_col, base_label, display_groups=None, numeric=False):
+    def distribution_table(self, df, code_col, base_label, display_groups=None, numeric=False, extra_groups=None):
         """
         display_groups: optional {code: display_label or None}. Codes mapping
         to the same label are summed together; None drops that code from the
         chart (used to match the live dashboard's collapsed category display).
         numeric: return raw floats instead of "NN%" strings (for chart use).
+        extra_groups: see quarter_combined_groups() docstring.
         """
         value_map = self.value_maps.get(code_col, {})
         base_n = df[code_col].notna().sum()
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
@@ -466,8 +547,11 @@ class DataEngine:
         regardless of its value — matching the live site's own ordering.
         Groups each rollup row with its member rows that follow (the table
         builders already emit rollup-then-members blocks in that shape),
-        sorts the blocks by the rollup's own 'All' value, and always puts
-        the 'Other' block last."""
+        sorts the BLOCKS by the rollup's own 'All' value (descending,
+        'Other' always last), and ALSO sorts each block's member rows by
+        their own 'All' value descending — per follow-up request ('the
+        models should also be in descending order of value to see within
+        the brands which are leading and which are not')."""
         base_row = table_df.iloc[[0]]
         rest = table_df.iloc[1:]
         blocks = []
@@ -487,7 +571,9 @@ class DataEngine:
         normal_blocks.sort(key=lambda b: float(b[1][0]['All']), reverse=True)
         ordered_rows = [base_row]
         for _, block_rows in normal_blocks + other_blocks:
-            ordered_rows.append(pd.DataFrame(block_rows))
+            rollup_row, member_rows = block_rows[0], block_rows[1:]
+            member_rows.sort(key=lambda r: float(r['All']), reverse=True)
+            ordered_rows.append(pd.DataFrame([rollup_row] + member_rows))
         return pd.concat(ordered_rows, ignore_index=True)
 
     @staticmethod
@@ -504,11 +590,11 @@ class DataEngine:
         normal = rollups[rollups['Unnamed: 0'] != "Other"].sort_values('All', ascending=False)
         return pd.concat([base_row, normal, other], ignore_index=True)
 
-    def age_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'age_grp', base_label, numeric=numeric)
+    def age_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'age_grp', base_label, numeric=numeric, extra_groups=extra_groups)
 
-    def education_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'dq3', base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric)
+    def education_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'dq3', base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
 
     @staticmethod
     def sort_by_value(table_df):
@@ -523,12 +609,12 @@ class DataEngine:
         rest = rest.sort_values('_sort', ascending=False).drop(columns=['_sort'])
         return pd.concat([base_row, rest], ignore_index=True)
 
-    def occupation_table(self, df, base_label="All", numeric=False):
-        tbl = self.distribution_table(df, 'dq4', base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric)
+    def occupation_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        tbl = self.distribution_table(df, 'dq4', base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
         return self.sort_by_value(tbl) if numeric else tbl
 
-    def household_income_table(self, df, base_label="All", numeric=False):
-        return self.distribution_table(df, 'dq6', base_label, numeric=numeric)
+    def household_income_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        return self.distribution_table(df, 'dq6', base_label, numeric=numeric, extra_groups=extra_groups)
 
     # ------------------------------------------------------------------
     # Type of Buyer — dq1a (prior 2W usage) x dq1b (additional vs replaced).
@@ -541,9 +627,9 @@ class DataEngine:
     # the same ~10% overall base gap documented elsewhere in this file).
     # See docs/DATA_FIELD_MAPPING.md Addendum 5.
     # ------------------------------------------------------------------
-    def type_of_buyer_table(self, df, base_label="All", numeric=False):
+    def type_of_buyer_table(self, df, base_label="All", numeric=False, extra_groups=None):
         base_n = df['dq1a'].notna().sum()
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
         for col in MONTH_ORDER + extra_cols:
@@ -591,7 +677,7 @@ class DataEngine:
     # this, though the "All Owners" base technically also includes
     # purchase-confirmed Cancelled respondents per the spec.
     # ------------------------------------------------------------------
-    def brand_owned_table(self, df, by="brand", base_label="All", numeric=False):
+    def brand_owned_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         """FIX (2026-06-19): base/model-column must be segment-aware. The
         live site's Acceptor tab DOES show a 'Brand Owned' table too (base
         ~segment size, RE=100% trivially, broken into which RE model) —
@@ -619,12 +705,19 @@ class DataEngine:
         if is_acceptor_only:
             sub = df
         else:
-            owners_mask = (df['grida'] == 2) | ((df['grida'] == 3) & (df['aq1b'] == 1))
+            # FIX (2026-06-23): live's fresh Overview scrape shows "Brand
+            # Owned" All base = 2938, not 2244 — confirmed = 694 (grida==1,
+            # Acceptors trivially own their RE model) + 1789 (grida==2,
+            # full Rejector) + 455 (grida==3 & aq1b==1, Cancelled-confirmed-
+            # owners). The old mask omitted grida==1 entirely, which is
+            # invisible on single-segment Rejector/Cancelled tabs (no
+            # grida==1 rows there) but silently undercounted Overview.
+            owners_mask = (df['grida'] == 1) | (df['grida'] == 2) | ((df['grida'] == 3) & (df['aq1b'] == 1))
             sub = df[owners_mask]
         base_n = len(sub)
         acc_map = self.value_maps.get('acc', {})
         model_col = 'owned_brand_code'
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
@@ -641,7 +734,7 @@ class DataEngine:
             return row
 
         re_union = sub[model_col].between(1, 14)
-        rows.append(pct_row("RE", re_union))
+        rows.append(pct_row("Royal Enfield", re_union))
 
         if by == "brand":
             for code in range(1, 15):
@@ -687,7 +780,7 @@ class DataEngine:
     # like the earlier Type of Buyer approximation used. See
     # docs/DATA_FIELD_MAPPING.md Addendum 7.
     # ------------------------------------------------------------------
-    def additional_replaced_table(self, df, by="brand", base_label="All", numeric=False):
+    def additional_replaced_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         """FIXED (2026-06-19): two real bugs found against
         docs/investigation/full_scraped_data.json's 'All | All' section.
         (1) 'Additional Vehicle'/'Replaced Vehicle' rows were being mixed
@@ -706,9 +799,13 @@ class DataEngine:
         with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
             codebook = {int(k): v for k, v in json.load(f).items()}
 
-        sub = df[df['dq1b'].notna()]
+        # Base FIXED (2026-06-23): dq1b.notna() gave 878 vs live's fresh
+        # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
+        # vehicle", 2="Replaced existing vehicle") matches live exactly.
+        # dq1b is a narrower follow-up field, not the segmentation gate.
+        sub = df[df['dq1a'].isin([1, 2])]
         base_n = len(sub)
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
         for col in MONTH_ORDER + extra_cols:
@@ -739,7 +836,11 @@ class DataEngine:
                 if not brand_codes:
                     continue
                 brand_mask = pd.concat([model_mask(c) for c in brand_codes], axis=1).any(axis=1)
-                rows.append(pct_row(brand, brand_mask))
+                # The dq2 netting codebook stores Royal Enfield's brand
+                # field as the literal "RE" — relabel for display only
+                # (the `brand` variable itself stays "RE" for the
+                # codebook equality check above, so matching is unaffected).
+                rows.append(pct_row("Royal Enfield" if brand == "RE" else brand, brand_mask))
                 for code in brand_codes:
                     mask = model_mask(code)
                     if mask.any():
@@ -752,6 +853,86 @@ class DataEngine:
                 mask = sub[cols].eq(1).any(axis=1) if cols else pd.Series(False, index=sub.index)
                 label = f"{bucket} CC" if bucket[0].isdigit() else bucket
                 rows.append(pct_row(label, mask))
+        return pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Reasons & Motivations (Key Buying Factors / Reasons for Rejection /
+    # Reasons for Cancelling) — deterministic, exact reproduction via each
+    # respondent's OWN assigned netting codes (see _merge_reasons_codes),
+    # decoded against the matching netting sheet's Supernet/Net taxonomy.
+    # Validated exact match against scraped Acceptor numbers on 9/11
+    # Supernet categories (2026-07-27) — see docs/PROJECT_LOG.md. Earlier
+    # (2026-07-24) this was believed impossible: "no respondent-level
+    # linkage exists" — that investigation missed these 3 columns.
+    # ------------------------------------------------------------------
+    def reasons_table(self, df, base_label="All", by="supernet", numeric=False, extra_groups=None):
+        """Segment picked from df['segment'] — Acceptor uses the KBF sheet/
+        column, Rejector the Rejecter sheet/column, Cancelled the Booked-
+        and-cancelled sheet/column (mirrors app.py's reasons_placeholder()
+        per-segment labeling). Raises ValueError for any other/mixed
+        segment (Overview/"All") — no reliable ground truth exists for
+        what an all-segments Reasons table should look like; callers
+        should keep the placeholder message there instead of calling this.
+
+        by="supernet" (default) gives the top-level rollup (Visual
+        Appearance/Overall Riding/...); by="net" gives the finer Net-level
+        breakdown ("Supernet > Net", same string format as
+        netting_taxonomy.flatten_supernet_net()) — mirrors the CC-wise/
+        Brand-wise dual-view pattern used elsewhere in this file."""
+        from utils.netting_taxonomy import load_code_map
+
+        segments_present = set(df['segment'].dropna().unique())
+        if segments_present == {'Acceptor'}:
+            code_col = 'kbf_codes'
+        elif segments_present == {'Rejector'}:
+            code_col = 'rejecter_codes'
+        elif segments_present == {'Cancelled'}:
+            code_col = 'cancelled_codes'
+        else:
+            raise ValueError(
+                f"reasons_table() needs a single-segment df (Acceptor/Rejector/"
+                f"Cancelled) — got {segments_present or 'empty'}. Overview/'All' "
+                f"has no reliable Reasons ground truth; callers should keep the "
+                f"placeholder there instead of calling this."
+            )
+        sheet_name = self.REASONS_CODE_COLUMNS[code_col]
+        code_map = load_code_map(self.masterfile_path, sheet_name)
+
+        def decode(code_str):
+            if not code_str:
+                return frozenset()
+            chunks = [code_str[i:i + 3] for i in range(0, len(code_str), 3)]
+            cats = set()
+            for c in chunks:
+                hit = code_map.get(c)
+                if hit:
+                    supernet, net = hit
+                    cats.add(supernet if by == "supernet" else f"{supernet} > {net}")
+            return frozenset(cats)
+
+        decoded = df[code_col].fillna("").apply(decode)
+
+        base_n = len(df)
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        extra_cols = list(quarter_groups.keys())
+        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+        for col in MONTH_ORDER + extra_cols:
+            rows[0][col] = len(self._col_index(df, col, quarter_groups))
+
+        def pct_row(label, mask):
+            row = {"Unnamed: 0": label}
+            for col in ["All"] + MONTH_ORDER + extra_cols:
+                idx = self._col_index(df, col, quarter_groups)
+                sub_base = len(idx)
+                val = mask.loc[idx].sum() / sub_base * 100 if sub_base else 0
+                row[col] = val if numeric else f"{val:.0f}%"
+            return row
+
+        all_cats = set().union(*decoded) if len(decoded) else set()
+        cat_counts = {cat: sum(1 for cats in decoded if cat in cats) for cat in all_cats}
+        for cat in sorted(all_cats, key=lambda c: cat_counts[c], reverse=True):
+            mask = decoded.apply(lambda cats, _c=cat: _c in cats)
+            rows.append(pct_row(cat, mask))
         return pd.DataFrame(rows)
 
     # ------------------------------------------------------------------
@@ -780,10 +961,10 @@ class DataEngine:
     # no fix needed (7.6% vs 7%, 4.0% vs 3%), confirming the bug is
     # RE-self-match specific, not a base/denominator problem.
     # ------------------------------------------------------------------
-    def brand_considered_table(self, df, by="brand", base_label="All", numeric=False):
+    def brand_considered_table(self, df, by="brand", base_label="All", numeric=False, extra_groups=None):
         base_n = len(df)
         acc_map = self.value_maps.get('acc', {})
-        quarter_groups = self.quarter_combined_groups()
+        quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
@@ -815,7 +996,7 @@ class DataEngine:
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("RE", considered_mask(range(1, 15))))
+        rows.append(pct_row("Royal Enfield", considered_mask(range(1, 15))))
 
         if by == "brand":
             for code in range(1, 15):
@@ -840,6 +1021,195 @@ class DataEngine:
                 codes = [c for c, v in cc_netting.items() if v == bucket]
                 rows.append(pct_row(f"{bucket}CC" if bucket[0].isdigit() else bucket, considered_mask(codes)))
         return pd.DataFrame(rows)
+
+    def brand_resilience_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        """AQ5c: 'If your preferred brand/model were unavailable, what would you have bought?'
+        Groups: Royal Enfield (codes 1-14), top competitor brands, Would not buy (code 124).
+        Only asked to Acceptors and Rejectors — Cancelled have 0 responses.
+        Base = non-null aq5c count (not total segment n).
+        """
+        if 'aq5c' not in df.columns:
+            return pd.DataFrame()
+        sub = df[df['aq5c'].notna()].copy()
+        base_n = len(sub)
+        if base_n == 0:
+            return pd.DataFrame()
+
+        acc_map = self.value_maps.get('acc', {})
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        extra_cols = list(quarter_groups.keys())
+
+        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+        for col in MONTH_ORDER + extra_cols:
+            rows[0][col] = len(self._col_index(sub, col, quarter_groups))
+
+        def pct_row(label, mask):
+            row = {"Unnamed: 0": label}
+            for col in ["All"] + MONTH_ORDER + extra_cols:
+                idx = self._col_index(sub, col, quarter_groups)
+                n_col = len(idx)
+                if n_col == 0:
+                    row[col] = 0.0
+                    continue
+                cnt = mask.loc[idx].sum() if not idx.empty else 0
+                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+            return row
+
+        re_codes = set(RE_MODEL_LABELS.keys())
+        re_mask = sub['aq5c'].isin(re_codes)
+        rows.append(pct_row("Royal Enfield (retain brand)", re_mask))
+
+        no_buy_mask = sub['aq5c'] == 124.0
+        rows.append(pct_row("Would not buy any alternative", no_buy_mask))
+
+        # Top competitor brands (exclude RE + code 124)
+        comp_sub = sub[~sub['aq5c'].isin(re_codes | {124.0})]
+        if len(comp_sub):
+            brand_counts = {}
+            for code, grp in comp_sub.groupby('aq5c'):
+                label = acc_map.get(float(code), f"Code {int(code)}")
+                brand = label.split(" - ")[0].strip() if " - " in label else label
+                brand_counts[brand] = brand_counts.get(brand, 0) + len(grp)
+            for brand, _ in sorted(brand_counts.items(), key=lambda x: -x[1])[:5]:
+                brand_mask = comp_sub['aq5c'].map(
+                    lambda c: (acc_map.get(float(c), "").split(" - ")[0].strip()
+                               if " - " in acc_map.get(float(c), "") else acc_map.get(float(c), "")) == brand
+                ).reindex(sub.index, fill_value=False)
+                rows.append(pct_row(brand, brand_mask))
+
+        return pd.DataFrame(rows)
+
+    def aq5b_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        """AQ5b: 'Which RE model did you consider most seriously before choosing a competitor?'
+        Only meaningful for Rejectors (n≈957 non-null out of 1,789).
+        Shows % of total segment (not % of aq5b-answerers) so base = full segment n.
+        Top RE models sorted by All% descending.
+        """
+        if 'aq5b' not in df.columns:
+            return pd.DataFrame()
+        base_n = len(df)
+        if base_n == 0:
+            return pd.DataFrame()
+
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        extra_cols = list(quarter_groups.keys())
+
+        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+        for col in MONTH_ORDER + extra_cols:
+            rows[0][col] = len(self._col_index(df, col, quarter_groups))
+
+        def pct_row(label, code):
+            row = {"Unnamed: 0": label}
+            for col in ["All"] + MONTH_ORDER + extra_cols:
+                idx = self._col_index(df, col, quarter_groups)
+                n_col = len(idx)
+                if n_col == 0:
+                    row[col] = 0.0 if numeric else "0%"
+                    continue
+                cnt = (df.loc[idx, 'aq5b'] == float(code)).sum()
+                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+            return row
+
+        data_rows = []
+        for code, name in RE_MODEL_LABELS.items():
+            short = name.replace("Royal Enfield ", "")
+            cnt = (df['aq5b'] == float(code)).sum()
+            if cnt > 0:
+                data_rows.append((cnt, code, short))
+
+        for _, code, label in sorted(data_rows, reverse=True):
+            rows.append(pct_row(label, code))
+
+        return pd.DataFrame(rows)
+
+    def test_ride_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        """AQ6: multi-select binary columns aq6_1..aq6_124 — which models did respondent test ride?
+        Returns % of base who test-rode each RE model (codes 1-14 only).
+        Base = total segment n (all respondents, not just those who test-rode any model).
+        Sorted by All% descending.
+        """
+        base_n = len(df)
+        if base_n == 0:
+            return pd.DataFrame()
+
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        extra_cols = list(quarter_groups.keys())
+
+        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+        for col in MONTH_ORDER + extra_cols:
+            rows[0][col] = len(self._col_index(df, col, quarter_groups))
+
+        def pct_row(label, code):
+            col_name = f"aq6_{int(code)}"
+            if col_name not in df.columns:
+                return None
+            row = {"Unnamed: 0": label}
+            for col in ["All"] + MONTH_ORDER + extra_cols:
+                idx = self._col_index(df, col, quarter_groups)
+                n_col = len(idx)
+                if n_col == 0:
+                    row[col] = 0.0 if numeric else "0%"
+                    continue
+                cnt = (df.loc[idx, col_name] == 1).sum()
+                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+            return row
+
+        data_rows = []
+        for code, name in RE_MODEL_LABELS.items():
+            col_name = f"aq6_{int(code)}"
+            if col_name not in df.columns:
+                continue
+            cnt = (df[col_name] == 1).sum()
+            if cnt > 0:
+                short = name.replace("Royal Enfield ", "")
+                data_rows.append((cnt, code, short))
+
+        for _, code, label in sorted(data_rows, reverse=True):
+            row = pct_row(label, code)
+            if row:
+                rows.append(row)
+
+        return pd.DataFrame(rows)
+
+    # AQ2A display labels — competitor CC segment (confirmed G10-B: 2=150-249cc, 3=250-350cc, 4=351cc+)
+    _AQ2A_DISPLAY = {
+        2.0: "150–249 CC",
+        3.0: "250–350 CC",
+        4.0: "351 CC and above",
+    }
+
+    def competitor_cc_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        """AQ2A: CC range of competitor bike considered / purchased.
+        All 3 segments answer (Rej=1789, Acc=1303, Can=455). Base = aq2a non-null count.
+        Sorted by All% descending.
+        """
+        tbl = self.distribution_table(
+            df, 'aq2a', base_label,
+            display_groups=self._AQ2A_DISPLAY,
+            numeric=numeric,
+            extra_groups=extra_groups,
+        )
+        return self.sort_by_value(tbl) if numeric else tbl
+
+    # AQ1B display labels — confirmed from MIS Questionnaire (G9-B audit)
+    _AQ1B_DISPLAY = {
+        1.0: "Bought another 2W",
+        2.0: "Bought a car",
+        3.0: "Still searching",
+        4.0: "Dropped the idea",
+    }
+
+    def post_cancellation_table(self, df, base_label="All", numeric=False, extra_groups=None):
+        """AQ1B: What did Booked-but-Cancelled respondents do after cancelling?
+        Strictly Cancelled-segment question (n=1,527). Base = aq1b non-null count.
+        """
+        tbl = self.distribution_table(
+            df, 'aq1b', base_label,
+            display_groups=self._AQ1B_DISPLAY,
+            numeric=numeric,
+            extra_groups=extra_groups,
+        )
+        return self.sort_by_value(tbl) if numeric else tbl
 
     def _aq5a_cc_netting(self):
         """Loads the real CC-bucket scheme for aq5a's 1-124 codes from the

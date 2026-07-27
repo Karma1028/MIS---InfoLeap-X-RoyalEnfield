@@ -3,7 +3,7 @@ import streamlit.components.v1 as _components
 from auth import render_login, render_landing
 from styles.theme import render_theme_css, SEGMENT_COLORS
 from utils.data_engine import DataEngine, RE_MODEL_PLATFORM, RE_MODEL_LABELS, month_label_to_fy_quarter
-from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, stacked_composition_bar, render_sig_legend, segment_comparison_bar, competitive_heatmap, PLOTLY_CONFIG
+from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers
 from utils.stat_engine import compare_to_baseline_by_column, calculate_significance
 from utils.compare import render_comparison_page
 from utils.verbatim_intel import render_verbatim_intelligence_page
@@ -11,6 +11,7 @@ from utils.dealership import render_dealership_page
 from utils.product_features import render_product_features_page
 from utils.ai_summary import render_ai_summary_button, render_chart_ai_blurb
 from utils.settings_page import render_settings_page
+from utils.overview_intro import render_overview_intro
 
 st.set_page_config(page_title="RE Digital Showroom | Infoleap", layout="wide", initial_sidebar_state="expanded")
 
@@ -85,7 +86,7 @@ st.sidebar.markdown(
 )
 
 st.sidebar.markdown("### Segment")
-EXTRA_PAGES = ["📊 Model Comparison", "🏬 Dealership Intelligence", "🔧 Product Feature Ratings", "🧠 Verbatim Intelligence (AI)", "⚙️ Settings"]
+EXTRA_PAGES = ["📊 Model Comparison", "🧠 Verbatim Intelligence (AI)", "⚙️ Settings"]
 nav_options = [f"{SEGMENT_ICONS[k]} {k}" for k in SEGMENT_LABELS] + EXTRA_PAGES
 nav_choice = st.sidebar.radio("Page", nav_options, label_visibility="collapsed")
 segment_nav = nav_choice.split(" ", 1)[1] if nav_choice not in EXTRA_PAGES else nav_choice
@@ -139,7 +140,22 @@ if nav_choice in EXTRA_PAGES:
     elif "Settings" in nav_choice:
         render_settings_page()
     else:
-        render_verbatim_intelligence_page(engine, platform=platform, model=model)
+        # Bug fix: `platform`/`model` (the main sidebar filters) aren't
+        # defined until after this EXTRA_PAGES block's st.stop() below —
+        # referencing them here always raised NameError the moment anyone
+        # opened this page. Verbatim Intelligence gets its own small
+        # inline Platform/Model selectors instead (same pattern already
+        # used above for Dealership Intelligence / Product Feature
+        # Ratings), rather than depending on state that doesn't exist yet.
+        st.sidebar.markdown("### Report Filters")
+        _vi_plat_map = {"All": "All", "350CC": "J Platform (350CC)", "450CC": "K Platform (450CC)", "650CC": "P Platform (650CC)"}
+        _vi_platform = st.sidebar.selectbox("Platform (CC)", list(_vi_plat_map.keys()),
+                                             format_func=lambda p: _vi_plat_map[p], key="vi_platform")
+        _vi_model_options = ["All"]
+        if _vi_platform != "All":
+            _vi_model_options += sorted(RE_MODEL_LABELS[code] for code, plat in RE_MODEL_PLATFORM.items() if plat == _vi_platform)
+        _vi_model = st.sidebar.selectbox("Model", _vi_model_options, key="vi_model")
+        render_verbatim_intelligence_page(engine, platform=_vi_platform, re_model=_vi_model)
     if st.sidebar.button("Log out", type="secondary", key="logout_extra"):
         st.session_state["authenticated"] = False
         st.session_state["entered_dashboard"] = False
@@ -257,9 +273,16 @@ with st.sidebar.expander("Custom Combined Column", expanded=False):
             st.caption(f"Combines: {', '.join(custom_months_short)}")
 
 show_sig = st.sidebar.toggle("Significance vs Rest of Sample (95%/90%)", value=True,
-                              help="Marks each category as significantly higher/lower than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
+                              help="Marks each category as significantly higher than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
+# Per user request: no user-facing 95%/90% or Both/High/Low controls —
+# always show both confidence tiers together, and always positive-only
+# (significantly HIGHER only, never lower). filter_sig_markers() already
+# handles "High only" by dropping the ▼/▽ markers at the single choke
+# point every chart/table call site routes through — no other code needed.
+sig_confidence = 0.95
+sig_direction = "High only"
 with st.sidebar.popover("ℹ️ What do the colors mean?", use_container_width=True):
-    render_sig_legend()
+    render_sig_legend(active_confidence=sig_confidence)
 if show_sig and segment_value == "All" and platform == "All" and model == "All":
     st.sidebar.caption(
         "On Overview with no Platform/Model filter, there's no 'rest of sample' to compare against "
@@ -402,114 +425,14 @@ _SEGMENT_FRAME = {
 _frame_text = _SEGMENT_FRAME.get(segment_nav, "")
 
 if _overview_is_comparison:
-    # Overview hero: 3 segment cards (Acc/Rej/Can), each with their own stats.
-    def _abbrev_income(s):
-        import re
-        s = str(s)
-        nums = re.findall(r'\d+', s.replace(',', ''))
-        def _k(n):
-            n = int(n)
-            return f"₹{n//1000}L" if n >= 100000 else f"₹{n//1000}K"
-        if 'above' in s.lower() or 'more' in s.lower():
-            return f"{_k(nums[0])}+/mo" if nums else s
-        if 'less' in s.lower() or 'below' in s.lower() or 'upto' in s.lower():
-            return f"<{_k(nums[-1])}/mo" if nums else s
-        if len(nums) >= 2:
-            return f"{_k(nums[0])}-{_k(nums[1])}/mo"
-        return s[:22]
+    # Overview page: replaced entirely with the static PPT-sourced narrative
+    # (objectives + methodology + sample achieved) per 2026-07-22 client
+    # request — the old hero cards / pie summary / comparison charts /
+    # insight blocks below are all Overview-only and never reached because
+    # of the st.stop() here.
+    render_overview_intro()
+    st.stop()
 
-    _OV_HERO_SEGS = [
-        ("Acceptors", "#39B54A", "ACC", "Acceptors"),
-        ("Rejectors", "#C8102E", "REJ", "Rejectors"),
-        ("Cancelled",  "#F7941D", "BBC", "Cancelled"),
-    ]
-    # Denominator for hero % = filtered Overview count (respects time/platform/model filter).
-    # total_n = engine.df (all-time 4,010) is WRONG when a time or platform filter is active
-    # since _hn is already filtered — that would show e.g. "30% of 4,010" when it should
-    # be "50% of filtered 2,400". Use _seg_dfs["Overview"] which applies the same filter.
-    _ov_hero_denom = max(len(_seg_dfs.get("Overview", engine.df)), 1)
-    _ov_cards_html = []
-    for _hlbl, _hcol, _htag, _hkey in _OV_HERO_SEGS:
-        _hsdf = _seg_dfs.get(_hkey)
-        if _hsdf is None or len(_hsdf) == 0:
-            continue
-        _hn = len(_hsdf)
-        _hpct = _hn / _ov_hero_denom * 100
-        _hat = _tbl_age(_hsdf, numeric=True)
-        _har = _hat.iloc[1:].loc[_hat.iloc[1:]['All'].astype(float).idxmax()]
-        _h_age_lbl, _h_age_pct = str(_har['Unnamed: 0']), float(_har['All'])
-        _hit = _tbl_income(_hsdf, numeric=True)
-        _hir = _hit.iloc[1:].loc[_hit.iloc[1:]['All'].astype(float).idxmax()]
-        _h_inc_lbl, _h_inc_pct = _abbrev_income(_hir['Unnamed: 0']), float(_hir['All'])
-        _hbt = _tbl_type_of_buyer(_hsdf, numeric=True)
-        _hbr = _hbt.iloc[1:].loc[_hbt.iloc[1:]['All'].astype(float).idxmax()]
-        _h_tob_lbl = _TOB_SHORT.get(_hbr['Unnamed: 0'], _hbr['Unnamed: 0'])
-        _h_tob_pct = float(_hbr['All'])
-        _hoct = _tbl_occupation(_hsdf, numeric=True)
-        _hor = _hoct.iloc[1:].loc[_hoct.iloc[1:]['All'].astype(float).idxmax()]
-        _h_occ_lbl, _h_occ_pct = str(_hor['Unnamed: 0']), float(_hor['All'])
-
-        # CSAT from Q5/Q6a — only if N≥30 visitors
-        _h_csat_html = ""
-        try:
-            if 'q5' in _hsdf.columns and 'q6a' in _hsdf.columns:
-                _h_vis = _hsdf.loc[_hsdf['q5'] == 1.0, 'q6a'].dropna()
-                if len(_h_vis) >= 30:
-                    _h_cs_raw = _h_vis.mean()
-                    _h_cs_100 = (_h_cs_raw - 1) / 4 * 100
-                    _h_csat_html = (
-                        f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                        f"padding:7px 0;border-bottom:1px solid {_hcol}15;'>"
-                        f"<div>"
-                        f"<div style='font-size:0.67rem;color:#9A958D;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:1px;'>Showroom CSAT</div>"
-                        f"<div style='font-size:0.85rem;font-weight:600;color:#1A1A1A;'>{_h_cs_raw:.2f}/5 &nbsp;<span style='color:#9A958D;font-size:0.75rem;'>({len(_h_vis):,} visitors)</span></div>"
-                        f"</div>"
-                        f"<div style='font-size:1.15rem;font-weight:800;color:{_hcol};white-space:nowrap;margin-left:8px;'>{_h_cs_100:.0f}<span style='font-size:0.7rem;font-weight:500;color:#9A958D;'>/100</span></div>"
-                        f"</div>"
-                    )
-        except Exception:
-            pass
-
-        def _stat_row(label, value, pct, col):
-            return (
-                f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                f"padding:7px 0;border-bottom:1px solid {col}15;'>"
-                f"<div>"
-                f"<div style='font-size:0.67rem;color:#9A958D;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:1px;'>{label}</div>"
-                f"<div style='font-size:0.85rem;font-weight:600;color:#1A1A1A;'>{value}</div>"
-                f"</div>"
-                f"<div style='font-size:1.15rem;font-weight:800;color:{col};white-space:nowrap;margin-left:8px;'>{pct:.0f}%</div>"
-                f"</div>"
-            )
-
-        _ov_cards_html.append(
-            f"<div style='flex:1;min-width:220px;background:#fff;"
-            f"border:1.5px solid {_hcol}30;border-top:4px solid {_hcol};"
-            f"border-radius:14px;padding:20px 22px;box-shadow:0 1px 4px rgba(0,0,0,0.05);'>"
-            f"<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;'>"
-            f"<div>"
-            f"<div style='font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;"
-            f"color:{_hcol};font-weight:700;margin-bottom:4px;'>{_hlbl}</div>"
-            f"<div style='font-size:2.4rem;font-weight:900;color:#1A1A1A;line-height:1;'>{_hn:,}</div>"
-            f"<div style='font-size:0.75rem;color:#9A958D;margin-top:2px;'>"
-            f"{_hpct:.0f}% of {_ov_hero_denom:,} respondents</div>"
-            f"</div>"
-            f"<div style='background:{_hcol};color:#fff;font-size:0.62rem;font-weight:800;"
-            f"letter-spacing:0.1em;padding:4px 8px;border-radius:6px;margin-top:2px;'>{_htag}</div>"
-            f"</div>"
-            + _stat_row("Age", _h_age_lbl, _h_age_pct, _hcol)
-            + _stat_row("Income", _h_inc_lbl, _h_inc_pct, _hcol)
-            + _stat_row("Occupation", _h_occ_lbl, _h_occ_pct, _hcol)
-            + _stat_row("Buyer Type", _h_tob_lbl, _h_tob_pct, _hcol)
-            + _h_csat_html
-            + f"</div>"
-        )
-    st.markdown(
-        "<div style='display:flex;gap:14px;flex-wrap:wrap;margin-bottom:1.2rem;align-items:stretch;'>"
-        + "".join(_ov_cards_html)
-        + "</div>",
-        unsafe_allow_html=True,
-    )
 else:
     # P3 + P6: Segment identity hero — colored anchor card + 3 profile stat cards + 1 segment-specific card
     _card4_html = ""
@@ -632,6 +555,32 @@ with _regen_col:
         st.session_state[regen_key] += 1
         st.rerun()
 
+# ----------------------------------------------------------------------
+# Pie-Chart Summary — one donut per category, aggregate ("All" column)
+# only, no month breakdown (the stacked-bar sections further down give
+# the month-level detail). Placed right after the summary cards, before
+# the section-jump nav pills, per client request.
+#
+# Reuses the exact same table-fetching logic as each corresponding
+# chart_type="stacked_bar" section further down (see those `section(...)`
+# calls for provenance of every lambda below) — same df/baseline_df,
+# segment/platform/model/time context. extra_groups is omitted here
+# (vs. custom_group passed to the stacked_bar versions): verified against
+# distribution_table()'s implementation (utils/data_engine.py) that the
+# 'All' column is computed from `df` BEFORE any extra_groups/quarter
+# columns are appended — so the 'All' percentages are identical either
+# way, extra_groups only changes which extra per-period columns exist,
+# which this pie never reads.
+#
+# Same segment-specific gating as the corresponding stacked_bar sections:
+# Brand Considered / Competitor CC / AQ5b / Test Ride / Brand Resilience /
+# Post-Cancellation are all inside `if not _overview_is_comparison:`
+# further down (never rendered on the Overview comparison hub), so they're
+# gated the same way here. On Overview, segment_value == "All" already
+# (see SEGMENT_LABELS), so `df` there IS the unfiltered/baseline aggregate
+# view a supervisor would expect from an "Overall" page — no separate
+# code path needed.
+
 # P4: Section jump nav — anchor pills scroll to major sections
 def _nav_pill(label, anchor):
     return (
@@ -648,7 +597,6 @@ if _overview_is_comparison:
         + _nav_pill("Demographics", "sec-demographics")
         + _nav_pill("Buyer Type", "sec-buyer-type")
         + _nav_pill("Additional & Replaced", "sec-addrepl")
-        + _nav_pill("Brand Owned", "sec-brand-owned")
         + "</div>",
         unsafe_allow_html=True,
     )
@@ -660,8 +608,8 @@ else:
         + _nav_pill("Demographics", "sec-demographics")
         + _nav_pill("Buyer Type", "sec-buyer-type")
         + _nav_pill("Additional & Replaced", "sec-addrepl")
-        + _nav_pill("Brand Owned", "sec-brand-owned")
-        + _nav_pill("Brand Considered", "sec-brand-considered")
+        # Brand Owned / Brand Considered pills dropped — their sections are
+        # hidden (SHOW_BRAND_OWNED_ONWARD = False above); pills would dead-link.
         + _nav_pill("Month Trend", "sec-trend")
         + "</div>",
         unsafe_allow_html=True,
@@ -672,7 +620,7 @@ _components.html(
     f"""<script>
 (function(){{
   var ac='{accent}';
-  var secs=['sec-demographics','sec-buyer-type','sec-addrepl','sec-brand-owned','sec-brand-considered','sec-trend'];
+  var secs=['sec-demographics','sec-buyer-type','sec-addrepl','sec-trend'];
   function activate(id){{
     var pdoc=window.parent.document;
     pdoc.querySelectorAll('a[data-sec] span.jp').forEach(function(s){{
@@ -1072,76 +1020,6 @@ if _overview_is_comparison:
         except Exception as _e:
             st.caption(f"Model acceptance data unavailable: {_e}")
 
-# Scorecard suppressed on Overview — the 3-card hero above already shows these
-# stats per-segment. Keeping scorecard on non-Overview pages where the hero
-# only shows the current segment, not all three.
-if not _overview_is_comparison and len(_seg_dfs) >= 2:
-    _SC_SEGS = [("Acceptors", "Acceptor", "#39B54A"), ("Rejectors", "Rejector", "#C8102E"), ("Cancelled", "Cancelled", "#F7941D")]
-    _sc_rows = {}
-    for _sc_label, _sc_key, _sc_col in _SC_SEGS:
-        _sc_df = _seg_dfs.get(_sc_label)
-        if _sc_df is None:
-            continue
-        _sc_age_t = engine.age_table(_sc_df, base_label=_sc_key, numeric=True)
-        _sc_top_age = _sc_age_t.iloc[1:].loc[_sc_age_t.iloc[1:]['All'].astype(float).idxmax()]
-        _sc_inc_t = engine.household_income_table(_sc_df, base_label=_sc_key, numeric=True)
-        _sc_top_inc = _sc_inc_t.iloc[1:].loc[_sc_inc_t.iloc[1:]['All'].astype(float).idxmax()]
-        _sc_tob_t = engine.type_of_buyer_table(_sc_df, base_label=_sc_key, numeric=True)
-        _sc_top_tob = _sc_tob_t.iloc[1:].loc[_sc_tob_t.iloc[1:]['All'].astype(float).idxmax()]
-        _sc_occ_t = engine.occupation_table(_sc_df, base_label=_sc_key, numeric=True)
-        _sc_top_occ = _sc_occ_t.iloc[1:].loc[_sc_occ_t.iloc[1:]['All'].astype(float).idxmax()]
-        _sc_rows[_sc_label] = {
-            "color": _sc_col,
-            "n": len(_sc_df),
-            "pct_total": len(_sc_df) / total_n * 100,
-            "age": f"{_sc_top_age['Unnamed: 0']} ({float(_sc_top_age['All']):.0f}%)",
-            "income": f"{_sc_top_inc['Unnamed: 0']} ({float(_sc_top_inc['All']):.0f}%)",
-            "tob": _TOB_SHORT.get(_sc_top_tob['Unnamed: 0'], _sc_top_tob['Unnamed: 0']) + f" ({float(_sc_top_tob['All']):.0f}%)",
-            "occ": f"{_sc_top_occ['Unnamed: 0']} ({float(_sc_top_occ['All']):.0f}%)",
-        }
-    if _sc_rows:
-        st.markdown(
-            f"<h4 style='margin-top:1.2rem;margin-bottom:0.1rem;font-family:Oswald,sans-serif;'>"
-            f"Cross-Segment Benchmark</h4>"
-            f"<div style='font-size:0.8rem;color:#7A7670;margin-bottom:0.6rem;'>"
-            f"How the active segment compares to the other groups on primary demographic indices.</div>",
-            unsafe_allow_html=True,
-        )
-        def _sc_cell(val, color, big=False):
-            sz = "1rem" if big else "0.82rem"
-            return f"<td style='padding:8px 12px;font-size:{sz};color:#1A1A1A;border-bottom:1px solid #F0EDE8;'>{val}</td>"
-        def _sc_header(label, color):
-            return (f"<th style='padding:8px 12px;text-align:left;font-size:0.8rem;font-weight:700;"
-                    f"color:{color};border-bottom:2px solid {color};white-space:nowrap;'>{label}</th>")
-        _sc_html = (
-            "<div style='margin-bottom:1.5rem;overflow-x:auto;'>"
-            "<table style='width:100%;border-collapse:collapse;background:#fff;"
-            "border:1px solid #ECE9E4;border-radius:10px;overflow:hidden;'>"
-            "<thead><tr>"
-            "<th style='padding:8px 12px;text-align:left;font-size:0.8rem;font-weight:700;color:#7A7670;"
-            "border-bottom:2px solid #ECE9E4;'>Metric</th>"
-        )
-        for _lbl, _, _col in _SC_SEGS:
-            if _lbl in _sc_rows:
-                _sc_html += _sc_header(_lbl, _sc_rows[_lbl]["color"])
-        _sc_html += "</tr></thead><tbody>"
-        _sc_metrics = [
-            ("Respondents (n)", lambda r: f"<b>{r['n']:,}</b> &nbsp;<span style='color:#9A958D;font-size:0.75rem;'>({r['pct_total']:.0f}% of total)</span>"),
-            ("Top Age Group", lambda r: r["age"]),
-            ("Top Income", lambda r: r["income"]),
-            ("Buyer Type", lambda r: r["tob"]),
-            ("Occupation", lambda r: r["occ"]),
-        ]
-        for _mi, (_metric_label, _metric_fn) in enumerate(_sc_metrics):
-            _row_bg = "#F9F9F7" if _mi % 2 == 0 else "#FFFFFF"
-            _sc_html += f"<tr style='background:{_row_bg};'><td style='padding:8px 12px;font-size:0.78rem;font-weight:600;color:#7A7670;border-bottom:1px solid #F0EDE8;white-space:nowrap;'>{_metric_label}</td>"
-            for _lbl, _, _col in _SC_SEGS:
-                if _lbl in _sc_rows:
-                    _sc_html += f"<td style='padding:8px 12px;font-size:0.82rem;color:#1A1A1A;border-bottom:1px solid #F0EDE8;border-left:3px solid {_sc_rows[_lbl]['color']}30;'>{_metric_fn(_sc_rows[_lbl])}</td>"
-            _sc_html += "</tr>"
-        _sc_html += "</tbody></table></div>"
-        st.markdown(_sc_html, unsafe_allow_html=True)
-
 # _overview_is_comparison is set at top of page based on segment_nav == "Overview".
 # Overview = comparison hub (cross-segment grouped bars + scorecard).
 # Overall = All-respondents deep-dive (same stacked-bar format as Acceptors/Rejectors/Cancelled).
@@ -1178,26 +1056,6 @@ def _trim_to_selected_months(tbl):
     return tbl[cols]
 
 
-def _extra_views(title, table_fn):
-    """Lazy + isolated: st.expander's body runs on EVERY script execution
-    regardless of collapsed/expanded state (it only hides the result
-    visually). Gating behind a checkbox inside @st.fragment means it only
-    computes when actually requested, and toggling it only reruns this
-    fragment, not the whole page. Zone Heatmap removed per explicit
-    instruction to remove the zonal filter — only Composition vs Overview
-    remains here now."""
-    @st.fragment
-    def _frag():
-        show = st.checkbox("Show Composition vs Overview", key=f"extra_{title}")
-        if not show:
-            return
-        full_tbl = table_fn(df, segment_value)
-        full_baseline = table_fn(baseline_df, "All")
-        st.plotly_chart(stacked_composition_bar(full_tbl, full_baseline, title),
-                         use_container_width=True, config={"displayModeBar": False}, key=f"stack_{title}")
-    _frag()
-
-
 def _filter_brand_table(tbl, selected_brands, rollup_labels):
     """Keeps the Base row + only the brand-rollup-and-its-members runs whose
     rollup is in `selected_brands` — per user request to let people narrow
@@ -1217,10 +1075,7 @@ def _filter_brand_table(tbl, selected_brands, rollup_labels):
 
 def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, brand_filter_labels=None, color=None):
     """Renders one metric: chart + data table + significance markers vs the
-    unfiltered Overview baseline, plus a lazily-computed Composition-vs-
-    Overview stacked bar — an MR-standard supplementary view, available for
-    every metric on every page without slowing down the
-    default view (see _extra_views).
+    unfiltered Overview baseline.
     cap_chart: optional {"max_rows": N, "exclude_labels": [...]} — per user
     request ('brand wise data is not showing the full table'), treemaps cap
     to ~8 rows + 'Other' so the CHART stays readable, but the data table
@@ -1249,7 +1104,8 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     # their base is always well over 30 so they're virtually always
     # eligible when shown).
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
-    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
+    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
+    col_markers = filter_sig_markers(col_markers, sig_direction)
     chart_tbl = engine.cap_rows(tbl, **cap_chart) if cap_chart else tbl
     current_seg_label = _seg_label_map.get(segment_value, "Overview")
     seg_tables = {}  # populated on Overview for P5 so-what gap analysis
@@ -1309,7 +1165,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
                                 _sig = calculate_significance(
                                     _p_acc_cat / 100, _n_acc_xseg,
                                     _p_rej_cat / 100, _n_rej_xseg,
-                                    confidence=0.95,
+                                    confidence=sig_confidence,
                                 )
                                 if _sig.get('is_significant'):
                                     _sig_marker = " ▲" if _p_acc_cat > _p_rej_cat else " ▼"
@@ -1341,7 +1197,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
                                        file_name=f"{title.lower().replace(' ','_')}.csv",
                                        mime="text/csv", key=f"dl_{title}")
         else:
-            render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name, table_in_expander=True)
+            render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
         cat_rows = tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         # P5: "So what?" — auto-computed 1-line insight below each chart.
@@ -1426,7 +1282,6 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
         }
         if not _overview_is_comparison:
             render_chart_ai_blurb(chart_facts, key=f"aiblurb_{title}_{segment_value}_{platform}_{model}_{time_mode}")
-            _extra_views(title, table_fn)
     trend_map[title] = tbl
 
 
@@ -1460,7 +1315,8 @@ def brand_wise_section(title, table_fn, color, caption=None):
     # their base is always well over 30 so they're virtually always
     # eligible when shown).
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
-    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
+    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
+    col_markers = filter_sig_markers(col_markers, sig_direction)
 
     sorted_tbl = engine.sort_brand_table(tbl, rollup_set)
     rollup_tbl = engine.rollup_only_table(tbl, rollup_set)
@@ -1481,10 +1337,13 @@ def brand_wise_section(title, table_fn, color, caption=None):
     with st.container(border=True):
         if caption:
             st.caption(caption)
+        # Per user request: one consistent chart shape AND layout across
+        # every section — stacked bar with its table directly below (not
+        # tucked into a collapsed expander like this used to do, unlike
+        # every plain section() call elsewhere on the page).
         render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
-                                 chart_type="brand_rollup", col_sig_markers=sorted_col_markers,
-                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name,
-                                 table_in_expander=True)
+                                 chart_type="stacked_bar", col_sig_markers=sorted_col_markers,
+                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
         cat_rows = sorted_tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         sig_hits = []
@@ -1514,7 +1373,6 @@ def brand_wise_section(title, table_fn, color, caption=None):
         }
         if not _overview_is_comparison:
             render_chart_ai_blurb(chart_facts, key=f"aiblurb_{title}_{segment_value}_{platform}_{model}_{time_mode}")
-            _extra_views(title, table_fn)
     trend_map[title] = sorted_tbl
 
 
@@ -1553,85 +1411,98 @@ st.markdown("### Type of Buyer")
 st.caption("Was this purchase an additional bike, a replacement, or a first-time 2W purchase? This shapes the entire decision context.")
 section("Type of Buyer", lambda d, s: _tbl_type_of_buyer(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
 
-ROLLUP_LABELS = ["RE"] + [m for m in engine.manufacturers() if m != "Royal Enfield"]
+ROLLUP_LABELS = ["Royal Enfield"] + [m for m in engine.manufacturers() if m != "Royal Enfield"]
 
 ADD_REPL_COLOR = "#2E3192"
 BRAND_OWNED_COLOR = "#662D91"
 BRAND_CONSIDERED_COLOR = "#1B8A8A"
+REASONS_COLOR = "#D6742D"
 
-st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
-st.markdown("### Additional + Replaced")
-st.caption("What did these respondents own before this purchase? CC-wise breakdown of the bike being added or replaced.")
-section("Additional + Replaced — CC Wise",
-        lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-        color=ADD_REPL_COLOR)
-if not _overview_is_comparison:
-    brand_wise_section("Additional + Replaced — Brand Wise",
-                        lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
-                        color=ADD_REPL_COLOR)
+# Per user request (2026-07-27): reverted to the original per-segment
+# scoping (docs/PROJECT_LOG.md 2026-06-18) — Additional+Replaced is an
+# Acceptor-specific question ("what did you replace/add to, to buy your
+# RE"), Brand Owned is a Rejector/Cancelled-specific question ("what did
+# you buy/already own instead"). A later change briefly showed both on
+# every segment; Brand Owned/Brand Considered/Additional+Replaced/Type of
+# Buyer are all validated now (see CLAUDE.md Resolved Blockers), so the
+# earlier blanket hide is no longer warranted either.
+if segment_value == "Acceptor":
+    st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
+    st.markdown("### Additional + Replaced")
+    st.caption("What did these respondents own before this purchase? CC-wise breakdown of the bike being added or replaced.")
+    section("Additional + Replaced — CC Wise",
+            lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            color=ADD_REPL_COLOR, chart_type="stacked_bar")
+    if not _overview_is_comparison:
+        brand_wise_section("Additional + Replaced — Brand Wise",
+                            lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                            color=ADD_REPL_COLOR)
 
-st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
-st.markdown("### Brand Owned")
-# Acceptors trivially own RE (they just bought one) — use baseline_df (all owners:
-# Rej∪BBC-confirmed∪Acc) so competitor bikes appear, matching the live site (base ~2938).
-_bo_df = baseline_df if segment_value == "Acceptor" else df
-_bo_label = "All Owners" if segment_value == "Acceptor" else segment_value
-_bo_caption = ("Bike ownership across all respondents — Acceptors' new RE purchase aside, "
-               "what bikes do people in the study already ride?" if segment_value == "Acceptor"
-               else "Current bike ownership — what brand and CC segment does this respondent already ride?")
-st.caption(_bo_caption)
-section("Brand Owned — CC Wise",
-        lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="cc", base_label=_lbl, numeric=True, extra_groups=custom_group),
-        color=BRAND_OWNED_COLOR)
-if not _overview_is_comparison:
-    brand_wise_section("Brand Owned — Brand Wise",
-                        lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="brand", base_label=_lbl, numeric=True, extra_groups=custom_group),
-                        color=BRAND_OWNED_COLOR)
+if segment_value in ("Rejector", "Cancelled"):
+    st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
+    st.markdown("### Brand Owned")
+    # Acceptors trivially own RE (they just bought one) — use baseline_df (all owners:
+    # Rej∪BBC-confirmed∪Acc) so competitor bikes appear, matching the live site (base ~2938).
+    _bo_df = baseline_df if segment_value == "Acceptor" else df
+    _bo_label = "All Owners" if segment_value == "Acceptor" else segment_value
+    _bo_caption = ("Bike ownership across all respondents — Acceptors' new RE purchase aside, "
+                   "what bikes do people in the study already ride?" if segment_value == "Acceptor"
+                   else "Current bike ownership — what brand and CC segment does this respondent already ride?")
+    st.caption(_bo_caption)
+    section("Brand Owned — CC Wise",
+            lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="cc", base_label=_lbl, numeric=True, extra_groups=custom_group),
+            color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
+    if not _overview_is_comparison:
+        brand_wise_section("Brand Owned — Brand Wise",
+                            lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="brand", base_label=_lbl, numeric=True, extra_groups=custom_group),
+                            color=BRAND_OWNED_COLOR)
 
+# Per user request: brand-wise data (Additional+Replaced/Brand Owned/
+# Brand Considered) belongs only to Acceptor/Rejector/Cancelled — never
+# on the Overview/"All" page, same scoping as Additional+Replaced and
+# Brand Owned above.
+if segment_value in ("Acceptor", "Rejector", "Cancelled"):
     st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Considered")
     st.caption("Which other brands did this respondent evaluate before deciding? The competitive set — high overlap with a competitor here means RE is losing comparison battles in that CC segment.")
     section("Brand Considered — CC Wise",
             lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
             caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.",
-            color=BRAND_CONSIDERED_COLOR)
-    with st.container(border=True):
-        st.caption("Approximate — brand-wise figures ~2x vs live site (open root-cause, docs/DATA_FIELD_MAPPING.md Addendum 8/9). Relative ranking is reliable.")
-        _bc_tbl = _trim_to_selected_months(engine.brand_considered_table(df, by="brand", base_label=segment_value, numeric=True, extra_groups=custom_group))
-        _bc_rollups = ["RE"] + [m for m in engine.manufacturers() if m != "Royal Enfield"]
-        _bc_fig = competitive_heatmap(_bc_tbl, _bc_rollups, title="Brand Considered — Competitive Ranking", accent=BRAND_CONSIDERED_COLOR)
-        if _bc_fig:
-            st.plotly_chart(_bc_fig, use_container_width=True, config=PLOTLY_CONFIG, key=f"heatmap_bc_{segment_value}_{platform}_{model}_{time_mode}")
+            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
     brand_wise_section("Brand Considered — Brand Wise",
                         lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                         color=BRAND_CONSIDERED_COLOR,
                         caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.")
 
-    # AQ2A — Competitor CC Preference (Rejectors only — most relevant; 84.8% chose 351CC+)
-    if segment_value == "Rejector":
-        st.markdown("### Competitor CC Preference")
-        st.caption(
-            "AQ2A: CC range of the competitor bike ultimately purchased. "
-            "Base = Rejectors who answered (n=1,789). "
-            "Shows whether Rejectors traded up, traded sideways, or downgraded vs RE's 350CC core."
-        )
-        section("Competitor CC Segment — Rejectors",
-                lambda d, s: engine.competitor_cc_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-                color="#FDCB6E")
+# AQ2A — Competitor CC Preference (Rejectors only — most relevant; 84.8% chose 351CC+)
+if segment_value == "Rejector":
+    st.markdown("### Competitor CC Preference")
+    st.caption(
+        "AQ2A: CC range of the competitor bike ultimately purchased. "
+        "Base = Rejectors who answered (n=1,789). "
+        "Shows whether Rejectors traded up, traded sideways, or downgraded vs RE's 350CC core."
+    )
+    section("Competitor CC Segment — Rejectors",
+            lambda d, s: engine.competitor_cc_table(d, base_label=s, numeric=True, extra_groups=custom_group),
+            color="#FDCB6E", chart_type="stacked_bar")
 
-    # AQ5b — RE Model Consideration Funnel (Rejectors only)
-    if segment_value == "Rejector":
-        st.markdown("### RE Model Consideration Funnel")
-        st.caption(
-            "AQ5b: 'Which Royal Enfield model did you consider most seriously before choosing a competitor?' "
-            "Base = all Rejectors (n=1,789). % = share of total Rejectors who considered each RE model. "
-            "Top models sorted by consideration rate."
-        )
-        section("RE Model Considered — Rejectors",
-                lambda d, s: engine.aq5b_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-                color="#C8102E")
+# AQ5b — RE Model Consideration Funnel (Rejectors only)
+if segment_value == "Rejector":
+    st.markdown("### RE Model Consideration Funnel")
+    st.caption(
+        "AQ5b: 'Which Royal Enfield model did you consider most seriously before choosing a competitor?' "
+        "Base = all Rejectors (n=1,789). % = share of total Rejectors who considered each RE model. "
+        "Top models sorted by consideration rate."
+    )
+    section("RE Model Considered — Rejectors",
+            lambda d, s: engine.aq5b_table(d, base_label=s, numeric=True, extra_groups=custom_group),
+            color="#C8102E", chart_type="stacked_bar")
 
-    # Test Ride Intelligence — AQ6: which RE models did respondents test ride?
+# Test Ride Intelligence — AQ6: which RE models did respondents test ride?
+# Per user report: this was showing on Overall/"All" too, where the live
+# site never has it — gated to the 3 real segments only, same pattern as
+# Additional+Replaced/Brand Owned/Brand Considered above.
+if segment_value in ("Acceptor", "Rejector", "Cancelled"):
     st.markdown("### Test Ride Intelligence")
     st.caption(
         "AQ6: Which Royal Enfield models did you test ride? Multi-select across all 14 RE models. "
@@ -1639,41 +1510,55 @@ if not _overview_is_comparison:
     )
     section("Test Ride Rate — RE Models",
             lambda d, s: engine.test_ride_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#0984E3")
+            color="#0984E3", chart_type="stacked_bar")
 
-    # Brand Resilience — AQ5c: "If your preferred brand were unavailable, what would you buy?"
-    # Only asked to Acceptors (n=140) and Rejectors (n=251) — Cancelled have 0 responses.
-    if segment_value in ("Acceptor", "Rejector"):
-        st.markdown("### Brand Resilience")
-        st.caption(
-            "AQ5c: 'If your preferred brand/model were unavailable, what would you have bought?' "
-            "Measures brand equity lock-in. Base = respondents who answered (not total segment). "
-            "Not on live dashboard — additional insight layer."
-        )
-        section("Brand Resilience — Substitute Choice",
-                lambda d, s: engine.brand_resilience_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-                color="#6C5CE7")
+# Brand Resilience — AQ5c: "If your preferred brand were unavailable, what would you buy?"
+# Only asked to Acceptors (n=140) and Rejectors (n=251) — Cancelled have 0 responses.
+if segment_value in ("Acceptor", "Rejector"):
+    st.markdown("### Brand Resilience")
+    st.caption(
+        "AQ5c: 'If your preferred brand/model were unavailable, what would you have bought?' "
+        "Measures brand equity lock-in. Base = respondents who answered (not total segment). "
+        "Not on live dashboard — additional insight layer."
+    )
+    section("Brand Resilience — Substitute Choice",
+            lambda d, s: engine.brand_resilience_table(d, base_label=s, numeric=True, extra_groups=custom_group),
+            color="#6C5CE7", chart_type="stacked_bar")
 
-    # Post-Cancellation Trajectory — AQ1B (Cancelled only, n=1,527)
-    if segment_value == "Cancelled":
-        st.markdown("### Post-Cancellation Trajectory")
-        st.caption(
-            "AQ1B: After cancelling the RE booking, what did you do? "
-            "Base = all Cancelled respondents. Not on live dashboard — additional insight layer."
-        )
-        section("Post-Cancellation Action",
-                lambda d, s: engine.post_cancellation_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-                color="#E17055")
+# Post-Cancellation Trajectory — AQ1B (Cancelled only, n=1,527)
+if segment_value == "Cancelled":
+    st.markdown("### Post-Cancellation Trajectory")
+    st.caption(
+        "AQ1B: After cancelling the RE booking, what did you do? "
+        "Base = all Cancelled respondents. Not on live dashboard — additional insight layer."
+    )
+    section("Post-Cancellation Action",
+            lambda d, s: engine.post_cancellation_table(d, base_label=s, numeric=True, extra_groups=custom_group),
+            color="#E17055", chart_type="stacked_bar")
 
-    st.markdown("### Reasons & Motivations")
-    if segment_value == "Cancelled":
-        reasons_placeholder("Reasons for Cancelling", "Cancelled")
-    elif segment_value == "Rejector":
-        reasons_placeholder("Reasons for Rejection", "Rejectors")
-    elif segment_value == "Acceptor":
-        reasons_placeholder("Key Buying Factors", "Acceptors")
-    else:
-        reasons_placeholder("Key Buying Factors / Reasons for Rejection / Reasons for Cancelling", "this segment")
+st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
+st.markdown("### Reasons & Motivations")
+# Deterministic, exact reproduction (2026-07-27) via each respondent's own
+# assigned netting codes -- see DataEngine.reasons_table() docstring for
+# the validation against scraped live-site numbers. Only real for the 3
+# single-segment pages; Overview/"All" keeps the placeholder (no reliable
+# ground truth for what an all-segments Reasons table should look like).
+_REASONS_LABELS = {
+    "Cancelled": "Reasons for Cancelling",
+    "Rejector": "Reasons for Rejection",
+    "Acceptor": "Key Buying Factors",
+}
+if segment_value in _REASONS_LABELS:
+    _reasons_label = _REASONS_LABELS[segment_value]
+    st.caption(f"{_reasons_label} — decoded from each respondent's own Infoleap-assigned netting code, matching the live dashboard exactly (not an AI approximation).")
+    section(f"{_reasons_label} — Category Wise",
+            lambda d, s: engine.reasons_table(d, base_label=s, by="supernet", numeric=True, extra_groups=custom_group),
+            color=REASONS_COLOR, chart_type="stacked_bar")
+    section(f"{_reasons_label} — Detailed",
+            lambda d, s: engine.reasons_table(d, base_label=s, by="net", numeric=True, extra_groups=custom_group),
+            color=REASONS_COLOR, chart_type="stacked_bar")
+else:
+    reasons_placeholder("Key Buying Factors / Reasons for Rejection / Reasons for Cancelling", "this segment")
 
 if not _overview_is_comparison:
     st.markdown('<div id="sec-trend"></div>', unsafe_allow_html=True)
