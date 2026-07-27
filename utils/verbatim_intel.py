@@ -6,11 +6,20 @@ each respondent's broad reason with their follow-up elaboration across
 multiple question pairs, and asking an LLM to dissect the underlying intent
 (not just bucket keywords) — using only free Groq models, per instruction.
 
-This does NOT attempt to reproduce the live dashboard's numbers. It is a
-genuinely new capability layered on top of the raw verbatim text columns
-that exist in the Masterfile (mq2a/mq2b for "why bought" + "what liked",
-mq2c/mq2d for "why considered RE" [Rejector/Cancelled], mq3a/mq3b for
-"why rejected/cancelled" + "what disliked").
+The free-form Intent Analysis section (bucketed into the fieldwork's own
+Product/Price/Dealership/Personal framing) does NOT attempt to reproduce
+the live dashboard's numbers — it is a genuinely new capability layered on
+top of the raw verbatim text columns that exist in the Masterfile
+(mq2a/mq2b for "why bought" + "what liked", mq2c/mq2d for "why considered
+RE" [Rejector/Cancelled], mq3a/mq3b for "why rejected/cancelled" + "what
+disliked").
+
+A second, separate section ("Reproduce Live Site Categories") DOES attempt
+to approximate the live dashboard's Key Buying Factors / Reasons numbers,
+by classifying the same sampled verbatim pairs against Infoleap's own
+netting taxonomy (utils/netting_taxonomy.py) via LLM — an approximation,
+not an exact reproduction, since no respondent-level linkage to that
+taxonomy exists in the raw data (utils/verbatim_classify.py).
 """
 import json
 import re
