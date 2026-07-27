@@ -1499,10 +1499,10 @@ if segment_value == "Rejector":
             color="#C8102E", chart_type="stacked_bar")
 
 # Test Ride Intelligence — AQ6: which RE models did respondents test ride?
-# Per user report: this was showing on Overall/"All" too, where the live
-# site never has it — gated to the 3 real segments only, same pattern as
-# Additional+Replaced/Brand Owned/Brand Considered above.
-if segment_value in ("Acceptor", "Rejector", "Cancelled"):
+# Per user report: pulled off Acceptor too (2026-07-27) -- Rejector/
+# Cancelled only now (also never on Overall/"All", same pattern as
+# Additional+Replaced/Brand Owned/Brand Considered above).
+if segment_value in ("Rejector", "Cancelled"):
     st.markdown("### Test Ride Intelligence")
     st.caption(
         "AQ6: Which Royal Enfield models did you test ride? Multi-select across all 14 RE models. "
@@ -1513,8 +1513,10 @@ if segment_value in ("Acceptor", "Rejector", "Cancelled"):
             color="#0984E3", chart_type="stacked_bar")
 
 # Brand Resilience — AQ5c: "If your preferred brand were unavailable, what would you buy?"
-# Only asked to Acceptors (n=140) and Rejectors (n=251) — Cancelled have 0 responses.
-if segment_value in ("Acceptor", "Rejector"):
+# Asked to Acceptors (n=140) and Rejectors (n=251) -- Cancelled have 0
+# responses -- but per user report (2026-07-27), pulled off Acceptor too;
+# Rejector only now.
+if segment_value == "Rejector":
     st.markdown("### Brand Resilience")
     st.caption(
         "AQ5c: 'If your preferred brand/model were unavailable, what would you have bought?' "
