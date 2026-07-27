@@ -14,21 +14,21 @@ top of the raw verbatim text columns that exist in the Masterfile
 RE" [Rejector/Cancelled], mq3a/mq3b for "why rejected/cancelled" + "what
 disliked").
 
-A second, separate section ("Reproduce Live Site Categories") DOES attempt
-to approximate the live dashboard's Key Buying Factors / Reasons numbers,
-by classifying the same sampled verbatim pairs against Infoleap's own
-netting taxonomy (utils/netting_taxonomy.py) via LLM — an approximation,
-not an exact reproduction, since no respondent-level linkage to that
-taxonomy exists in the raw data (utils/verbatim_classify.py).
+A second, separate section ("Reproduce Live Site Categories") shows the
+live dashboard's REAL Key Buying Factors / Reasons numbers — a
+deterministic, exact reproduction via each respondent's own Infoleap-
+assigned netting code (DataEngine.reasons_table(), see that method's
+docstring for the validation against scraped live-site numbers). This
+used to be an LLM classification over sampled verbatim TEXT, believed
+necessary because "no respondent-level linkage exists" — that was wrong
+(corrected 2026-07-27, see utils/netting_taxonomy.py's docstring) — the
+LLM approximation (utils/verbatim_classify.py) is no longer used here.
 """
 import json
 import re
 import streamlit as st
 from utils.ai_providers import call_llm, get_active_provider
-from utils.netting_taxonomy import sheet_for, load_netting_taxonomy, flatten_supernet_net
-from utils.verbatim_classify import classify_verbatims_batch, aggregate_by_supernet, ERROR_CATEGORY
-from utils.visuals import treemap_chart, PLOTLY_CONFIG
-from utils.data_engine import MASTERFILE_PATH
+from utils.visuals import render_chart_with_table
 
 QUESTION_PAIRS = {
     "Acceptor": [
@@ -170,20 +170,6 @@ Respondent answer-pairs:
         return {"themes": [], "error": f"{provider.title()} call failed or returned non-JSON: {e}. Raw: {content[:300]}"}
 
 
-@st.cache_data(show_spinner=False)
-def _cached_taxonomy(sheet_name):
-    return load_netting_taxonomy(MASTERFILE_PATH, sheet_name)
-
-
-@st.cache_data(show_spinner=False)
-def _cached_classification(segment, pairs_json, taxonomy_flat_json, provider, model):
-    """Cached by exact (segment, pairs, taxonomy, provider, model) — same
-    re-render-doesn't-re-spend-quota pattern as analyze_intent() above."""
-    pairs = json.loads(pairs_json)
-    taxonomy_flat = json.loads(taxonomy_flat_json)
-    return classify_verbatims_batch(pairs, taxonomy_flat, provider, model)
-
-
 def render_verbatim_intelligence_page(engine, platform=None, re_model=None):
     st.markdown("<h1>Verbatim Intelligence (AI)</h1>", unsafe_allow_html=True)
     provider = get_active_provider()
@@ -270,34 +256,21 @@ def render_verbatim_intelligence_page(engine, platform=None, re_model=None):
 
     st.markdown("#### Reproduce Live Site Categories")
     st.caption(
-        "Classifies the same sampled answer-pairs above against Infoleap's own coding "
-        "taxonomy (the hidden netting sheets behind the live dashboard's Key Buying "
-        "Factors / Reasons sections) — an approximation via AI classification, not an "
-        "exact reproduction, since no respondent-level linkage to that taxonomy exists "
-        "in the raw data. Separate button from Intent Analysis above: different LLM "
-        "call, different cost."
+        "The live dashboard's REAL Key Buying Factors / Reasons numbers — decoded from "
+        "each respondent's own Infoleap-assigned netting code (exact match, not an AI "
+        "guess). Uses the full segment base (not just the sampled pairs above), filtered "
+        "the same way as the rest of this page."
     )
-    if st.button("Classify Against Live Site Taxonomy", type="secondary"):
-        taxonomy = _cached_taxonomy(sheet_for(segment, broad_prefix))
-        taxonomy_flat = flatten_supernet_net(taxonomy)
-        with st.spinner(f"Asking {provider.title()} to classify {len(pairs)} answers against {len(taxonomy_flat)} categories..."):
-            classified = _cached_classification(
-                segment, json.dumps(pairs, ensure_ascii=False),
-                json.dumps(taxonomy_flat), provider, model,
-            )
-        agg_df = aggregate_by_supernet(classified, base_label=segment)
-        _no_match_n = sum(1 for c in classified if c.get("category") == "No match")
-        _error_n = sum(1 for c in classified if c.get("category") == ERROR_CATEGORY)
-        if _error_n:
-            st.warning(f"{_error_n} of {len(classified)} sampled answers failed to classify (API error) — results are incomplete. Try again.")
-        if len(agg_df) <= 1:
-            st.info("No classified categories to show (all answers were 'No match' or sample was empty).")
+    try:
+        _reasons_tbl = engine.reasons_table(df, base_label=segment, by="supernet", numeric=True, broad_prefix=broad_prefix)
+    except ValueError as _e:
+        st.info(str(_e))
+    else:
+        if len(_reasons_tbl) <= 1:
+            st.info("No respondents in this segment/filter selection have an assigned netting code for this question.")
         else:
-            fig = treemap_chart(agg_df, f"{broad_label} — Category Breakdown")
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG,
-                             key=f"netting_treemap_{segment}_{choice_idx}")
-            if _no_match_n:
-                st.caption(f"{_no_match_n} of {len(classified)} sampled answers didn't match any taxonomy category.")
+            render_chart_with_table(_reasons_tbl, f"{broad_label} — Category Breakdown",
+                                     chart_type="stacked_bar", key=f"reasons_chart_{segment}_{choice_idx}")
 
     with st.expander("Raw sampled verbatim pairs (for transparency)"):
         st.json(pairs[:20])

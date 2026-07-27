@@ -865,37 +865,41 @@ class DataEngine:
     # (2026-07-24) this was believed impossible: "no respondent-level
     # linkage exists" — that investigation missed these 3 columns.
     # ------------------------------------------------------------------
-    def reasons_table(self, df, base_label="All", by="supernet", numeric=False, extra_groups=None):
-        """Segment picked from df['segment'] — Acceptor uses the KBF sheet/
-        column, Rejector the Rejecter sheet/column, Cancelled the Booked-
-        and-cancelled sheet/column (mirrors app.py's reasons_placeholder()
-        per-segment labeling). Raises ValueError for any other/mixed
-        segment (Overview/"All") — no reliable ground truth exists for
-        what an all-segments Reasons table should look like; callers
-        should keep the placeholder message there instead of calling this.
+    def reasons_table(self, df, base_label="All", by="supernet", numeric=False, extra_groups=None, broad_prefix=None):
+        """Segment picked from df['segment']. Raises ValueError for any
+        other/mixed segment (Overview/"All") — no reliable ground truth
+        exists for what an all-segments Reasons table should look like;
+        callers should keep the placeholder message there instead of
+        calling this.
+
+        broad_prefix: which question pair (e.g. "mq2a", "mq3a") — routed
+        through netting_taxonomy.sheet_for(), the SAME mq2*-is-always-KBF /
+        mq3*-is-the-segment's-own-sheet rule used for Rejector/Cancelled's
+        2 selectable question pairs on the Verbatim Intelligence page (see
+        that module for why). Defaults to each segment's live-dashboard
+        framing when omitted: "mq2a" for Acceptor (only ever asked KBF),
+        "mq3a" for Rejector/Cancelled (matches app.py's Reasons for
+        Rejection/Cancelling sections — the negative framing, not the
+        positive mq2c/mq2d pair).
 
         by="supernet" (default) gives the top-level rollup (Visual
         Appearance/Overall Riding/...); by="net" gives the finer Net-level
         breakdown ("Supernet > Net", same string format as
         netting_taxonomy.flatten_supernet_net()) — mirrors the CC-wise/
         Brand-wise dual-view pattern used elsewhere in this file."""
-        from utils.netting_taxonomy import load_code_map
+        from utils.netting_taxonomy import load_code_map, sheet_for
 
         segments_present = set(df['segment'].dropna().unique())
-        if segments_present == {'Acceptor'}:
-            code_col = 'kbf_codes'
-        elif segments_present == {'Rejector'}:
-            code_col = 'rejecter_codes'
-        elif segments_present == {'Cancelled'}:
-            code_col = 'cancelled_codes'
-        else:
+        if len(segments_present) != 1 or next(iter(segments_present)) not in ("Acceptor", "Rejector", "Cancelled"):
             raise ValueError(
                 f"reasons_table() needs a single-segment df (Acceptor/Rejector/"
                 f"Cancelled) — got {segments_present or 'empty'}. Overview/'All' "
                 f"has no reliable Reasons ground truth; callers should keep the "
                 f"placeholder there instead of calling this."
             )
-        sheet_name = self.REASONS_CODE_COLUMNS[code_col]
+        segment = next(iter(segments_present))
+        sheet_name = sheet_for(segment, broad_prefix or ("mq2a" if segment == "Acceptor" else "mq3a"))
+        code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
         code_map = load_code_map(self.masterfile_path, sheet_name)
 
         def decode(code_str):

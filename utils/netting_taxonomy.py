@@ -15,10 +15,9 @@ holding each respondent's own assigned codes as a concatenated 3-digit
 string (e.g. "001020117176180" = codes 001, 020, 117...). `load_code_map()`
 below decodes those against this sheet's `Codes` column — used by
 `utils.data_engine.DataEngine.reasons_table()` for an exact, deterministic
-reproduction. `utils/verbatim_intel.py` separately uses `load_netting_taxonomy()`
-+ LLM classification for a genuinely different, complementary approximation
-over sampled verbatim TEXT (for segments/questions where no such link is
-needed) — that feature is unaffected by this correction."""
+reproduction, and by `utils/verbatim_intel.py`'s "Reproduce Live Site
+Categories" section (formerly an LLM approximation over sampled verbatim
+text — superseded by this exact method once the linkage was found)."""
 import openpyxl
 from utils.data_engine import MASTERFILE_PATH
 
@@ -40,39 +39,6 @@ def sheet_for(segment, broad_prefix):
     if broad_prefix.startswith("mq2"):
         return SEGMENT_SHEETS["Acceptor"]
     return SEGMENT_SHEETS[segment]
-
-
-def load_netting_taxonomy(masterfile_path, sheet_name):
-    """Returns {Supernet: [Net, Net, ...]} — Sub-net and Codelist/Codes
-    columns are dropped (v1 classifies to Supernet+Net only). Net names
-    deduplicated within each Supernet, insertion order preserved."""
-    wb = openpyxl.load_workbook(masterfile_path, read_only=True, data_only=True)
-    if sheet_name not in wb.sheetnames:
-        raise ValueError(
-            f"Netting sheet {sheet_name!r} not found in {masterfile_path!r}. "
-            f"Available sheets: {wb.sheetnames}. Check SEGMENT_SHEETS against "
-            f"the current Masterfile — sheet names can drift across monthly drops."
-        )
-    ws = wb[sheet_name]
-    taxonomy = {}
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            continue  # header row: Supernet, Net, Sub-net, Codelist, Codes
-        if len(row) < 2:
-            continue
-        supernet, net = row[0], row[1]
-        if not supernet or not net:
-            continue
-        nets = taxonomy.setdefault(supernet, [])
-        if net not in nets:
-            nets.append(net)
-    return taxonomy
-
-
-def flatten_supernet_net(taxonomy):
-    """['Supernet > Net', ...] — the exact strings shown to the LLM as its
-    fixed classification target list."""
-    return [f"{supernet} > {net}" for supernet, nets in taxonomy.items() for net in nets]
 
 
 def load_code_map(masterfile_path, sheet_name):
