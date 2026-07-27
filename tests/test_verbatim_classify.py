@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch
-from utils.verbatim_classify import dedupe_pairs, classify_verbatims_batch, ERROR_CATEGORY
+from utils.verbatim_classify import dedupe_pairs, classify_verbatims_batch, ERROR_CATEGORY, aggregate_by_supernet
 
 
 def test_dedupe_pairs_collapses_identical_text_keeps_first_occurrence_order():
@@ -70,3 +70,42 @@ def test_classify_verbatims_batch_flags_call_llm_failure_string_as_error():
     with patch("utils.verbatim_classify.call_llm", return_value="No Groq API key saved — add one under Settings."):
         result = classify_verbatims_batch(pairs, taxonomy_flat, provider="groq", model=None)
     assert result[0]["category"] == ERROR_CATEGORY
+
+
+def test_aggregate_by_supernet_produces_base_plus_category_rows():
+    classified = [
+        {"broad_reason": "a", "elaboration": None, "category": "Visual Appearance > Body Design"},
+        {"broad_reason": "b", "elaboration": None, "category": "Visual Appearance > Design Language"},
+        {"broad_reason": "c", "elaboration": None, "category": "Overall price > Value for money"},
+        {"broad_reason": "d", "elaboration": None, "category": "No match"},
+    ]
+    df = aggregate_by_supernet(classified, base_label="Acceptor")
+    assert list(df.columns) == ["Unnamed: 0", "All"]
+    base_row = df.iloc[0]
+    assert base_row["Unnamed: 0"] == "Base : Total_Acceptor"
+    assert base_row["All"] == 4  # all 4 classified pairs, including "No match", count toward base
+    cat_rows = {row["Unnamed: 0"]: row["All"] for _, row in df.iloc[1:].iterrows()}
+    # 2 of 4 pairs -> Visual Appearance = 50%, 1 of 4 -> Overall price = 25%
+    assert cat_rows["Visual Appearance"] == 50.0
+    assert cat_rows["Overall price"] == 25.0
+    assert "No match" not in cat_rows  # unmatched pairs excluded from category rows, kept only in base
+
+
+def test_aggregate_by_supernet_excludes_error_category_from_category_rows():
+    from utils.verbatim_classify import ERROR_CATEGORY
+    classified = [
+        {"broad_reason": "a", "elaboration": None, "category": "Visual Appearance > Body Design"},
+        {"broad_reason": "b", "elaboration": None, "category": ERROR_CATEGORY},
+    ]
+    df = aggregate_by_supernet(classified, base_label="Acceptor")
+    base_row = df.iloc[0]
+    assert base_row["All"] == 2  # ERROR_CATEGORY items still count toward base
+    cat_rows = {row["Unnamed: 0"]: row["All"] for _, row in df.iloc[1:].iterrows()}
+    assert ERROR_CATEGORY not in cat_rows  # errors excluded from category rows, same as "No match"
+    assert cat_rows["Visual Appearance"] == 50.0
+
+
+def test_aggregate_by_supernet_empty_input_returns_zero_base():
+    df = aggregate_by_supernet([], base_label="Acceptor")
+    assert df.iloc[0]["All"] == 0
+    assert len(df) == 1  # base row only, no category rows

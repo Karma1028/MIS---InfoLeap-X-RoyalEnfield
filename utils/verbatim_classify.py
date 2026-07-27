@@ -4,6 +4,7 @@ classification into a FIXED category list, not free clustering. Paired
 with utils/verbatim_intel.py's existing free-form intent analysis (a
 different, complementary lens on the same data)."""
 import json
+import pandas as pd
 from utils.ai_providers import call_llm
 
 BATCH_SIZE = 25  # respondents per LLM call — keeps prompt token count
@@ -94,3 +95,29 @@ def classify_verbatims_batch(pairs, taxonomy_flat, provider, model):
         {**pairs[i], "category": categories_by_unique_index[index_map[i]]}
         for i in range(len(pairs))
     ]
+
+
+def aggregate_by_supernet(classified_pairs, base_label):
+    """Counts classified pairs by their Supernet (top-level category,
+    everything before ' > ' in the "category" field) into the SAME
+    Base-row + category-rows DataFrame shape every other table in this app
+    uses (Unnamed: 0 / All columns) — so it renders directly through
+    utils.visuals.treemap_chart() with no adapter needed. Both "No match"
+    (a genuine LLM decision that nothing fit) and ERROR_CATEGORY (the LLM
+    call itself failed) count toward the base — they're real classification
+    attempts — but neither gets its own category row, since neither is a
+    real taxonomy match."""
+    base_n = len(classified_pairs)
+    rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+    if base_n == 0:
+        return pd.DataFrame(rows)
+    supernet_counts = {}
+    for item in classified_pairs:
+        category = item.get("category", "No match")
+        if category in ("No match", ERROR_CATEGORY):
+            continue
+        supernet = category.split(" > ")[0]
+        supernet_counts[supernet] = supernet_counts.get(supernet, 0) + 1
+    for supernet, count in supernet_counts.items():
+        rows.append({"Unnamed: 0": supernet, "All": round(count / base_n * 100, 1)})
+    return pd.DataFrame(rows)
