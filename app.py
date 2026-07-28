@@ -12,6 +12,7 @@ from utils.product_features import render_product_features_page
 from utils.ai_summary import render_ai_summary_button, render_chart_ai_blurb
 from utils.settings_page import render_settings_page
 from utils.overview_intro import render_overview_intro
+from utils.branding import brand_header_html, re_logo_img_html
 
 st.set_page_config(page_title="RE Digital Showroom | Infoleap", layout="wide", initial_sidebar_state="expanded")
 
@@ -72,16 +73,12 @@ def _tbl_brand_owned(df, by="brand", base_label="All", numeric=False, extra_grou
 SEGMENT_LABELS = {"Overview": "All", "Overall": "All", "Acceptors": "Acceptor", "Rejectors": "Rejector", "Booked but Cancelled": "Cancelled"}
 SEGMENT_ICONS = {"Overview": "🏠", "Overall": "👥", "Acceptors": "✅", "Rejectors": "❌", "Booked but Cancelled": "🚫"}
 
+# Real Infoleap + Royal Enfield logo images (utils/branding.py) —
+# replaces the earlier CSS-mock (3 colored squares) now that both real
+# logos exist as assets, sourced from the client's own PPT (2026-07-27).
 st.sidebar.markdown(
-    "<div style='display:flex;align-items:center;gap:8px;margin-bottom:0.6rem;'>"
-    "<div style='display:flex;flex-direction:column;gap:2px;'>"
-    "<span style='width:10px;height:10px;border-radius:2px;background:#F7941D;display:block;'></span>"
-    "<span style='width:10px;height:10px;border-radius:2px;background:#39B54A;display:block;'></span>"
-    "<span style='width:10px;height:10px;border-radius:2px;background:#2E3192;display:block;'></span>"
-    "</div>"
-    "<span style='font-weight:800;font-size:0.95rem;color:#1A1A1A;'>INFOLEAP</span>"
-    "<span style='color:#C8102E;font-weight:800;font-size:0.95rem;'>&times; ROYAL ENFIELD</span>"
-    "</div>",
+    f"<div style='transform:scale(0.62);transform-origin:left center;margin-bottom:-0.4rem;'>"
+    f"{brand_header_html(logo_height_px=22, re_logo_height_px=24)}</div>",
     unsafe_allow_html=True,
 )
 
@@ -182,10 +179,11 @@ _seg_badge = (
     f"border:1px solid {accent}40;vertical-align:middle;'>{segment_nav}</span>"
     if segment_nav not in ("Overview",) else ""
 )
+_re_logo_html = re_logo_img_html(34, extra_style="margin-right:10px;")
 st.markdown(
     f"<div style='height:3px;border-radius:0 2px 2px 0;margin-bottom:0.75rem;"
     f"background:linear-gradient(90deg,{_stripe_color} 0%,{_stripe_color} 55%,rgba(200,16,46,0.10) 100%);'></div>"
-    f"<h1 style='margin-top:0;'>Royal Enfield Digital Showroom{_seg_badge}</h1>",
+    f"<h1 style='margin-top:0;'>{_re_logo_html}Royal Enfield Digital Showroom{_seg_badge}</h1>",
     unsafe_allow_html=True,
 )
 st.markdown(
