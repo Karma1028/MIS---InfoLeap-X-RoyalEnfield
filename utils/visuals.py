@@ -177,7 +177,7 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
     fig.update_layout(
         title=dict(text=f"{title}  <span style='font-size:11px;color:{MUTED}'>(n={base_n:,.0f})</span>",
                     font=dict(size=15, color="#1A1A1A", family="Oswald, Inter, sans-serif")),
-        height=max(230, 42 * len(rows)),
+        height=max(420, 200 + 40 * len(rows)) if len(rows) >= 5 else max(300, 45 * len(rows)),
         margin=dict(l=10, r=70, t=44, b=10),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(title=None, showgrid=False, zeroline=False, showticklabels=True,
@@ -334,11 +334,10 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
     # (lowered from an initial 7-category threshold per follow-up
     # request), scoped to this chart only per explicit instruction.
     _n_cats = len(cat_rows)
-    _HEIGHT_STEP_THRESHOLD = 5
-    if _n_cats < _HEIGHT_STEP_THRESHOLD:
-        plot_height = max(300, 50 + 32 * _n_cats)
+    if _n_cats < 5:
+        plot_height = max(350, 60 + 45 * _n_cats)
     else:
-        plot_height = 50 + 32 * _HEIGHT_STEP_THRESHOLD + 44 * (_n_cats - _HEIGHT_STEP_THRESHOLD)
+        plot_height = max(450, 250 + 40 * _n_cats)
     fig.update_layout(
         barmode='stack',
         title=dict(
@@ -767,7 +766,7 @@ def segment_comparison_bar(seg_tables, title, current_seg="Overview"):
             text=f"{title}  <span style='font-size:11px;color:{MUTED}'>Segment comparison — All periods</span>",
             font=dict(size=15, color="#1A1A1A", family="Oswald, Inter, sans-serif"),
         ),
-        height=max(360, 52 * len(categories) + 100),
+        height=max(450, 52 * len(categories) + 120) if len(categories) >= 5 else max(360, 52 * len(categories) + 100),
         margin=dict(l=10, r=10, t=80, b=20),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(title=None, showgrid=True, gridcolor="#F0EDE8", zeroline=False,
