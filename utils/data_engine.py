@@ -865,12 +865,30 @@ class DataEngine:
     # (2026-07-24) this was believed impossible: "no respondent-level
     # linkage exists" — that investigation missed these 3 columns.
     # ------------------------------------------------------------------
+    # Infoleap's own sheets use inconsistent Supernet spelling in a few
+    # places -- confirmed against the live dashboard (2026-07-27) that
+    # these are meant to be ONE category, not two: exact-string grouping
+    # was silently splitting live's single number into two smaller ones.
+    # Sheet-specific because the split isn't consistent across sheets --
+    # e.g. Rejecter's sheet only has "Dealership Experience" (matches
+    # live's own label there, 25%), so it must NOT be remapped to
+    # "Overall Dealership experience" the way Cancelled's sheet needs.
+    # Adding a new sheet later: add its own entry here if it has the same
+    # kind of spelling drift -- everything else in reasons_table() is
+    # already generic per-sheet.
+    REASONS_SUPERNET_ALIASES = {
+        "MQ2a+MQ2b_KBF": {"Visual Appreance": "Visual Appearance"},
+        "MQ3a+MQ3b_Rejecter": {"Visual Appreance": "Visual Appearance"},
+        "MQ3a+MQ3b_Booked and cancelled": {"Dealership Experience": "Overall Dealership experience"},
+    }
+
     def reasons_table(self, df, base_label="All", by="supernet", numeric=False, extra_groups=None, broad_prefix=None):
-        """Segment picked from df['segment']. Raises ValueError for any
-        other/mixed segment (Overview/"All") — no reliable ground truth
-        exists for what an all-segments Reasons table should look like;
-        callers should keep the placeholder message there instead of
-        calling this.
+        """Segment-aware PER ROW (not per-df) -- df can span multiple
+        segments (e.g. Overview/"All") since each respondent is decoded
+        using THEIR OWN segment's code column + netting sheet, not one
+        picked for the whole df. Raises ValueError only if a segment
+        outside Acceptor/Rejector/Cancelled shows up (nothing else has a
+        code column to decode).
 
         broad_prefix: which question pair (e.g. "mq2a", "mq3a") — routed
         through netting_taxonomy.sheet_for(), the SAME mq2*-is-always-KBF /
@@ -880,7 +898,10 @@ class DataEngine:
         framing when omitted: "mq2a" for Acceptor (only ever asked KBF),
         "mq3a" for Rejector/Cancelled (matches app.py's Reasons for
         Rejection/Cancelling sections — the negative framing, not the
-        positive mq2c/mq2d pair).
+        positive mq2c/mq2d pair). Applied per-segment (Acceptor rows
+        always use "mq2a" regardless of what a mixed-segment call passes,
+        since Acceptor has no mq3* pair) unless a single segment is
+        present, in which case the override applies to it directly.
 
         by="supernet" (default) gives the top-level rollup (Visual
         Appearance/Overall Riding/...); by="net" gives the finer Net-level
@@ -890,35 +911,33 @@ class DataEngine:
         from utils.netting_taxonomy import load_code_map, sheet_for
 
         segments_present = set(df['segment'].dropna().unique())
-        if len(segments_present) != 1 or next(iter(segments_present)) not in ("Acceptor", "Rejector", "Cancelled"):
+        _VALID = ("Acceptor", "Rejector", "Cancelled")
+        if not segments_present or not segments_present <= set(_VALID):
             raise ValueError(
-                f"reasons_table() needs a single-segment df (Acceptor/Rejector/"
-                f"Cancelled) — got {segments_present or 'empty'}. Overview/'All' "
-                f"has no reliable Reasons ground truth; callers should keep the "
-                f"placeholder there instead of calling this."
+                f"reasons_table() needs df['segment'] to be Acceptor/Rejector/"
+                f"Cancelled only — got {segments_present or 'empty'}. No other "
+                f"segment has a netting code column to decode."
             )
-        segment = next(iter(segments_present))
-        sheet_name = sheet_for(segment, broad_prefix or ("mq2a" if segment == "Acceptor" else "mq3a"))
-        code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
-        code_map = load_code_map(self.masterfile_path, sheet_name)
 
-        # Infoleap's own sheets use inconsistent Supernet spelling in a few
-        # places -- confirmed against the live dashboard (2026-07-27) that
-        # these are meant to be ONE category, not two: exact-string
-        # grouping was silently splitting live's single number into two
-        # smaller ones. Sheet-specific because the split isn't consistent
-        # across sheets -- e.g. Rejecter's sheet only has "Dealership
-        # Experience" (matches live's own label there, 25%), so it must
-        # NOT be remapped to "Overall Dealership experience" the way
-        # Cancelled's sheet needs.
-        _ALIASES = {
-            "MQ2a+MQ2b_KBF": {"Visual Appreance": "Visual Appearance"},
-            "MQ3a+MQ3b_Rejecter": {"Visual Appreance": "Visual Appearance"},
-            "MQ3a+MQ3b_Booked and cancelled": {"Dealership Experience": "Overall Dealership experience"},
-        }
-        _sheet_aliases = _ALIASES.get(sheet_name, {})
+        # Per-segment decode config, built once -- each segment gets its
+        # OWN code column + netting sheet + code map + alias table, so a
+        # mixed-segment df (e.g. the full "All" population) decodes every
+        # respondent correctly instead of forcing one sheet on everyone.
+        _seg_conf = {}
+        for seg in segments_present:
+            _prefix = broad_prefix or ("mq2a" if seg == "Acceptor" else "mq3a")
+            sheet_name = sheet_for(seg, _prefix)
+            code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
+            _seg_conf[seg] = (
+                code_col,
+                load_code_map(self.masterfile_path, sheet_name),
+                self.REASONS_SUPERNET_ALIASES.get(sheet_name, {}),
+            )
 
-        def decode(code_str):
+        def decode(row):
+            code_col, code_map, aliases = _seg_conf[row['segment']]
+            code_str = row[code_col]
+            code_str = code_str if isinstance(code_str, str) else ""
             if not code_str:
                 return frozenset()
             chunks = [code_str[i:i + 3] for i in range(0, len(code_str), 3)]
@@ -927,11 +946,11 @@ class DataEngine:
                 hit = code_map.get(c)
                 if hit:
                     supernet, net = hit
-                    supernet = _sheet_aliases.get(supernet, supernet)
+                    supernet = aliases.get(supernet, supernet)
                     cats.add(supernet if by == "supernet" else f"{supernet} > {net}")
             return frozenset(cats)
 
-        decoded = df[code_col].fillna("").apply(decode)
+        decoded = df.apply(decode, axis=1)
 
         base_n = len(df)
         quarter_groups = self.quarter_combined_groups(extra_groups)

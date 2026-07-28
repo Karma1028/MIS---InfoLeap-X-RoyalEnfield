@@ -1374,18 +1374,6 @@ def brand_wise_section(title, table_fn, color, caption=None):
     trend_map[title] = sorted_tbl
 
 
-def reasons_placeholder(label, segment_hint):
-    with st.container(border=True):
-        st.markdown(f"**{label}**")
-        st.info(
-            f"No coded source exists for {label} in the data provided — the live site's categories here are "
-            "AI-clustered output over open-ended verbatim text (confirmed against the raw `mq2`/`mq3` columns and "
-            "Infoleap's own spec note 'will provide codelist and Data later'). See **Verbatim Intelligence (AI)** "
-            f"in the sidebar for an AI-driven intent analysis of {segment_hint}'s verbatims instead — a different "
-            "but genuinely useful treatment of the same open-ended data. Full investigation in docs/DATA_FIELD_MAPPING.md."
-        )
-
-
 # Strict per-segment section/subsection structure, matching the live
 # EXACT live-site order, verified from docs/investigation/full_scraped_data.json's
 # dict insertion order (true DOM order on the live PHP page), not the
@@ -1540,13 +1528,15 @@ st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
 st.markdown("### Reasons & Motivations")
 # Deterministic, exact reproduction (2026-07-27) via each respondent's own
 # assigned netting codes -- see DataEngine.reasons_table() docstring for
-# the validation against scraped live-site numbers. Only real for the 3
-# single-segment pages; Overview/"All" keeps the placeholder (no reliable
-# ground truth for what an all-segments Reasons table should look like).
+# the validation against scraped live-site numbers. Per-row segment-aware
+# (2026-07-28), so Overview/"All" gets a real combined table too, not the
+# placeholder -- each respondent decodes through their OWN segment's
+# netting sheet even when df spans all three.
 _REASONS_LABELS = {
     "Cancelled": "Reasons for Cancelling",
     "Rejector": "Reasons for Rejection",
     "Acceptor": "Key Buying Factors",
+    "All": "Key Buying Factors / Reasons for Rejection / Reasons for Cancelling",
 }
 if segment_value in _REASONS_LABELS:
     _reasons_label = _REASONS_LABELS[segment_value]
@@ -1566,8 +1556,6 @@ if segment_value in _REASONS_LABELS:
         with st.container(border=True):
             render_chart_with_table(_r_tbl, _r_title, color=REASONS_COLOR, key=f"chart_{_r_title}", chart_type="stacked_bar")
         trend_map[_r_title] = _r_tbl
-else:
-    reasons_placeholder("Key Buying Factors / Reasons for Rejection / Reasons for Cancelling", "this segment")
 
 if not _overview_is_comparison:
     st.markdown('<div id="sec-trend"></div>', unsafe_allow_html=True)
