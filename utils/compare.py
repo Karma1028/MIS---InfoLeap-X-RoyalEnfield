@@ -292,18 +292,27 @@ def render_comparison_page(engine):
                 continue
 
             # Per user request: one consistent chart shape across the whole
-            # app — each model gets its OWN stacked-bar chart + table
-            # (same render_chart_with_table/stacked_bar_chart used on every
-            # segment page), side by side, instead of a single overlaid
-            # grouped-bar comparison chart. (Stacking the two models'
-            # percentages into one shared bar isn't meaningful — they're
-            # independent, non-summing populations — so "same chart shape"
-            # means each panel individually, not merged into one bar.)
-            _chart_cols = st.columns(len(tables))
-            for _ccol, (model_name, tbl) in zip(_chart_cols, tables.items()):
-                with _ccol:
-                    render_chart_with_table(tbl, short_names[model_name], chart_type="stacked_bar",
-                                             key=f"cmp_chart_{metric_name}_{model_name}")
+            # app — each model gets its OWN stacked-bar chart + table (same
+            # render_chart_with_table/stacked_bar_chart used on every
+            # segment page). (Stacking the two models' percentages into one
+            # shared bar isn't meaningful — they're independent, non-summing
+            # populations — so "same chart shape" means each panel
+            # individually, not merged into one bar.)
+            #
+            # Stacked vertically, one model's full chart+table then the
+            # next below it (per 2026-07-27 request) -- was side-by-side
+            # columns, which shrank each chart and didn't scale past 2
+            # models. The per-metric table is capped to Category + All
+            # here (the chart above already shows the per-month
+            # breakdown visually) -- was showing every raw month column
+            # even under "All Months", which read as clutter separate
+            # from "the filter as applied".
+            for model_name, tbl in tables.items():
+                _table_only = tbl[[c for c in ("Unnamed: 0", "All") if c in tbl.columns]]
+                st.markdown(f"**{short_names[model_name]}**")
+                render_chart_with_table(tbl, short_names[model_name], chart_type="stacked_bar",
+                                         table_df_html=_table_only,
+                                         key=f"cmp_chart_{metric_name}_{model_name}")
 
             _metric_facts = {
                 "chart": metric_name, "segment_context": segment_for_compare,
