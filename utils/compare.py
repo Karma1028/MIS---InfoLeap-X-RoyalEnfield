@@ -15,7 +15,7 @@ import base64
 import streamlit as st
 import pandas as pd
 from utils.data_engine import RE_MODEL_LABELS, month_label_to_fy_quarter
-from utils.visuals import render_chart_with_table
+from utils.visuals import render_chart_with_table, _lighten, _pct_label, MUTED, INFOLEAP_GREEN, RE_RED, INFOLEAP_ORANGE
 from utils.stat_engine import calculate_significance, compare_to_baseline_by_column
 from utils.ai_providers import call_llm, get_active_provider
 from utils.ai_summary import render_chart_ai_blurb
@@ -202,47 +202,66 @@ def render_comparison_page(engine):
     # ── M2: Segment split bar — Acc/Rej/Can per model ─────────────────────
     # Shows conversion profile per model before any demographic deep-dive.
     # Segments overlap (G3-A: 50%+ Rej are also Acc) — use unique base via concat+dedup.
-    st.markdown("### Segment Profile per Model")
-    st.caption("% of unique respondents per model in each segment. Does NOT sum to 100% — segments overlap by survey design.")
-    try:
-        import plotly.graph_objects as go
-        _seg_rows = []
-        for model_name in selected_models:
-            model_brand, code = name_to_info[model_name]
-            _ma = engine.filter_df(segment="Acceptor", model_code=code if model_brand == "Royal Enfield" else None,
-                                   owned_brand_code=code if model_brand != "Royal Enfield" else None)
-            _mr = engine.filter_df(segment="Rejector", model_code=code if model_brand == "Royal Enfield" else None,
-                                   owned_brand_code=code if model_brand != "Royal Enfield" else None)
-            _mc = engine.filter_df(segment="Cancelled", model_code=code if model_brand == "Royal Enfield" else None,
-                                   owned_brand_code=code if model_brand != "Royal Enfield" else None)
-            for _df in (_ma, _mr, _mc):
-                _df = _df[_df['month_label'].isin(selected_months)] if not _df.empty else _df
-            _mall = pd.concat([_ma, _mr, _mc]).drop_duplicates()
-            _base = max(len(_mall), 1)
-            _seg_rows.append({
-                "model": short_names[model_name], "unique_n": len(_mall),
-                "acc_pct": len(_ma[_ma['month_label'].isin(selected_months)]) / _base * 100,
-                "rej_pct": len(_mr[_mr['month_label'].isin(selected_months)]) / _base * 100,
-                "can_pct": len(_mc[_mc['month_label'].isin(selected_months)]) / _base * 100,
-            })
-        _sp_models = [f"{r['model']} (n={r['unique_n']:,})" for r in _seg_rows]
-        _sp_fig = go.Figure()
-        _sp_fig.add_trace(go.Bar(name="Acceptors", y=_sp_models, x=[r["acc_pct"] for r in _seg_rows],
-            orientation='h', marker_color='#39B54A', text=[f"{r['acc_pct']:.0f}%" for r in _seg_rows], textposition='outside', cliponaxis=False))
-        _sp_fig.add_trace(go.Bar(name="Rejectors", y=_sp_models, x=[r["rej_pct"] for r in _seg_rows],
-            orientation='h', marker_color='#C8102E', text=[f"{r['rej_pct']:.0f}%" for r in _seg_rows], textposition='outside', cliponaxis=False))
-        _sp_fig.add_trace(go.Bar(name="Cancelled", y=_sp_models, x=[r["can_pct"] for r in _seg_rows],
-            orientation='h', marker_color='#F7941D', text=[f"{r['can_pct']:.0f}%" for r in _seg_rows], textposition='outside', cliponaxis=False))
-        _max_sp = max(max(r["acc_pct"], r["rej_pct"], r["can_pct"]) for r in _seg_rows) if _seg_rows else 80
-        _sp_fig.update_layout(barmode='group', height=max(220, 60 * len(_seg_rows)),
-            margin=dict(l=10, r=60, t=10, b=20),
-            xaxis=dict(range=[0, min(_max_sp * 1.3, 110)], ticksuffix='%', showgrid=True, gridcolor='#F0EDE8', title=None),
-            yaxis=dict(autorange='reversed', tickfont=dict(size=12)),
-            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5, font=dict(size=11)),
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(_sp_fig, use_container_width=True, config={"displayModeBar": False}, key="cmp_seg_split")
-    except Exception as _e:
-        st.caption(f"Segment split unavailable: {_e}")
+    #
+    # Visual pass (2026-07-27): brought this in line with every other
+    # chart in the app instead of a bare, unstyled go.Figure -- bordered
+    # card, Oswald title with an n= badge baked into the chart (not a
+    # separate st.markdown heading), lightened/pastel fills matching the
+    # "soothing not solid" treatment used everywhere else, rounded bar
+    # corners, and _pct_label so a genuine 0% reads as "-" like every
+    # other chart's labels do.
+    with st.container(border=True):
+        st.caption("% of unique respondents per model in each segment. Does NOT sum to 100% — segments overlap by survey design.")
+        try:
+            import plotly.graph_objects as go
+            _seg_rows = []
+            for model_name in selected_models:
+                model_brand, code = name_to_info[model_name]
+                _ma = engine.filter_df(segment="Acceptor", model_code=code if model_brand == "Royal Enfield" else None,
+                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
+                _mr = engine.filter_df(segment="Rejector", model_code=code if model_brand == "Royal Enfield" else None,
+                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
+                _mc = engine.filter_df(segment="Cancelled", model_code=code if model_brand == "Royal Enfield" else None,
+                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
+                for _df in (_ma, _mr, _mc):
+                    _df = _df[_df['month_label'].isin(selected_months)] if not _df.empty else _df
+                _mall = pd.concat([_ma, _mr, _mc]).drop_duplicates()
+                _base = max(len(_mall), 1)
+                _seg_rows.append({
+                    "model": short_names[model_name], "unique_n": len(_mall),
+                    "acc_pct": len(_ma[_ma['month_label'].isin(selected_months)]) / _base * 100,
+                    "rej_pct": len(_mr[_mr['month_label'].isin(selected_months)]) / _base * 100,
+                    "can_pct": len(_mc[_mc['month_label'].isin(selected_months)]) / _base * 100,
+                })
+            _sp_models = [r['model'] for r in _seg_rows]
+            _sp_fig = go.Figure()
+            _sp_fig.add_trace(go.Bar(name="Acceptors", y=_sp_models, x=[r["acc_pct"] for r in _seg_rows],
+                orientation='h', marker=dict(color=_lighten(INFOLEAP_GREEN, 0.35), cornerradius=4),
+                text=[_pct_label(r["acc_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
+            _sp_fig.add_trace(go.Bar(name="Rejectors", y=_sp_models, x=[r["rej_pct"] for r in _seg_rows],
+                orientation='h', marker=dict(color=_lighten(RE_RED, 0.35), cornerradius=4),
+                text=[_pct_label(r["rej_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
+            _sp_fig.add_trace(go.Bar(name="Cancelled", y=_sp_models, x=[r["can_pct"] for r in _seg_rows],
+                orientation='h', marker=dict(color=_lighten(INFOLEAP_ORANGE, 0.35), cornerradius=4),
+                text=[_pct_label(r["can_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
+            _max_sp = max(max(r["acc_pct"], r["rej_pct"], r["can_pct"]) for r in _seg_rows) if _seg_rows else 80
+            _n_note = "  ·  ".join(f"{r['model']} n={r['unique_n']:,}" for r in _seg_rows)
+            _sp_fig.update_layout(
+                barmode='group', bargap=0.32, bargroupgap=0.08,
+                height=max(240, 64 * len(_seg_rows)),
+                margin=dict(l=10, r=60, t=54, b=20),
+                title=dict(text=f"Segment Profile per Model  <span style='font-size:11px;color:{MUTED}'>({_n_note})</span>",
+                            font=dict(size=15, color="#1A1A1A", family="Oswald, Inter, sans-serif")),
+                xaxis=dict(range=[0, min(_max_sp * 1.3, 110)], ticksuffix='%', showgrid=True, gridcolor='#F0EDE8',
+                           title=None, tickfont=dict(size=11, color=MUTED)),
+                yaxis=dict(autorange='reversed', tickfont=dict(size=12.5, color="#2B2B2B", family="Inter, Segoe UI, sans-serif")),
+                legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='center', x=0.5, font=dict(size=11)),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color="#2B2B2B", family="Inter, Segoe UI, sans-serif"),
+            )
+            st.plotly_chart(_sp_fig, use_container_width=True, config={"displayModeBar": False}, key="cmp_seg_split")
+        except Exception as _e:
+            st.caption(f"Segment split unavailable: {_e}")
 
     # ── M1: All metrics in expanders — no dropdown, scroll to compare all ──
     st.markdown("### Demographic Comparison — All Metrics")
