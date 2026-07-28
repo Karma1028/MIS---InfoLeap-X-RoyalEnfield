@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from utils.branding import brand_header_html
+from utils.branding import brand_header_html, swoosh_strip_html
 
 USERS_PATH = "data/users.xlsx"
 AUDIT_LOG_PATH = "data/login_audit.csv"
@@ -128,18 +128,26 @@ def render_login() -> bool:
         .login-tagline {
             text-align:center; color:#7A7670; font-size:0.95rem; margin-top:0.2rem; margin-bottom:1.8rem;
         }
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            box-shadow: 0 4px 24px rgba(26,26,26,0.06);
+        }
     </style>
     """, unsafe_allow_html=True)
 
     _, mid, _ = st.columns([1, 1.1, 1])
     with mid:
-        st.markdown("<div style='height:6vh'></div>", unsafe_allow_html=True)
-        _render_brand_header()
-        st.markdown(
-            "<div class='login-tagline'>Digital Showroom Intelligence Portal &mdash; built by Infoleap for Royal Enfield</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div style='height:9vh'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
+            st.markdown("<div style='padding:1.4rem 0.5rem 0 0.5rem;'>", unsafe_allow_html=True)
+            _render_brand_header()
+            st.markdown(
+                "<div class='login-tagline'>Digital Showroom Intelligence Portal &mdash; built by Infoleap for Royal Enfield</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
+        st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("##### Sign in")
             with st.form("login_form"):
@@ -196,22 +204,29 @@ def render_landing() -> bool:
     <style>
         .stApp { background: #FAFAF8; }
         .landing-tagline { text-align:center; color:#7A7670; font-size:1.05rem; margin-top:0.4rem; margin-bottom:0.4rem; }
-        .landing-sub { text-align:center; color:#9A958D; font-size:0.85rem; margin-bottom:2.2rem; }
+        .landing-sub { text-align:center; color:#9A958D; font-size:0.85rem; margin-bottom:1.4rem; }
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            box-shadow: 0 4px 24px rgba(26,26,26,0.06);
+        }
     </style>
     """, unsafe_allow_html=True)
 
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
-        st.markdown("<div style='height:12vh'></div>", unsafe_allow_html=True)
-        _render_brand_header()
-        st.markdown(
-            "<div class='landing-tagline'>Digital Showroom Intelligence Portal</div>"
-            "<div class='landing-sub'>Live segment analytics for Acceptors, Rejectors &amp; Booked-but-Cancelled — "
-            "recomputed directly from the research Masterfile, built by Infoleap for Royal Enfield.</div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("Enter Dashboard  →", use_container_width=True, type="primary"):
-            st.session_state["entered_dashboard"] = True
-            st.rerun()
+        st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
+            st.markdown("<div style='padding:1.4rem 0.5rem 1.6rem 0.5rem;'>", unsafe_allow_html=True)
+            _render_brand_header()
+            st.markdown(
+                "<div class='landing-tagline'>Digital Showroom Intelligence Portal</div>"
+                "<div class='landing-sub'>Live segment analytics for Acceptors, Rejectors &amp; Booked-but-Cancelled — "
+                "recomputed directly from the research Masterfile, built by Infoleap for Royal Enfield.</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("Enter Dashboard  →", use_container_width=True, type="primary"):
+                st.session_state["entered_dashboard"] = True
+                st.rerun()
 
     return False

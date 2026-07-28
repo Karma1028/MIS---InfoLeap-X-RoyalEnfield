@@ -17,6 +17,7 @@ import streamlit as st
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 INFOLEAP_LOGO_PATH = os.path.join(_ASSETS_DIR, "infoleap_logo.png")
 RE_LOGO_PATH = os.path.join(_ASSETS_DIR, "re_logo.png")
+INFOLEAP_SWOOSH_PATH = os.path.join(_ASSETS_DIR, "infoleap_swoosh.png")
 
 
 @st.cache_data(show_spinner=False)
@@ -58,5 +59,22 @@ def re_logo_img_html(height_px=34, extra_style=""):
     if not os.path.exists(RE_LOGO_PATH):
         return ""
     return f"<img src='data:image/png;base64,{_b64(RE_LOGO_PATH)}' style='height:{height_px}px;width:auto;vertical-align:middle;{extra_style}'/>"
+
+
+def swoosh_strip_html(height_px=90, opacity=0.85):
+    """Decorative swoosh banner as a normal, bounded <img> — NOT a fixed
+    full-page background (that broke the whole page render, reverted
+    2026-07-27). Safe because it's a regular block element sized to its
+    own height, can't cover or hide anything else on the page. Meant to
+    sit in its own container above the sign-in card."""
+    if not os.path.exists(INFOLEAP_SWOOSH_PATH):
+        return ""
+    return (
+        f"<div style='width:100%;height:{height_px}px;overflow:hidden;border-radius:12px 12px 0 0;"
+        f"background:#FAFAF8;display:flex;align-items:center;justify-content:center;'>"
+        f"<img src='data:image/png;base64,{_b64(INFOLEAP_SWOOSH_PATH)}' "
+        f"style='width:100%;height:100%;object-fit:cover;object-position:top right;opacity:{opacity};'/>"
+        f"</div>"
+    )
 
 
