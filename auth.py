@@ -196,6 +196,7 @@ def render_login() -> bool:
                 email = st.text_input("Email")
                 password = st.text_input("Password", type="password")
                 submitted = st.form_submit_button("Sign In", use_container_width=True)
+            st.caption("Default Accounts: `admin@royalenfield.com` (pass: `admin`) | `user@infoleap.com` (pass: `user`) | `royalenfield@infoleap.com` (pass: `re`)")
 
             if submitted:
                 _fails = st.session_state.get("login_fails", 0)
@@ -207,7 +208,7 @@ def render_login() -> bool:
                     users = _load_users()
                     key = email.strip().lower()
                     user = users.get(key)
-                    if user and user["active"] and password == user["password"]:
+                    if user and user["active"] and password.strip() == str(user["password"]).strip():
                         st.session_state["authenticated"] = True
                         st.session_state["auth_time"] = time.time()
                         st.session_state["username"] = key
