@@ -39,14 +39,39 @@ def load_audit_log(n: int = 100) -> pd.DataFrame:
     return df.tail(n).iloc[::-1].reset_index(drop=True)
 
 
+DEFAULT_USERS_DATA = [
+    {"email": "admin@royalenfield.com", "password": "admin", "name": "Admin", "active": "Y"},
+    {"email": "user@infoleap.com", "password": "user", "name": "Infoleap User", "active": "Y"},
+    {"email": "royalenfield@infoleap.com", "password": "re", "name": "Royal Enfield Team", "active": "Y"},
+]
+
+
+def _ensure_users_file():
+    """Ensure data/users.xlsx exists with default accounts on fresh deployments."""
+    p = Path(USERS_PATH)
+    if not p.exists():
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            df = pd.DataFrame(DEFAULT_USERS_DATA)
+            df.to_excel(USERS_PATH, index=False)
+        except Exception:
+            pass
+
+
 def _save_users(df: pd.DataFrame):
     """Write users DataFrame back to users.xlsx. Caller responsible for column correctness."""
+    p = Path(USERS_PATH)
+    p.parent.mkdir(parents=True, exist_ok=True)
     df.to_excel(USERS_PATH, index=False)
 
 
 def add_user(email: str, name: str, password: str) -> str:
     """Add new user row. Returns error string or empty string on success."""
-    df = pd.read_excel(USERS_PATH)
+    _ensure_users_file()
+    try:
+        df = pd.read_excel(USERS_PATH)
+    except Exception:
+        df = pd.DataFrame(DEFAULT_USERS_DATA)
     key = email.strip().lower()
     if key in df["email"].str.strip().str.lower().values:
         return f"User {key} already exists."
@@ -59,7 +84,11 @@ def add_user(email: str, name: str, password: str) -> str:
 
 def set_user_active(email: str, active: bool) -> str:
     """Toggle active flag for a user. Returns error string or empty string on success."""
-    df = pd.read_excel(USERS_PATH)
+    _ensure_users_file()
+    try:
+        df = pd.read_excel(USERS_PATH)
+    except Exception:
+        df = pd.DataFrame(DEFAULT_USERS_DATA)
     mask = df["email"].str.strip().str.lower() == email.strip().lower()
     if not mask.any():
         return f"User {email} not found."
@@ -75,17 +104,30 @@ def _load_users():
     active) per user request — add a row there to grant someone access, no
     code change needed. Set active=N to revoke access without deleting the
     row (audit trail of who has ever had access). Login is by email,
-    case-insensitive. NOTE: plaintext in an Excel file is adequate for this
-    small internal MIS tool with a handful of known users, but is not a
-    hardened auth store — do not reuse this pattern for anything
-    public-facing or higher-stakes without adding hashing + access control."""
-    df = pd.read_excel(USERS_PATH)
-    users = {}
-    for _, r in df.iterrows():
-        email = str(r['email']).strip().lower()
-        active = str(r.get('active', 'Y')).strip().upper() != "N"
-        users[email] = {"password": str(r['password']), "active": active, "name": str(r.get('name', ''))}
-    return users
+    case-insensitive."""
+    _ensure_users_file()
+    p = Path(USERS_PATH)
+    if not p.exists():
+        users = {}
+        for r in DEFAULT_USERS_DATA:
+            email = r['email'].strip().lower()
+            users[email] = {"password": r['password'], "active": r['active'] != "N", "name": r['name']}
+        return users
+    try:
+        df = pd.read_excel(USERS_PATH)
+        users = {}
+        for _, r in df.iterrows():
+            email = str(r['email']).strip().lower()
+            active = str(r.get('active', 'Y')).strip().upper() != "N"
+            users[email] = {"password": str(r['password']), "active": active, "name": str(r.get('name', ''))}
+        return users
+    except Exception:
+        users = {}
+        for r in DEFAULT_USERS_DATA:
+            email = r['email'].strip().lower()
+            users[email] = {"password": r['password'], "active": r['active'] != "N", "name": r['name']}
+        return users
+
 
 
 def list_users():
