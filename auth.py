@@ -40,6 +40,9 @@ def load_audit_log(n: int = 100) -> pd.DataFrame:
 
 
 DEFAULT_USERS_DATA = [
+    {"email": "misdashboard@infoleap", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
+    {"email": "misdashboard@infoleap.com", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
+    {"email": "test@test", "password": "test@123", "name": "Test Account", "active": "Y"},
     {"email": "admin@royalenfield.com", "password": "admin", "name": "Admin", "active": "Y"},
     {"email": "user@infoleap.com", "password": "user", "name": "Infoleap User", "active": "Y"},
     {"email": "royalenfield@infoleap.com", "password": "re", "name": "Royal Enfield Team", "active": "Y"},
@@ -196,7 +199,7 @@ def render_login() -> bool:
                 email = st.text_input("Email")
                 password = st.text_input("Password", type="password")
                 submitted = st.form_submit_button("Sign In", use_container_width=True)
-            st.caption("Default Accounts: `admin@royalenfield.com` (pass: `admin`) | `user@infoleap.com` (pass: `user`) | `royalenfield@infoleap.com` (pass: `re`)")
+            st.caption("Authorized Accounts: `misdashboard@infoleap` (pass: `MIS_INFOLEAP@1234`) | `admin@royalenfield.com` (pass: `admin`)")
 
             if submitted:
                 _fails = st.session_state.get("login_fails", 0)
