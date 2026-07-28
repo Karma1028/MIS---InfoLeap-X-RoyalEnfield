@@ -42,6 +42,7 @@ def load_audit_log(n: int = 100) -> pd.DataFrame:
 DEFAULT_USERS_DATA = [
     {"email": "misdashboard@infoleap", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
     {"email": "misdashboard@infoleap.com", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
+    {"email": "misdashboard", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
     {"email": "test@test", "password": "test@123", "name": "Test Account", "active": "Y"},
 ]
 
@@ -100,33 +101,26 @@ def set_user_active(email: str, active: bool) -> str:
 
 
 def _load_users():
-    """Credentials live in data/users.xlsx (columns: email, password, name,
-    active) per user request — add a row there to grant someone access, no
-    code change needed. Set active=N to revoke access without deleting the
-    row (audit trail of who has ever had access). Login is by email,
-    case-insensitive."""
-    _ensure_users_file()
+    """Credentials live in data/users.xlsx (columns: email, password, name, active).
+    Always pre-populated with DEFAULT_USERS_DATA so login is bulletproof even on cloud deployments."""
+    users = {}
+    for r in DEFAULT_USERS_DATA:
+        email = r['email'].strip().lower()
+        users[email] = {"password": str(r['password']), "active": r['active'] != "N", "name": r['name']}
+
     p = Path(USERS_PATH)
-    if not p.exists():
-        users = {}
-        for r in DEFAULT_USERS_DATA:
-            email = r['email'].strip().lower()
-            users[email] = {"password": r['password'], "active": r['active'] != "N", "name": r['name']}
-        return users
-    try:
-        df = pd.read_excel(USERS_PATH)
-        users = {}
-        for _, r in df.iterrows():
-            email = str(r['email']).strip().lower()
-            active = str(r.get('active', 'Y')).strip().upper() != "N"
-            users[email] = {"password": str(r['password']), "active": active, "name": str(r.get('name', ''))}
-        return users
-    except Exception:
-        users = {}
-        for r in DEFAULT_USERS_DATA:
-            email = r['email'].strip().lower()
-            users[email] = {"password": r['password'], "active": r['active'] != "N", "name": r['name']}
-        return users
+    if p.exists():
+        try:
+            df = pd.read_excel(USERS_PATH)
+            for _, r in df.iterrows():
+                email = str(r['email']).strip().lower()
+                if email and email != 'nan':
+                    pwd = str(r['password']) if pd.notna(r['password']) else ""
+                    active = str(r.get('active', 'Y')).strip().upper() != "N"
+                    users[email] = {"password": pwd, "active": active, "name": str(r.get('name', ''))}
+        except Exception:
+            pass
+    return users
 
 
 
