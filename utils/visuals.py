@@ -200,7 +200,7 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
 HIGHLIGHT_COL_TINT = "#F2C14E"  # warm gold wash for the custom combined column
 
 
-def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None, col_sig_gaps=None):
+def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None):
     """Stacked column chart for Demographics — one stacked column per
     period (All + each selected month), segments = the category rows
     (Age bands, Education levels, etc). Replaces the old single-period
@@ -274,12 +274,13 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             # Per user request: percentage shown throughout every section,
             # not just the All column above a declutter threshold — every
             # segment in every column (All and month) always gets a label.
-            # gap (2026-07-28): how much higher, not just "is it higher" —
-            # a bare ▲ said THAT a category was significant, not BY HOW
-            # MUCH vs the baseline it was tested against.
-            gaps = (col_sig_gaps or {}).get(c)
-            gap = gaps[i] if gaps and i < len(gaps) else None
-            texts.append(_pct_label(v, marker, gap))
+            # NOT the gap magnitude here, deliberately -- tried it
+            # (2026-07-28) and a longer "45% ▲ +12pp" label doesn't fit a
+            # thin stacked-bar slice, Plotly shrinks/clips it into an
+            # unreadable squeeze. The data table right below (more room
+            # per cell) still shows the gap via col_sig_gaps -- that's
+            # where "how much significant" is answered, not the bar text.
+            texts.append(_pct_label(v, marker))
             text_sizes.append(11 if is_all else 10)
         fig.add_trace(go.Bar(
             name=label, x=cols, y=ys,
@@ -822,7 +823,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     # kept as a standalone function — Verbatim Intelligence's netting-
     # classification feature calls it directly, unrelated to this dispatch.
     if chart_type == "stacked_bar":
-        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col)
     else:
         fig = distribution_bar(table_df, title, color=color)
     if chart_type == "stacked_bar":
