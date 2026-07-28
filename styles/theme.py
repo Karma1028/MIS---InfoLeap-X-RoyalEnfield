@@ -53,7 +53,7 @@ def render_theme_css(accent=RE_RED):
             padding: 1.2rem 1.5rem;
         }}
 
-        h1, h2, h3 {{
+        h1, h2, h3, h4 {{
             color: var(--re-black) !important;
             font-family: 'Oswald', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             letter-spacing: 0.01em;
@@ -113,7 +113,7 @@ def render_theme_css(accent=RE_RED):
             border-bottom-width: 3px !important;
         }}
 
-        /* Buttons */
+        /* Buttons — primary (default): RE red CTA */
         .stButton button, .stFormSubmitButton button {{
             background-color: var(--re-red);
             color: white;
@@ -123,6 +123,20 @@ def render_theme_css(accent=RE_RED):
         }}
         .stButton button:hover, .stFormSubmitButton button:hover {{
             background-color: #a30d24;
+        }}
+        /* Secondary buttons (Log out, minor actions) — subtle, no fill */
+        .stButton button[kind="secondary"] {{
+            background-color: transparent !important;
+            color: var(--muted) !important;
+            border: 1px solid var(--border) !important;
+            font-weight: 500 !important;
+            font-size: 0.85rem !important;
+            padding: 0.3rem 0.8rem !important;
+        }}
+        .stButton button[kind="secondary"]:hover {{
+            background-color: var(--border) !important;
+            color: var(--text) !important;
+            border-color: #ccc !important;
         }}
 
         /* Significance superscripts */
@@ -158,8 +172,30 @@ def render_theme_css(accent=RE_RED):
             padding-left: 14px !important;
         }}
 
+        /* h4 (subsection headers, e.g. the At a Glance pie-group labels —
+        Demographics/Buyer Type/Edition Analysis/Brand-to-Brand Comparison)
+        get the same accent-tick treatment as h3, just a touch smaller and
+        lighter, so they read as a clear tier below h3 instead of plain
+        unstyled bold text that broke the page's visual consistency. */
+        h4 {{
+            position: relative !important;
+            padding-left: 12px !important;
+            margin-top: 1.1rem !important;
+            margin-bottom: 0.5rem !important;
+            font-size: 1.05rem !important;
+        }}
+        h4::before {{
+            content: "";
+            position: absolute; left: 0; top: 50%;
+            transform: translateY(-50%);
+            height: 60%; width: 3px; border-radius: 2px;
+            background: var(--accent);
+            opacity: 0.65;
+        }}
+
         /* Brand block accent (infoleap-style 4-color stack), used via .io-blocks */
         .io-blocks {{ display: inline-flex; flex-direction: column; gap: 2px; margin-right: 8px; }}
         .io-blocks span {{ width: 14px; height: 14px; display: block; border-radius: 2px; }}
+
     </style>
     """, unsafe_allow_html=True)

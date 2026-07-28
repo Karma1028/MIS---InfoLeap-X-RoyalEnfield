@@ -7,8 +7,8 @@ models too with specifically refreshing the free module'."""
 import streamlit as st
 import pandas as pd
 from utils.secure_settings import save_api_key, clear_api_key, get_api_key
-from utils.ai_providers import list_openrouter_free_models, RATE_LIMITS, DEFAULT_MODELS
-from auth import list_users
+from utils.ai_providers import list_openrouter_free_models, RATE_LIMITS, DEFAULT_MODELS, get_active_provider
+from auth import list_users, add_user, set_user_active, load_audit_log
 
 
 def _key_row(provider, label):
@@ -47,12 +47,50 @@ def render_settings_page():
     else:
         st.caption(f"Logged in as: {current_email}")
 
-    with st.expander("Who else has access (no passwords shown)"):
-        st.dataframe(pd.DataFrame(users), use_container_width=True, hide_index=True)
-        st.caption(
-            "To grant or revoke access, edit data/users.xlsx directly — add a row (email/password/name/active) "
-            "to grant, or set active=N to revoke without deleting the row. No code change or restart needed."
-        )
+    with st.expander("👥 User Management", expanded=False):
+        st.markdown("**All Users**")
+        for u in users:
+            col_name, col_email, col_status, col_action = st.columns([2, 3, 1, 1])
+            col_name.write(u["name"] or "—")
+            col_email.write(u["email"])
+            col_status.write("🟢" if u["active"] == "Yes" else "🔴")
+            if u["email"] != current_email:
+                is_active = u["active"] == "Yes"
+                btn_label = "Revoke" if is_active else "Restore"
+                if col_action.button(btn_label, key=f"toggle_{u['email']}"):
+                    err = set_user_active(u["email"], not is_active)
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success(f"{u['email']} {'revoked' if is_active else 'restored'}.")
+                        st.rerun()
+            else:
+                col_action.caption("(you)")
+
+        st.markdown("---")
+        st.markdown("**Add New User**")
+        with st.form("add_user_form"):
+            new_email = st.text_input("Email")
+            new_name = st.text_input("Name")
+            new_pass = st.text_input("Password", type="password")
+            if st.form_submit_button("Add User", use_container_width=True):
+                if not new_email.strip() or not new_pass.strip():
+                    st.warning("Email and password required.")
+                else:
+                    err = add_user(new_email, new_name, new_pass)
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success(f"User {new_email.strip().lower()} added.")
+                        st.rerun()
+
+    with st.expander("📋 Login Audit Log (last 100 events)", expanded=False):
+        audit_df = load_audit_log(100)
+        if audit_df.empty:
+            st.caption("No events logged yet.")
+        else:
+            st.dataframe(audit_df, use_container_width=True, hide_index=True)
+            st.caption("Events: LOGIN_SUCCESS · LOGIN_FAILED · ACCOUNT_LOCKED · ACCOUNT_INACTIVE · USER_ADDED · USER_REVOKED · USER_ACTIVATED")
 
     st.markdown("---")
     st.caption(
@@ -99,7 +137,7 @@ def render_settings_page():
     st.markdown("---")
     st.markdown("### Active provider for AI features")
     providers = ["groq", "gemini", "openrouter"]
-    default_provider = "openrouter" if get_api_key("openrouter") else "groq"
+    default_provider = get_active_provider()
     st.selectbox(
         "AI Summary / Verbatim Intelligence will use this provider",
         providers,
