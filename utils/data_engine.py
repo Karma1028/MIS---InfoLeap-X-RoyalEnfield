@@ -902,6 +902,22 @@ class DataEngine:
         code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
         code_map = load_code_map(self.masterfile_path, sheet_name)
 
+        # Infoleap's own sheets use inconsistent Supernet spelling in a few
+        # places -- confirmed against the live dashboard (2026-07-27) that
+        # these are meant to be ONE category, not two: exact-string
+        # grouping was silently splitting live's single number into two
+        # smaller ones. Sheet-specific because the split isn't consistent
+        # across sheets -- e.g. Rejecter's sheet only has "Dealership
+        # Experience" (matches live's own label there, 25%), so it must
+        # NOT be remapped to "Overall Dealership experience" the way
+        # Cancelled's sheet needs.
+        _ALIASES = {
+            "MQ2a+MQ2b_KBF": {"Visual Appreance": "Visual Appearance"},
+            "MQ3a+MQ3b_Rejecter": {"Visual Appreance": "Visual Appearance"},
+            "MQ3a+MQ3b_Booked and cancelled": {"Dealership Experience": "Overall Dealership experience"},
+        }
+        _sheet_aliases = _ALIASES.get(sheet_name, {})
+
         def decode(code_str):
             if not code_str:
                 return frozenset()
@@ -911,6 +927,7 @@ class DataEngine:
                 hit = code_map.get(c)
                 if hit:
                     supernet, net = hit
+                    supernet = _sheet_aliases.get(supernet, supernet)
                     cats.add(supernet if by == "supernet" else f"{supernet} > {net}")
             return frozenset(cats)
 
