@@ -12,7 +12,7 @@ from utils.product_features import render_product_features_page
 from utils.ai_summary import render_ai_summary_button, render_chart_ai_blurb
 from utils.settings_page import render_settings_page
 from utils.overview_intro import render_overview_intro
-from utils.branding import brand_header_html, re_logo_img_html
+from utils.branding import re_logo_img_html, sidebar_brand_html
 
 st.set_page_config(page_title="RE Digital Showroom | Infoleap", layout="wide", initial_sidebar_state="expanded")
 
@@ -76,11 +76,11 @@ SEGMENT_ICONS = {"Overview": "🏠", "Overall": "👥", "Acceptors": "✅", "Rej
 # Real Infoleap + Royal Enfield logo images (utils/branding.py) —
 # replaces the earlier CSS-mock (3 colored squares) now that both real
 # logos exist as assets, sourced from the client's own PPT (2026-07-27).
-st.sidebar.markdown(
-    f"<div style='transform:scale(0.62);transform-origin:left center;margin-bottom:-0.4rem;'>"
-    f"{brand_header_html(logo_height_px=22, re_logo_height_px=24)}</div>",
-    unsafe_allow_html=True,
-)
+# Per user report (2026-07-28): a scaled-down copy of the login page's
+# centered lockup wasn't visible in the sidebar (see sidebar_brand_html()
+# docstring for why) -- uses a dedicated compact, left-aligned version
+# sized for the sidebar from the start instead.
+st.sidebar.markdown(sidebar_brand_html(), unsafe_allow_html=True)
 
 st.sidebar.markdown("### Segment")
 EXTRA_PAGES = ["📊 Model Comparison", "🧠 Verbatim Intelligence (AI)", "⚙️ Settings"]

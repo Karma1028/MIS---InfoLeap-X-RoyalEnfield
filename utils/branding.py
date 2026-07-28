@@ -52,6 +52,35 @@ def brand_header_html(logo_height_px=38, re_logo_height_px=42):
     """
 
 
+def sidebar_brand_html(logo_height_px=20, re_logo_height_px=22):
+    """Compact, LEFT-aligned lockup for the narrow sidebar — NOT a scaled-
+    down copy of brand_header_html() (that was tried via CSS transform:
+    scale() and reported invisible, 2026-07-28: brand_header_html() is
+    centered and sized for the wide login page, so at full size in a
+    ~260px-wide sidebar the row overflows; centered flex content that
+    overflows a container with hidden overflow clips symmetrically from
+    BOTH edges, cutting off the logo — the first, left-most element —
+    before the text. This version is sized and aligned for the sidebar
+    from the start instead of shrinking something built for elsewhere."""
+    infoleap_img = (
+        f"<img src='data:image/png;base64,{_b64(INFOLEAP_LOGO_PATH)}' style='height:{logo_height_px}px;width:auto;flex-shrink:0;'/>"
+        if os.path.exists(INFOLEAP_LOGO_PATH) else ""
+    )
+    re_img = (
+        f"<img src='data:image/png;base64,{_b64(RE_LOGO_PATH)}' style='height:{re_logo_height_px}px;width:auto;flex-shrink:0;'/>"
+        if os.path.exists(RE_LOGO_PATH) else ""
+    )
+    return f"""
+    <div style="display:flex; align-items:center; justify-content:flex-start; gap:6px; margin-bottom:0.6rem; overflow:hidden;">
+        {infoleap_img}
+        <span style="font-weight:800; font-size:0.95rem; color:#1A1A1A; white-space:nowrap;">INFOLEAP</span>
+        <span style="color:#662D91; font-size:0.85rem;">&times;</span>
+        {re_img}
+        <span style="font-weight:800; font-size:0.85rem; color:#C8102E; white-space:nowrap;">ROYAL ENFIELD</span>
+    </div>
+    """
+
+
 def re_logo_img_html(height_px=34, extra_style=""):
     """Just the Royal Enfield logo <img> tag (or "" if the asset is
     missing) — used standalone on the main dashboard header, alongside
