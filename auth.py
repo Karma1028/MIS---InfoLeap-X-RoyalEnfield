@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from utils.branding import brand_header_html, swoosh_background_css
+from utils.branding import brand_header_html
 
 USERS_PATH = "data/users.xlsx"
 AUDIT_LOG_PATH = "data/login_audit.csv"
@@ -130,7 +130,6 @@ def render_login() -> bool:
         }
     </style>
     """, unsafe_allow_html=True)
-    st.markdown(swoosh_background_css(), unsafe_allow_html=True)
 
     _, mid, _ = st.columns([1, 1.1, 1])
     with mid:
@@ -200,7 +199,6 @@ def render_landing() -> bool:
         .landing-sub { text-align:center; color:#9A958D; font-size:0.85rem; margin-bottom:2.2rem; }
     </style>
     """, unsafe_allow_html=True)
-    st.markdown(swoosh_background_css(), unsafe_allow_html=True)
 
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:

@@ -2,15 +2,20 @@
 CSS-mock logo (3 colored squares standing in for the real Infoleap
 mark, per BUGS.md: "No logo image assets exist anywhere in the repo").
 Sourced from the client's own PPT (Final Story by brand_28_04_2026.pptx,
-2026-07-27) — assets/infoleap_logo.png, assets/infoleap_swoosh.png,
-assets/re_logo.png (the last already existed, unused until now)."""
+2026-07-27) — assets/infoleap_logo.png, assets/re_logo.png (the latter
+already existed, unused until now).
+
+A swoosh watermark (assets/infoleap_swoosh.png, same PPT) was tried as
+a background decoration on the login/landing pages and reverted
+(2026-07-27) — the fixed-position ::before pseudo-element broke the
+whole page render (content became invisible, only the swoosh painted).
+Not worth re-attempting without a safer layering approach."""
 import base64
 import os
 import streamlit as st
 
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 INFOLEAP_LOGO_PATH = os.path.join(_ASSETS_DIR, "infoleap_logo.png")
-INFOLEAP_SWOOSH_PATH = os.path.join(_ASSETS_DIR, "infoleap_swoosh.png")
 RE_LOGO_PATH = os.path.join(_ASSETS_DIR, "re_logo.png")
 
 
@@ -55,29 +60,3 @@ def re_logo_img_html(height_px=34, extra_style=""):
     return f"<img src='data:image/png;base64,{_b64(RE_LOGO_PATH)}' style='height:{height_px}px;width:auto;vertical-align:middle;{extra_style}'/>"
 
 
-def swoosh_background_css(opacity=0.10):
-    """Subtle full-bleed swoosh watermark behind the page content — used
-    on the login/landing pages for visual texture without competing with
-    the form/buttons. Layered via ::before (its own opacity, positioned
-    behind everything) rather than .stApp's own background-image, since
-    fading .stApp itself would fade the actual content too."""
-    if not os.path.exists(INFOLEAP_SWOOSH_PATH):
-        return ""
-    return f"""
-    <style>
-        .stApp {{ position: relative; }}
-        .stApp::before {{
-            content: "";
-            position: fixed;
-            top: 0; right: 0;
-            width: 55vw; height: 55vw;
-            background-image: url('data:image/png;base64,{_b64(INFOLEAP_SWOOSH_PATH)}');
-            background-repeat: no-repeat;
-            background-position: top right;
-            background-size: contain;
-            opacity: {opacity};
-            pointer-events: none;
-            z-index: 0;
-        }}
-    </style>
-    """
