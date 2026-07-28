@@ -1288,7 +1288,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     trend_map[title] = tbl
 
 
-def brand_wise_section(title, table_fn, color, caption=None, chart_type="bar"):
+def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked_bar"):
     """Bespoke renderer for the three brand-wise tables (Additional+Replaced/
     Brand Owned/Brand Considered) — per user request: CC-wise chart goes
     ABOVE this section (caller's responsibility, see layout below), and
@@ -1443,15 +1443,15 @@ if segment_value in ("Acceptor", "Rejector", "Cancelled"):
                             lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="brand", base_label=_lbl, numeric=True, extra_groups=custom_group),
                             color=BRAND_OWNED_COLOR)
 
-# Brand Considered applies to Acceptor/Cancelled — Rejector shows Brand Owned (competitor bikes purchased instead of RE) per user request
-if segment_value in ("Acceptor", "Cancelled"):
+# Brand Considered applies ONLY to Acceptors (Rejectors & Cancelled show Brand Owned data instead per user request)
+if segment_value == "Acceptor":
     st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Considered")
     st.caption("Which other brands did this respondent evaluate before deciding? The competitive set — high overlap with a competitor here means RE is losing comparison battles in that CC segment.")
     section("Brand Considered — CC Wise",
             lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
             caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.",
-            color=BRAND_CONSIDERED_COLOR, chart_type="bar")
+            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
     brand_wise_section("Brand Considered — Brand Wise",
                         lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                         color=BRAND_CONSIDERED_COLOR,
