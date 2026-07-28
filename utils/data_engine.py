@@ -1049,6 +1049,7 @@ class DataEngine:
             for code in range(15, 124):
                 label = acc_map.get(float(code), "")
                 manufacturer = label.split(" - ")[0].strip() if " - " in label else label
+                manufacturer = {"RIUMPH": "TRIUMPH"}.get(manufacturer, manufacturer)
                 if manufacturer:
                     manufacturer_codes.setdefault(manufacturer, []).append(code)
             for manufacturer, codes in manufacturer_codes.items():

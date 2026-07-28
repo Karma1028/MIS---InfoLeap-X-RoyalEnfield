@@ -1288,7 +1288,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     trend_map[title] = tbl
 
 
-def brand_wise_section(title, table_fn, color, caption=None):
+def brand_wise_section(title, table_fn, color, caption=None, chart_type="bar"):
     """Bespoke renderer for the three brand-wise tables (Additional+Replaced/
     Brand Owned/Brand Considered) — per user request: CC-wise chart goes
     ABOVE this section (caller's responsibility, see layout below), and
@@ -1312,11 +1312,6 @@ def brand_wise_section(title, table_fn, color, caption=None):
         st.info(f"{title}: no brands selected.")
         return
 
-    # Per explicit user instruction: significance NEVER runs on the
-    # aggregate 'All' column, anywhere — only on individual month columns
-    # (and the quarter-combined columns, same rule, same n>=30 gate —
-    # their base is always well over 30 so they're virtually always
-    # eligible when shown).
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
@@ -1325,10 +1320,6 @@ def brand_wise_section(title, table_fn, color, caption=None):
     sorted_tbl = engine.sort_brand_table(tbl, rollup_set)
     rollup_tbl = engine.rollup_only_table(tbl, rollup_set)
 
-    # col_markers/col_gaps are positional against tbl's ORIGINAL row
-    # order; sort_brand_table reorders rows by value, so realign by label
-    # before rendering the sorted table — a position-only permutation
-    # would attach the wrong marker/gap to the wrong row.
     orig_labels = tbl.iloc[1:]['Unnamed: 0'].tolist()
     label_order = sorted_tbl.iloc[1:]['Unnamed: 0'].tolist()
     sorted_col_markers = None
@@ -1347,12 +1338,8 @@ def brand_wise_section(title, table_fn, color, caption=None):
     with st.container(border=True):
         if caption:
             st.caption(caption)
-        # Per user request: one consistent chart shape AND layout across
-        # every section — stacked bar with its table directly below (not
-        # tucked into a collapsed expander like this used to do, unlike
-        # every plain section() call elsewhere on the page).
         render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
-                                 chart_type="stacked_bar", col_sig_markers=sorted_col_markers,
+                                 chart_type=chart_type, col_sig_markers=sorted_col_markers,
                                  table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name,
                                  col_sig_gaps=sorted_col_gaps)
         cat_rows = sorted_tbl.iloc[1:]
@@ -1467,7 +1454,7 @@ if segment_value in ("Acceptor", "Rejector", "Cancelled"):
     section("Brand Considered — CC Wise",
             lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
             caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.",
-            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
+            color=BRAND_CONSIDERED_COLOR, chart_type="bar")
     brand_wise_section("Brand Considered — Brand Wise",
                         lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                         color=BRAND_CONSIDERED_COLOR,
