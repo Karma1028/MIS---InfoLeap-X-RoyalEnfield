@@ -24,12 +24,17 @@ from utils.model_images import model_image_path
 
 @st.cache_data(show_spinner=False)
 def _img_b64(path):
-    """Base64-encode a product photo for embedding as a fixed-height,
-    object-fit:cover <img> — st.image can't crop to a uniform aspect
-    ratio on its own, so the gallery's two cards (portrait vs. landscape
-    source photos) ended up visibly different heights."""
+    """Base64-encode a product photo for embedding as a fixed-height
+    <img> — st.image can't crop/contain to a uniform aspect ratio on its
+    own, so the gallery's two cards (portrait vs. landscape source
+    photos) ended up visibly different heights."""
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("ascii")
+
+
+def _img_mime(path):
+    ext = path.rsplit(".", 1)[-1].lower()
+    return {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp"}.get(ext, "png")
 
 DEMOGRAPHIC_BUILDERS = {
     "Age": (lambda engine, df, seg: engine.age_table(df, base_label=seg, numeric=True), "bar"),
@@ -93,14 +98,14 @@ def render_comparison_page(engine):
     # everywhere else in the app (Overview narrative, segment hero cards)
     # instead of sitting as bare, disconnected widgets.
     #
-    # Locked to strictly 2 brands / 2 models (max_selections=2 on both) —
-    # per explicit user request. Previously brands were unbounded (1-124)
-    # and models capped at 4; this page is a head-to-head comparison, not
-    # an open-ended multi-model overlay, so 2-vs-2 is the ceiling now.
+    # Brands: any number (per 2026-07-27 request -- picking brands just
+    # widens the model pool below, it's not itself the comparison).
+    # Models: locked to strictly 2 -- this page is a head-to-head
+    # comparison, not an open-ended multi-model overlay.
     with st.container(border=True):
         manufacturers = engine.manufacturers()
         default_brands = ["Royal Enfield"] if "Royal Enfield" in manufacturers else manufacturers[:1]
-        brands = st.multiselect("Brands", manufacturers, default=default_brands, max_selections=2)
+        brands = st.multiselect("Brands", manufacturers, default=default_brands)
         if not brands:
             st.info("Select at least one brand.")
             return
@@ -146,9 +151,15 @@ def render_comparison_page(engine):
             with _gal_cols[_gi]:
                 with st.container(border=True):
                     if _m_img_path:
+                        # object-fit:contain (not cover) -- per user report
+                        # the bike was getting cropped/cut off; a light
+                        # background fills the letterboxed space instead of
+                        # cutting off wheels/handlebars to force-fill the box.
                         st.markdown(
-                            f"<img src='data:image/jpeg;base64,{_img_b64(_m_img_path)}' "
-                            f"style='width:100%;height:260px;object-fit:cover;border-radius:8px;'/>",
+                            f"<div style='width:100%;height:260px;border-radius:8px;background:#F7F5F2;"
+                            f"display:flex;align-items:center;justify-content:center;overflow:hidden;'>"
+                            f"<img src='data:image/{_img_mime(_m_img_path)};base64,{_img_b64(_m_img_path)}' "
+                            f"style='max-width:100%;max-height:100%;object-fit:contain;'/></div>",
                             unsafe_allow_html=True,
                         )
                     else:
