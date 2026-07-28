@@ -733,10 +733,9 @@ class DataEngine:
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        re_union = sub[model_col].between(1, 14)
-        rows.append(pct_row("Royal Enfield", re_union))
-
         if by == "brand":
+            re_union = sub[model_col].between(1, 14)
+            rows.append(pct_row("Royal Enfield", re_union))
             for code in range(1, 15):
                 rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), sub[model_col] == code))
             # FIX (2026-06-19): this loop used to stop at RE's 14 codes —

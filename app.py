@@ -1424,7 +1424,7 @@ if segment_value == "Acceptor":
                             lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                             color=ADD_REPL_COLOR)
 
-if segment_value in ("Rejector", "Cancelled"):
+if segment_value in ("Acceptor", "Rejector", "Cancelled"):
     st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Owned")
     # Acceptors trivially own RE (they just bought one) — use baseline_df (all owners:
@@ -1443,11 +1443,8 @@ if segment_value in ("Rejector", "Cancelled"):
                             lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="brand", base_label=_lbl, numeric=True, extra_groups=custom_group),
                             color=BRAND_OWNED_COLOR)
 
-# Per user request: brand-wise data (Additional+Replaced/Brand Owned/
-# Brand Considered) belongs only to Acceptor/Rejector/Cancelled — never
-# on the Overview/"All" page, same scoping as Additional+Replaced and
-# Brand Owned above.
-if segment_value in ("Acceptor", "Rejector", "Cancelled"):
+# Brand Considered applies to Acceptor/Cancelled — Rejector shows Brand Owned (competitor bikes purchased instead of RE) per user request
+if segment_value in ("Acceptor", "Cancelled"):
     st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Considered")
     st.caption("Which other brands did this respondent evaluate before deciding? The competitive set — high overlap with a competitor here means RE is losing comparison battles in that CC segment.")
