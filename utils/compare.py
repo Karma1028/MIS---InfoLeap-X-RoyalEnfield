@@ -271,8 +271,13 @@ def render_comparison_page(engine):
 
     _sig_cols_row = st.columns([2, 2])
     with _sig_cols_row[0]:
-        sig_test_col = st.selectbox("Significance test month", [m for m in selected_months], key="cmp_sig_col",
-                                    help="Which month's column to run pairwise Z-tests on (N≥30 required).")
+        # "All" first/default -- per user request, defaults to the whole
+        # selected period instead of forcing a single specific month;
+        # every table already has an "All" column so this needs no
+        # downstream change, the Z-test lookups below already accept any
+        # valid column name.
+        sig_test_col = st.selectbox("Significance test month", ["All"] + [m for m in selected_months], key="cmp_sig_col",
+                                    help="Which column to run pairwise Z-tests on (N≥30 required) — 'All' uses the whole selected period, or narrow to one month.")
     with _sig_cols_row[1]:
         sig_mode = st.radio("Significance baseline", ["Model vs Model", "Model vs Overall Market"],
                             key="cmp_sig_mode", horizontal=True,
@@ -321,16 +326,18 @@ def render_comparison_page(engine):
             # Stacked vertically, one model's full chart+table then the
             # next below it (per 2026-07-27 request) -- was side-by-side
             # columns, which shrank each chart and didn't scale past 2
-            # models. The per-metric table is capped to Category + All
-            # here (the chart above already shows the per-month
-            # breakdown visually) -- was showing every raw month column
-            # even under "All Months", which read as clutter separate
-            # from "the filter as applied".
+            # models.
+            #
+            # The per-metric table uses `tbl` directly (not a further-
+            # capped Category+All view) -- `tbl` already respects the
+            # active Time Period filter (the keep_cols step above: full
+            # month range under "All Months", or just the selected
+            # months/quarter otherwise). An earlier pass here hard-capped
+            # to Category+All regardless of that filter, which lost
+            # month-wise data the user still wanted visible (2026-07-28).
             for model_name, tbl in tables.items():
-                _table_only = tbl[[c for c in ("Unnamed: 0", "All") if c in tbl.columns]]
                 st.markdown(f"**{short_names[model_name]}**")
                 render_chart_with_table(tbl, short_names[model_name], chart_type="stacked_bar",
-                                         table_df_html=_table_only,
                                          key=f"cmp_chart_{metric_name}_{model_name}")
 
             _metric_facts = {
