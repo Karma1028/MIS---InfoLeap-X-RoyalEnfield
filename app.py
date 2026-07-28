@@ -1086,7 +1086,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     the whole data'. Also switches the table to the live site's nested
     rollup+member look (indented member rows)."""
     _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}"
-    if _ck not in st.session_state:
+    if _ck not in st.session_state or (_ck + "_b") not in st.session_state:
         st.session_state[_ck] = _trim_to_selected_months(table_fn(df, segment_value))
         st.session_state[_ck + "_b"] = _trim_to_selected_months(table_fn(baseline_df, "All"))
     tbl = st.session_state[_ck]
@@ -1298,7 +1298,7 @@ def brand_wise_section(title, table_fn, color, caption=None):
     treemap approach. Each of the three sections gets its own distinct
     color (passed in), not the segment's shared accent."""
     _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}"
-    if _ck not in st.session_state:
+    if _ck not in st.session_state or (_ck + "_b") not in st.session_state:
         st.session_state[_ck] = _trim_to_selected_months(table_fn(df, segment_value))
         st.session_state[_ck + "_b"] = _trim_to_selected_months(table_fn(baseline_df, "All"))
     tbl = st.session_state[_ck]
