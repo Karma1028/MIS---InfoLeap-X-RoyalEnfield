@@ -16,17 +16,27 @@ from utils.secure_settings import get_api_key
 
 
 _PREAMBLE_PATTERNS = re.compile(
-    r'^(the user wants|i need to|i will|here is|let me|okay,|sure,|'
+    r'^(the user wants|(i|we) (need to|will|must|should)|here is|let me|okay,|sure,|'
     r'sentence \d|based on the (data|instructions|prompt)|'
-    r'alright|no bullet|i must|i should)',
+    r'alright|no bullet)',
     re.IGNORECASE,
 )
 
 
-def _strip_thinking(text: str) -> str:
-    """Remove chain-of-thought preamble from model output.
-    Handles: <think>...</think> tagged blocks (DeepSeek-R1/QwQ) AND
-    untagged self-narrating reasoning lines (some instruction models)."""
+def _strip_thinking(text: str, json_mode: bool = False) -> str:
+    """Remove chain-of-thought preamble/postamble from model output.
+    Handles: <think>...</think> tagged blocks (DeepSeek-R1/QwQ), untagged
+    self-narrating reasoning lines BEFORE the real answer (some
+    instruction models), and (non-JSON callers only) self-critique/
+    double-checking rambling AFTER a complete real answer (observed
+    2026-07-27: the model wrote a correct, complete summary paragraph,
+    then kept going with "But we need each sentence to reference..." /
+    "Let's count sentences..." in a new paragraph — leading-only
+    stripping never caught this since the real answer came first).
+
+    json_mode: skips the trailing-paragraph/quote-stripping steps —
+    those assume prose output and would corrupt a pretty-printed JSON
+    reply that happens to contain a blank line."""
     # 1. Strip XML-tagged thinking blocks
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
     # 2. Strip untagged reasoning lines at the start — drop any leading
@@ -40,7 +50,20 @@ def _strip_thinking(text: str) -> str:
         elif stripped:
             break
     cleaned = '\n'.join(lines[real_start:]).strip()
-    return cleaned
+    if json_mode:
+        return cleaned
+    # 3. Trailing rambling: a well-behaved answer is ONE paragraph (every
+    # prompt using this asks for a single flowing paragraph) — anything
+    # after the first blank-line break is the model continuing to think
+    # out loud post-answer, not more of the answer. Keep only the first
+    # paragraph-shaped block.
+    first_block = re.split(r'\n\s*\n', cleaned, maxsplit=1)[0].strip()
+    # Strip a full-response wrapping quote (some models return "...the
+    # answer..." as a quoted string when asked to "start directly with
+    # the first word").
+    if len(first_block) > 1 and first_block[0] in '"“' and first_block[-1] in '"”':
+        first_block = first_block[1:-1].strip()
+    return first_block
 
 # Conservative minimum seconds between calls per provider, tuned to each
 # free tier's published rate limit (Groq ~30 req/min, Gemini free tier
@@ -217,7 +240,7 @@ def call_llm(provider, model, system_prompt, user_prompt, max_tokens=300, temper
                         continue
                     resp.raise_for_status()
                     msg = resp.json()["choices"][0]["message"]
-                    content = _strip_thinking(msg.get("content") or "")
+                    content = _strip_thinking(msg.get("content") or "", json_mode=json_mode)
                     if not content:
                         # Truncated by max_tokens before real content came
                         # out (e.g. spent on hidden reasoning) or genuinely

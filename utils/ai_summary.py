@@ -8,7 +8,20 @@ Routes through utils/ai_providers.py so it works with whichever provider
 """
 import json
 import streamlit as st
-from utils.ai_providers import call_llm
+from utils.ai_providers import call_llm, get_active_provider
+
+
+def _looks_like_leaked_reasoning(text):
+    """Defense-in-depth against _strip_thinking not catching every
+    reasoning-model quirk (observed 2026-07-27: even with a raised
+    max_tokens budget, some free-tier runs still returned only a
+    reasoning fragment, e.g. "Let's outline required content:", with no
+    real answer at all). A genuine 3-6 sentence summary is never this
+    short or shaped like an unfinished thought -- catching that here
+    means the UI shows an honest retry message instead of leaking a
+    fragment as if it were the real analysis."""
+    t = (text or "").strip()
+    return len(t) < 60 or t.endswith((":", "...", "…"))
 
 # Per explicit instruction ("do not make the analysis of charts a generic
 # one, see the content, understand the scope they are working and data is
@@ -34,43 +47,53 @@ SYSTEM_PROMPT = (
     "market-research study (context given below every time). Never invent "
     "figures, and never write generic analyst boilerplate that could apply "
     "to any dataset — ground every sentence in what this specific group "
-    "(Acceptor/Rejector/Cancelled) and this specific chart actually represent."
+    "(Acceptor/Rejector/Cancelled) and this specific chart actually represent. "
+    "CRITICAL: Output ONLY the final summary paragraph. No preamble, no reasoning, "
+    "no 'I need to...', no 'Here is the summary:', no sentence-by-sentence plan. "
+    "Start directly with the first word of the summary itself."
 )
 
 
-@st.cache_data(show_spinner=False)
-def generate_narrative(facts_json, provider, model):
-    facts = json.loads(facts_json)
-    prompt = f"""You are a market-research analyst writing an objective, unbiased
-summary paragraph for a Royal Enfield stakeholder dashboard. You are given
-ONLY pre-computed numbers below — do not invent, estimate, or round
-differently than given. Do not editorialize or add opinions beyond what
-the numbers show. Mention any statistically significant findings explicitly
-(marked sig_95 or sig_90 in the data) since those are the most decision-
-relevant facts. Keep it to 3-4 sentences, plain language, no bullet points.
+_NARRATIVE_V = 4  # increment to bust stale cache after prompt/model changes
 
-Data:
-{json.dumps(facts, ensure_ascii=False, indent=2)}
-"""
-    return call_llm(provider, model, SYSTEM_PROMPT, prompt, max_tokens=300, temperature=0.2)
+@st.cache_data(show_spinner=False)
+def generate_narrative(facts_json, provider, model, _v=_NARRATIVE_V):
+    facts = json.loads(facts_json)
+    prompt = (
+        f"Write a 3-4 sentence objective summary of this Royal Enfield segment data. "
+        f"Use ONLY the numbers given. No preamble, no reasoning, no bullet points. "
+        f"Start directly with the finding.\n\nData:\n{json.dumps(facts, ensure_ascii=False, indent=2)}"
+    )
+    # 1200, not 300: today's free-tier models reason at length (in visible
+    # chain-of-thought text) before writing the final paragraph -- a small
+    # budget got cut off mid-reasoning with no real answer ever produced,
+    # which then displayed as a raw leaked reasoning trace to the user
+    # (same root cause fixed for verbatim classification, 2026-07-27).
+    return call_llm(provider, model, SYSTEM_PROMPT, prompt, max_tokens=1200, temperature=0.2)
 
 
 def render_ai_summary_button(facts: dict, key):
-    provider = st.session_state.get("active_ai_provider", "groq")
+    provider = get_active_provider()
     model = st.session_state.get("or_model_choice") if provider == "openrouter" else None
     if st.button("Generate AI Summary of this view", key=f"ai_summary_btn_{key}"):
         with st.spinner(f"Asking {provider.title()} for an unbiased summary of the current filtered data..."):
             text = generate_narrative(json.dumps(facts, ensure_ascii=False, sort_keys=True), provider, model)
-        st.markdown(
-            f"<div style='background:#FFFFFF;border:1px solid #ECE9E4;border-left:4px solid #2E3192;"
-            f"border-radius:8px;padding:14px 18px;margin-top:0.6rem;font-size:0.92rem;line-height:1.6;'>"
-            f"🤖 <b>AI Summary</b> ({provider.title()}, generated only from the numbers already shown above — not a separate data source)<br><br>{text}</div>",
-            unsafe_allow_html=True,
-        )
+        if _looks_like_leaked_reasoning(text):
+            st.warning(f"{provider.title()} didn't finish a real answer this time (free-tier model ran out of budget mid-thought). Try again.")
+        else:
+            st.markdown(
+                f"<div style='background:#FFFFFF;border:1px solid #ECE9E4;border-left:4px solid #2E3192;"
+                f"border-radius:8px;padding:14px 18px;margin-top:0.6rem;font-size:0.92rem;line-height:1.6;'>"
+                f"🤖 <b>AI Summary</b> ({provider.title()}, generated only from the numbers already shown above — not a separate data source)<br><br>{text}</div>",
+                unsafe_allow_html=True,
+            )
+
+
+_CHART_SUMMARY_V = 2  # increment to bust stale cache after prompt/model changes
 
 
 @st.cache_data(show_spinner=False)
-def generate_chart_summary(facts_json, provider, model):
+def generate_chart_summary(facts_json, provider, model, _v=_CHART_SUMMARY_V):
     """Rich per-chart analysis — distinct from generate_narrative (which
     covers the whole page). Per user request: 'ai generated summary... for
     each chart shortly describing the chart details and comparison on the
@@ -110,7 +133,11 @@ the data below — no generic filler, no preamble like "Here is...".
 Data:
 {json.dumps(facts, ensure_ascii=False, indent=2)}
 """
-    return call_llm(provider, model, SYSTEM_PROMPT, prompt, max_tokens=320, temperature=0.15)
+    # 2000, not 320: this prompt has 4 instruction parts to reason through
+    # (context/standout-category/significance-list/base-size) -- same
+    # reasoning-budget issue as generate_narrative above, worse here since
+    # the prompt is more complex.
+    return call_llm(provider, model, SYSTEM_PROMPT, prompt, max_tokens=2000, temperature=0.15)
 
 
 def render_chart_ai_blurb(facts: dict, key):
@@ -118,14 +145,17 @@ def render_chart_ai_blurb(facts: dict, key):
     auto-generate-on-load after that design exhausted Groq's free daily
     token cap (100k TPD) in a single session. Cached by the exact facts
     payload, so re-clicking on an unchanged view doesn't re-spend quota."""
-    provider = st.session_state.get("active_ai_provider", "groq")
+    provider = get_active_provider()
     model = st.session_state.get("or_model_choice") if provider == "openrouter" else None
-    if st.button("🤖 Analyse this chart", key=f"chart_ai_btn_{key}"):
+    if st.button("🤖 Analyse this chart with AI", key=f"chart_ai_btn_{key}", type="primary"):
         with st.spinner(f"Asking {provider.title()} for a rich analysis of this chart..."):
             text = generate_chart_summary(json.dumps(facts, ensure_ascii=False, sort_keys=True), provider, model)
+        if _looks_like_leaked_reasoning(text):
+            st.warning(f"{provider.title()} didn't finish a real answer this time (free-tier model ran out of budget mid-thought). Try again.")
+            return
         st.markdown(
-            f"<div style='background:#FAFAF8;border-left:3px solid #9A958D;border-radius:6px;"
-            f"padding:10px 14px;margin:6px 0 2px 0;font-size:0.88rem;color:#3A3732;line-height:1.6;'>"
-            f"🤖 {text}</div>",
+            f"<div style='background:#FFFFFF;border:1px solid #ECE9E4;border-left:4px solid #2E3192;"
+            f"border-radius:8px;padding:10px 14px;margin:6px 0 2px 0;font-size:0.9rem;color:#1A1A1A;line-height:1.6;'>"
+            f"<b>🤖 AI Insight</b> ({provider.title()})<br><br>{text}</div>",
             unsafe_allow_html=True,
         )
