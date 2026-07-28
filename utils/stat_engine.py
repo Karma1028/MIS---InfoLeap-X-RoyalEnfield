@@ -83,7 +83,7 @@ def compare_to_baseline(table_df, baseline_df):
     return markers
 
 
-def compare_to_baseline_by_column(table_df, baseline_df, columns):
+def compare_to_baseline_by_column(table_df, baseline_df, columns, confidence=0.95):
     """Per user request: 'significance testing should run month by month
     for a sample size equal or over 30 respondant' — testing only the
     aggregate 'All' column hides cases where a category is significant
@@ -94,6 +94,14 @@ def compare_to_baseline_by_column(table_df, baseline_df, columns):
     (row 0 already carries a per-month n for every distribution_table()
     output) — so a month with n<30 on either side is skipped for that
     month only, not for the whole row.
+
+    confidence: 0.95 (default) shows both the 95% tier (▲▼) and the 90%
+    directional tier (△▽) together, exactly as before. 0.90 collapses to
+    a single pass/fail at the 90% threshold — every category that clears
+    90% (whether or not it also clears 95%) shows as the deep marker
+    (▲▼), so switching the sidebar control to "90%" reads as "show me
+    everything at or above 90%", not "show me only the 90-94% band".
+
     Returns {column: [markers...]} — one marker per category row (row 0/
     Base excluded), same '▲▼△▽'/'' vocabulary as compare_to_baseline().
     """
@@ -113,14 +121,53 @@ def compare_to_baseline_by_column(table_df, baseline_df, columns):
                 continue
             p1 = float(table_df.iloc[i][col]) / 100
             p2 = float(match.iloc[0][col]) / 100
-            res = calculate_significance(p1, n1, p2, n2)
-            if res['tier'] == '95':
-                markers.append('▲' if res['z_score'] > 0 else '▼')
-            elif res['tier'] == '90':
-                markers.append('△' if res['z_score'] > 0 else '▽')
+            res = calculate_significance(p1, n1, p2, n2, confidence=confidence)
+            if confidence >= 0.95:
+                if res['tier'] == '95':
+                    markers.append('▲' if res['z_score'] > 0 else '▼')
+                elif res['tier'] == '90':
+                    markers.append('△' if res['z_score'] > 0 else '▽')
+                else:
+                    markers.append('')
             else:
-                markers.append('')
+                # 90% mode: anything clearing the 90% bar reads as the
+                # deep (confirmed) marker — there is no lower tier to show.
+                if res['is_significant']:
+                    markers.append('▲' if res['z_score'] > 0 else '▼')
+                else:
+                    markers.append('')
         result[col] = markers
+    return result
+
+
+def gaps_by_column(table_df, baseline_df, columns):
+    """Companion to compare_to_baseline_by_column() — per user request
+    ("if one section is significant how much significant it is it should
+    be shown"), a bare ▲/△ marker only said THAT a category was
+    significantly higher, not BY HOW MUCH. Returns {column: [gap_pp,
+    ...]} — gap_pp = this_value% - baseline_value% (percentage points),
+    one per category row (row 0/Base excluded), same row-index alignment
+    and label-matching as compare_to_baseline_by_column() so the two can
+    be zipped together by the caller. None where no baseline match
+    exists (same population, or the category doesn't appear in the
+    baseline) — callers should only display the gap where a marker is
+    also present, since a gap on a non-significant category is noise."""
+    same_population = table_df.equals(baseline_df)
+    result = {}
+    for col in columns:
+        if col not in table_df.columns or col not in baseline_df.columns:
+            continue
+        gaps = []
+        for i in range(1, len(table_df)):
+            label = table_df.iloc[i]['Unnamed: 0']
+            match = baseline_df[baseline_df['Unnamed: 0'] == label]
+            if same_population or len(match) == 0:
+                gaps.append(None)
+                continue
+            p1 = float(table_df.iloc[i][col])
+            p2 = float(match.iloc[0][col])
+            gaps.append(p1 - p2)
+        result[col] = gaps
     return result
 
 

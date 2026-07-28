@@ -4,7 +4,7 @@ from auth import render_login, render_landing
 from styles.theme import render_theme_css, SEGMENT_COLORS
 from utils.data_engine import DataEngine, RE_MODEL_PLATFORM, RE_MODEL_LABELS, month_label_to_fy_quarter
 from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers
-from utils.stat_engine import compare_to_baseline_by_column, calculate_significance
+from utils.stat_engine import compare_to_baseline_by_column, calculate_significance, gaps_by_column
 from utils.compare import render_comparison_page
 from utils.verbatim_intel import render_verbatim_intelligence_page
 from utils.dealership import render_dealership_page
@@ -1104,6 +1104,11 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
+    # Per user request ("if one section is significant how much
+    # significant it is it should be shown") — gaps_by_column() mirrors
+    # compare_to_baseline_by_column()'s exact row/column alignment, so it
+    # zips directly against col_markers by index.
+    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
     chart_tbl = engine.cap_rows(tbl, **cap_chart) if cap_chart else tbl
     current_seg_label = _seg_label_map.get(segment_value, "Overview")
     seg_tables = {}  # populated on Overview for P5 so-what gap analysis
@@ -1128,7 +1133,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
             # Monthly trend: hidden on Overview (comparison IS the view), shown as expander on segment pages.
             if segment_value != "All":
                 with st.expander("📈 Monthly Trend", expanded=False):
-                    render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
+                    render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name, col_sig_gaps=col_gaps)
             with st.expander("📊 Data Table", expanded=False):
                 # On Overview comparison mode: table must match chart → show cross-segment
                 # breakdown (Acc% | Rej% | Can%) not the blended "All" single-column table.
@@ -1195,7 +1200,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
                                        file_name=f"{title.lower().replace(' ','_')}.csv",
                                        mime="text/csv", key=f"dl_{title}")
         else:
-            render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
+            render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name, col_sig_gaps=col_gaps)
         cat_rows = tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         # P5: "So what?" — auto-computed 1-line insight below each chart.
@@ -1315,14 +1320,15 @@ def brand_wise_section(title, table_fn, color, caption=None):
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
+    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
 
     sorted_tbl = engine.sort_brand_table(tbl, rollup_set)
     rollup_tbl = engine.rollup_only_table(tbl, rollup_set)
 
-    # col_markers is positional against tbl's ORIGINAL row order;
-    # sort_brand_table reorders rows by value, so realign by label before
-    # rendering the sorted table — a position-only permutation would attach
-    # the wrong marker to the wrong row.
+    # col_markers/col_gaps are positional against tbl's ORIGINAL row
+    # order; sort_brand_table reorders rows by value, so realign by label
+    # before rendering the sorted table — a position-only permutation
+    # would attach the wrong marker/gap to the wrong row.
     orig_labels = tbl.iloc[1:]['Unnamed: 0'].tolist()
     label_order = sorted_tbl.iloc[1:]['Unnamed: 0'].tolist()
     sorted_col_markers = None
@@ -1331,6 +1337,12 @@ def brand_wise_section(title, table_fn, color, caption=None):
         for col, mk in col_markers.items():
             m_by_label = dict(zip(orig_labels, mk))
             sorted_col_markers[col] = [m_by_label.get(l, '') for l in label_order]
+    sorted_col_gaps = None
+    if col_gaps:
+        sorted_col_gaps = {}
+        for col, gp in col_gaps.items():
+            g_by_label = dict(zip(orig_labels, gp))
+            sorted_col_gaps[col] = [g_by_label.get(l) for l in label_order]
 
     with st.container(border=True):
         if caption:
@@ -1341,7 +1353,8 @@ def brand_wise_section(title, table_fn, color, caption=None):
         # every plain section() call elsewhere on the page).
         render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
                                  chart_type="stacked_bar", col_sig_markers=sorted_col_markers,
-                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name)
+                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name,
+                                 col_sig_gaps=sorted_col_gaps)
         cat_rows = sorted_tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         sig_hits = []

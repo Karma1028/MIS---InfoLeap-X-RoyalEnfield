@@ -99,15 +99,25 @@ def filter_sig_markers(col_markers, direction):
     }
 
 
-def _pct_label(v, marker=""):
+def _pct_label(v, marker="", gap=None):
     """Shared chart-label text: '-' for a genuine zero (matches
     _render_html_table's existing 0->'-' convention below), else a whole-
     percent value, with an optional trailing significance marker. Every
     chart's inline bar/slice text should route through this instead of
     building its own f"{v:.0f}%" so a 0% cell never reads differently on
-    the chart than it does in the data table right underneath it."""
+    the chart than it does in the data table right underneath it.
+
+    gap: the percentage-point gap vs the baseline this marker was tested
+    against (this value - baseline value) — per user request ("if one
+    section is significant how much significant it is it should be
+    shown"), a bare ▲ only said THAT something was significant, not BY
+    HOW MUCH. Shown only when a marker is actually present (a gap on a
+    non-significant category is noise, not signal)."""
     base = "-" if v == 0 else f"{v:.0f}%"
-    return f"{base} {marker}".strip() if marker else base
+    if not marker:
+        return base
+    gap_str = f" +{gap:.0f}pp" if gap is not None and gap == gap else ""  # gap==gap filters NaN
+    return f"{base} {marker}{gap_str}".strip()
 
 
 def _sig_border(marker):
@@ -190,7 +200,7 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
 HIGHLIGHT_COL_TINT = "#F2C14E"  # warm gold wash for the custom combined column
 
 
-def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None):
+def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None, col_sig_gaps=None):
     """Stacked column chart for Demographics — one stacked column per
     period (All + each selected month), segments = the category rows
     (Age bands, Education levels, etc). Replaces the old single-period
@@ -264,7 +274,12 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             # Per user request: percentage shown throughout every section,
             # not just the All column above a declutter threshold — every
             # segment in every column (All and month) always gets a label.
-            texts.append(_pct_label(v, marker))
+            # gap (2026-07-28): how much higher, not just "is it higher" —
+            # a bare ▲ said THAT a category was significant, not BY HOW
+            # MUCH vs the baseline it was tested against.
+            gaps = (col_sig_gaps or {}).get(c)
+            gap = gaps[i] if gaps and i < len(gaps) else None
+            texts.append(_pct_label(v, marker, gap))
             text_sizes.append(11 if is_all else 10)
         fig.add_trace(go.Bar(
             name=label, x=cols, y=ys,
@@ -314,13 +329,15 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
     # symmetric the chart's own margins look in isolation.
     # Per user report: charts with many categories (Reasons & Motivations
     # routinely has 10-19 rows) squeeze small-value slices too thin to
-    # read. 32px/row was fine up to ~7 categories; steeper past that,
-    # scoped to this chart only per explicit instruction.
+    # read. 32px/row is fine up to 4 categories; steeper from 5 up
+    # (lowered from an initial 7-category threshold per follow-up
+    # request), scoped to this chart only per explicit instruction.
     _n_cats = len(cat_rows)
-    if _n_cats <= 7:
+    _HEIGHT_STEP_THRESHOLD = 5
+    if _n_cats < _HEIGHT_STEP_THRESHOLD:
         plot_height = max(300, 50 + 32 * _n_cats)
     else:
-        plot_height = 50 + 32 * 7 + 44 * (_n_cats - 7)
+        plot_height = 50 + 32 * _HEIGHT_STEP_THRESHOLD + 44 * (_n_cats - _HEIGHT_STEP_THRESHOLD)
     fig.update_layout(
         barmode='stack',
         title=dict(
@@ -432,7 +449,7 @@ def _month_header(m):
     return f"{name[:3]}'{year[2:]}"
 
 
-def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None):
+def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None):
     """Renders a compact bordered HTML table matching the live dashboard's
     report-table look, with cells colour-highlighted for significance (deep
     green = 95% confidence, light green = 90% directional; red shades for
@@ -569,6 +586,20 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     if col_sig_markers and c in col_sig_markers and c != "All":
                         col_markers = col_sig_markers[c]
                         marker = col_markers[i - 1] if i - 1 < len(col_markers) else ''
+                    # Per user request ("if one section is significant how
+                    # much significant it is it should be shown") — the
+                    # cell used to be color-only, with no marker/gap TEXT
+                    # at all in the table (only the chart's inline label
+                    # had a bare marker glyph, no magnitude either). Now
+                    # appends "▲ +Xpp" to the cell text itself, not just a
+                    # background tint, so it reads without relying on color.
+                    if marker in ('▲', '△', '▼', '▽'):
+                        _gap = None
+                        if col_sig_gaps and c in col_sig_gaps:
+                            _col_gaps = col_sig_gaps[c]
+                            _gap = _col_gaps[i - 1] if i - 1 < len(_col_gaps) else None
+                        _gap_str = f" +{_gap:.0f}pp" if _gap is not None and _gap == _gap else ""
+                        txt = f"{txt} {marker}{_gap_str}"
                     if marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
                     elif marker == '△':
@@ -752,7 +783,7 @@ def segment_comparison_bar(seg_tables, title, current_seg="Overview"):
     return fig
 
 
-def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None, highlight_col=None, table_in_expander=False):
+def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None, highlight_col=None, table_in_expander=False, col_sig_gaps=None):
     """Renders the chart, then the underlying data table right below it
     (per user requirement: tabular data must accompany every chart, not
     just the chart alone, and match the live site's table layout).
@@ -780,7 +811,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     all_zero = table_df.iloc[1:]['All'].astype(float).sum() == 0
     if base_n == 0 or all_zero:
         st.info(f"{title}: base n=0 for the current selection — this table doesn't apply here (e.g. Acceptors have no 'brand owned instead of RE'). Table shown below for completeness.")
-        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
+        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
         return
     # Per user request: significance legend lives ONLY in the sidebar now,
     # not repeated as a per-chart popover.
@@ -791,7 +822,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     # kept as a standalone function — Verbatim Intelligence's netting-
     # classification feature calls it directly, unrelated to this dispatch.
     if chart_type == "stacked_bar":
-        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col)
+        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
     else:
         fig = distribution_bar(table_df, title, color=color)
     if chart_type == "stacked_bar":
@@ -811,17 +842,17 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             if table_in_expander:
                 with st.expander("📋 Data Table", expanded=False):
-                    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
+                    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
             else:
-                _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
+                _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
         return
     else:
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
     if table_in_expander:
         with st.expander("📋 Data Table", expanded=False):
-            _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
+            _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
     else:
-        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col)
+        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
 
 
 def zone_heatmap(zone_matrix, title):
