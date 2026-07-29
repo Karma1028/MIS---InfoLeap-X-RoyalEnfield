@@ -301,9 +301,14 @@ class DataEngine:
         df.loc[(df['grida'] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
 
         acc_or_aq3po = df['acc'].fillna(df['aq3_po'])
+        # Rejector/Cancelled model code sourced from `seg` (offset-decoded),
+        # not `rej`/`can` directly -- see _segment_slice()'s Rejector/
+        # Cancelled branches for why (seg-14/seg-28 confirmed exact against
+        # a fresh live-site scrape across all 14 RE models; rej/can were
+        # off by 0-3 respondents per model).
         df['re_model_code'] = np.select(
             [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
-            [acc_or_aq3po, df['rej'], df['can']],
+            [acc_or_aq3po, df['seg'] - 14, df['seg'] - 28],
             default=np.nan,
         )
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
@@ -385,12 +390,25 @@ class DataEngine:
         elif segment == "Rejector":
             df = self.df[self.df['grida'] == 2].copy()
             df['segment'] = 'Rejector'
-            df['re_model_code'] = df['rej']
+            # `seg` is a joint segment+model code (1-14 Acceptor, 15-28
+            # Rejector, 29-42 Cancelled -- confirmed via MIS_datamap.xlsx
+            # "Added column label" sheet + raw value-range check: all
+            # grida==2 rows have seg in [15,28], no nulls). Verified
+            # 2026-07-29 against a fresh live-site scrape across all 14 RE
+            # models: seg-14 matches the live Rejector base EXACTLY for
+            # every model (0 diff), where the previously-used `rej` column
+            # was off by 0-3 respondents per model. `rej` itself is not
+            # wrong per se (same 1-14 codebook, no nulls) -- `seg` is just
+            # the field the live site's own pipeline actually keys off.
+            df['re_model_code'] = df['seg'] - 14
             df['owned_brand_code'] = df['aq3']
         elif segment == "Cancelled":
             df = self.df[self.df['grida'] == 3].copy()
             df['segment'] = 'Cancelled'
-            df['re_model_code'] = df['can']
+            # Same `seg` scheme, Cancelled block = 29-42. Verified exact
+            # (0 diff, 14/14 models) against live scrape 2026-07-29,
+            # replacing the previously-used `can` column (was off by 0-2).
+            df['re_model_code'] = df['seg'] - 28
             df['owned_brand_code'] = df['aq3']
         else:
             raise ValueError(segment)
