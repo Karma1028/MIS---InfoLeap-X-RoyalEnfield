@@ -1101,14 +1101,18 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     # (and the quarter-combined columns, same rule, same n>=30 gate —
     # their base is always well over 30 so they're virtually always
     # eligible when shown).
+    # vs_own_all=True (2026-07-29): matches the live MIS site's own
+    # methodology (each month vs that table's own 'All' column) instead of
+    # vs other segments, per user request -- keeps our n>=30 gate, unlike
+    # the live site which has none.
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
-    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
+    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence, vs_own_all=True) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
     # Per user request ("if one section is significant how much
     # significant it is it should be shown") — gaps_by_column() mirrors
     # compare_to_baseline_by_column()'s exact row/column alignment, so it
     # zips directly against col_markers by index.
-    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
+    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols, vs_own_all=True) if show_sig else None
     chart_tbl = engine.cap_rows(tbl, **cap_chart) if cap_chart else tbl
     current_seg_label = _seg_label_map.get(segment_value, "Overview")
     seg_tables = {}  # populated on Overview for P5 so-what gap analysis
@@ -1313,9 +1317,9 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
         return
 
     sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
-    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence) if show_sig else None
+    col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence, vs_own_all=True) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
-    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols) if show_sig else None
+    col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols, vs_own_all=True) if show_sig else None
 
     sorted_tbl = engine.sort_brand_table(tbl, rollup_set)
     rollup_tbl = engine.rollup_only_table(tbl, rollup_set)

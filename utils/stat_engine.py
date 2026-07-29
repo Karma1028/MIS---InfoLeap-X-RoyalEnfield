@@ -3,12 +3,32 @@ import pandas as pd
 from scipy.stats import norm
 
 # Source of truth: data/95% CI_sig test.xls ("prop (3)" sheet).
-# Reference cells: P1=62, P2=56, N1=390, N2=390 -> Sdiff=3.515533, Zvalue=1.706711.
-# This is an UNPOOLED two-proportion Z-test on the 0-100 percentage scale
-# (not the textbook pooled-proportion test). Reproduced exactly below:
-#   Sdiff = sqrt( p1*(100-p1)/n1 + p2*(100-p2)/n2 )      [p1,p2 in 0-100]
-#   Z     = (p1 - p2) / Sdiff
-# Their reference sheet also lists a two-tier critical-Z band:
+# Reference cells: P1=62, P2=56, N1=390, N2=390 -> Sdiff=3.515533, Zvalue=1.706711
+# (that reference used an UNPOOLED formula and landed in the 90% band).
+#
+# FORMULA SWITCHED TO POOLED (2026-07-29): reverse-engineered against 16 real
+# highlight cells scraped from the live MIS site (Overview/Age table,
+# n>=30 only, values + colors pulled directly from the page DOM, not
+# guessed). Score per candidate formula, live-cell-color agreement:
+#   unpooled, exact %              10/16
+#   unpooled, rounded %            11/16
+#   pooled,   exact %              14/16   <- this one
+#   pooled,   rounded %            11/16
+# The pooled formula also reproduces the one confirmed ground-truth
+# reference case (P1=62,P2=56,N1=390,N2=390) into the same tier (90%,
+# Z=1.7035 vs the documented 1.706711 -- same classification, formula
+# gives a slightly different Z but the SAME confidence band), so nothing
+# in the original reference is broken by this change.
+#   pooled p = (p1*n1/100 + p2*n2/100) / (n1+n2)          [0-100 scale]
+#   Sdiff    = sqrt( pooled_p*(100-pooled_p) * (1/n1+1/n2) )
+#   Z        = (p1 - p2) / Sdiff
+# 2 of 16 sampled cells still don't match under any tested formula variant
+# (unpooled or pooled, rounded or exact) -- see project memory for the
+# investigation trail; likely stale/pre-baked highlighting on their side
+# rather than a formula we haven't found, since their site loads from
+# separately-exported per-model static files, not a live query.
+#
+# Confidence tiers (unchanged, confirmed against the reference sheet):
 #   0.95 confidence -> Z >= 1.95   (rounded 1.96)
 #   0.90 confidence -> Z in [1.64, 1.94]  (directional/lower-tier flag)
 
@@ -20,9 +40,10 @@ Z_90_HIGH = 1.94
 def calculate_significance(p1, n1, p2, n2, confidence=0.95):
     """
     Calculates if the difference between two proportions (0-1 scale) is
-    statistically significant, using the agency's unpooled-SE formula.
+    statistically significant, using a pooled-proportion two-sample Z-test
+    (see module docstring above for why pooled, not unpooled).
     p1, p2 are proportions (0-1); internally converted to percentage scale
-    to match the reference Excel formula exactly.
+    to match the reference Excel formula's scale.
     """
     # Strict rule: never run significance testing on a base under 30 — too
     # unstable to report a meaningful difference.
@@ -30,7 +51,8 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
         return {"is_significant": False, "z_score": 0.0, "tier": None}
 
     pct1, pct2 = p1 * 100, p2 * 100
-    sdiff = np.sqrt((pct1 * (100 - pct1)) / n1 + (pct2 * (100 - pct2)) / n2)
+    pooled_pct = (pct1 * n1 + pct2 * n2) / (n1 + n2)
+    sdiff = np.sqrt(pooled_pct * (100 - pooled_pct) * (1 / n1 + 1 / n2))
 
     if sdiff == 0:
         return {"is_significant": False, "z_score": 0.0, "tier": None}
@@ -83,7 +105,7 @@ def compare_to_baseline(table_df, baseline_df):
     return markers
 
 
-def compare_to_baseline_by_column(table_df, baseline_df, columns, confidence=0.95):
+def compare_to_baseline_by_column(table_df, baseline_df, columns, confidence=0.95, vs_own_all=False):
     """Per user request: 'significance testing should run month by month
     for a sample size equal or over 30 respondant' — testing only the
     aggregate 'All' column hides cases where a category is significant
@@ -102,25 +124,40 @@ def compare_to_baseline_by_column(table_df, baseline_df, columns, confidence=0.9
     (▲▼), so switching the sidebar control to "90%" reads as "show me
     everything at or above 90%", not "show me only the 90-94% band".
 
+    vs_own_all: per user request (2026-07-29, "select their methodology
+    but only for sample >=30") — matches the live MIS site's own
+    methodology, which tests each month column against that SAME table's
+    'All' (aggregate) column, not against a separate baseline_df (e.g.
+    other segments). When True, baseline_df is ignored for the p2/n2
+    lookup; instead each row's own 'All' value/base is used as the
+    comparison point. We keep our existing n>=30 gate (calculate_significance
+    already enforces it) -- the live site has no such gate and will flag
+    single-digit-base months as "significant", which we deliberately do
+    not replicate.
+
     Returns {column: [markers...]} — one marker per category row (row 0/
     Base excluded), same '▲▼△▽'/'' vocabulary as compare_to_baseline().
     """
-    same_population = table_df.equals(baseline_df)
+    same_population = (not vs_own_all) and table_df.equals(baseline_df)
     result = {}
     for col in columns:
-        if col not in table_df.columns or col not in baseline_df.columns:
+        if col == 'All' and vs_own_all:
+            # A column can't be tested against itself.
+            continue
+        if col not in table_df.columns or (not vs_own_all and col not in baseline_df.columns):
             continue
         n1 = float(table_df.iloc[0][col])
-        n2 = float(baseline_df.iloc[0][col])
+        n2 = float(table_df.iloc[0]['All']) if vs_own_all else float(baseline_df.iloc[0][col])
         markers = []
         for i in range(1, len(table_df)):
             label = table_df.iloc[i]['Unnamed: 0']
-            match = baseline_df[baseline_df['Unnamed: 0'] == label]
+            src_df = table_df if vs_own_all else baseline_df
+            match = src_df[src_df['Unnamed: 0'] == label]
             if same_population or len(match) == 0:
                 markers.append('')
                 continue
             p1 = float(table_df.iloc[i][col]) / 100
-            p2 = float(match.iloc[0][col]) / 100
+            p2 = float(match.iloc[0]['All' if vs_own_all else col]) / 100
             res = calculate_significance(p1, n1, p2, n2, confidence=confidence)
             if confidence >= 0.95:
                 if res['tier'] == '95':
@@ -140,7 +177,7 @@ def compare_to_baseline_by_column(table_df, baseline_df, columns, confidence=0.9
     return result
 
 
-def gaps_by_column(table_df, baseline_df, columns):
+def gaps_by_column(table_df, baseline_df, columns, vs_own_all=False):
     """Companion to compare_to_baseline_by_column() — per user request
     ("if one section is significant how much significant it is it should
     be shown"), a bare ▲/△ marker only said THAT a category was
@@ -151,21 +188,28 @@ def gaps_by_column(table_df, baseline_df, columns):
     be zipped together by the caller. None where no baseline match
     exists (same population, or the category doesn't appear in the
     baseline) — callers should only display the gap where a marker is
-    also present, since a gap on a non-significant category is noise."""
-    same_population = table_df.equals(baseline_df)
+    also present, since a gap on a non-significant category is noise.
+
+    vs_own_all: must match whatever was passed to the paired
+    compare_to_baseline_by_column() call, or the gap values won't line up
+    with what the markers actually tested against."""
+    same_population = (not vs_own_all) and table_df.equals(baseline_df)
     result = {}
     for col in columns:
-        if col not in table_df.columns or col not in baseline_df.columns:
+        if col == 'All' and vs_own_all:
+            continue
+        if col not in table_df.columns or (not vs_own_all and col not in baseline_df.columns):
             continue
         gaps = []
         for i in range(1, len(table_df)):
             label = table_df.iloc[i]['Unnamed: 0']
-            match = baseline_df[baseline_df['Unnamed: 0'] == label]
+            src_df = table_df if vs_own_all else baseline_df
+            match = src_df[src_df['Unnamed: 0'] == label]
             if same_population or len(match) == 0:
                 gaps.append(None)
                 continue
             p1 = float(table_df.iloc[i][col])
-            p2 = float(match.iloc[0][col])
+            p2 = float(match.iloc[0]['All' if vs_own_all else col])
             gaps.append(p1 - p2)
         result[col] = gaps
     return result
