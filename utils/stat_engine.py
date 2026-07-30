@@ -28,13 +28,46 @@ from scipy.stats import norm
 # rather than a formula we haven't found, since their site loads from
 # separately-exported per-model static files, not a live query.
 #
-# Confidence tiers (unchanged, confirmed against the reference sheet):
+# Confidence tiers:
 #   0.95 confidence -> Z >= 1.95   (rounded 1.96)
 #   0.90 confidence -> Z in [1.64, 1.94]  (directional/lower-tier flag)
+#
+# DIRECTION ASYMMETRY (2026-07-29): reverse-engineered against live-site DOM
+# data (colors read via getComputedStyle, not eyeballed) across 3 independent
+# Overall demographic tables (Age, Education, Occupation), ~28 sampled cells,
+# zero exceptions. The live site does NOT apply the above tiers symmetrically
+# by magnitude in both directions -- it splits by direction:
+#   - value LOWER than baseline: dark green (95%) only, cutoff Z <= -1.95.
+#     Nothing in between -1.64 and -1.95 gets colored at all (no light tier
+#     for weak drops) -- confirmed by an unflagged Z=-1.696 sample.
+#   - value HIGHER than baseline: light green fires from a lower bar than
+#     the 95% drop cutoff (two-tailed 90%, Z >= 1.64) and NEVER escalates to
+#     dark, no matter how large -- confirmed flagged-light Z's up to 3.96
+#     (ProfGrad/Sep) all stayed light, never dark. See the Z_HIGHER_LIGHT
+#     correction note below the tier constants for how the exact cutoff
+#     (1.64, not the originally-guessed 1.2816) was pinned down.
+# Net effect: dark green means "significantly worse than baseline" (strict,
+# two-tailed 95%); light green means "better than baseline" (lenient,
+# one-tailed ~90%, uncapped). This is a deliberate asymmetric business rule,
+# not a formula bug on their end.
 
 Z_95 = 1.95
 Z_90_LOW = 1.64
 Z_90_HIGH = 1.94
+# CORRECTED (2026-07-30): originally set to 1.2816 (one-tailed 90%) from a
+# ~28-cell sample that never actually tested the 1.28-1.64 gap -- largest
+# confirmed unflagged sample was Z=0.42, smallest confirmed flagged sample
+# was Z=2.44, leaving that whole band unverified. Re-derived against exact
+# (non-rounded) underlying proportions for Royal Enfield Classic 350's
+# Education table: two cells sit inside that gap and are FALSELY flagged
+# at 1.2816 but are plain/unhighlighted on the live site --
+#   SSC/HSC Aug'25 (18% vs ALL 12.19%, n=60): Z=1.371
+#   ProfGrad/PG Jan'26 (21% vs ALL 14.95%, n=66): Z=1.343
+# All previously-confirmed true positives clear 1.64 with room to spare
+# (Sept'25 ProfGrad Z=2.44, Feb'26 SSC/HSC Z=2.61, Apr'26 College-non-grad
+# Z=2.49) -- so the light tier is two-tailed 90% (Z_90_LOW), same value
+# already used for the old symmetric tiering, not a separate one-tailed cut.
+Z_HIGHER_LIGHT = Z_90_LOW
 
 
 def calculate_significance(p1, n1, p2, n2, confidence=0.95):
@@ -58,14 +91,15 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
         return {"is_significant": False, "z_score": 0.0, "tier": None}
 
     z_score = (pct1 - pct2) / sdiff
-    abs_z = abs(z_score)
 
-    if confidence >= 0.95:
-        tier = "95" if abs_z >= Z_95 else ("90" if Z_90_LOW <= abs_z <= Z_90_HIGH else None)
-        is_significant = abs_z >= Z_95
+    # Asymmetric by direction -- see module docstring above.
+    if z_score <= -Z_95:
+        tier = "95"
+    elif z_score >= Z_HIGHER_LIGHT:
+        tier = "90"
     else:
-        tier = "90" if abs_z >= Z_90_LOW else None
-        is_significant = abs_z >= Z_90_LOW
+        tier = None
+    is_significant = tier is not None
 
     return {
         "is_significant": is_significant,

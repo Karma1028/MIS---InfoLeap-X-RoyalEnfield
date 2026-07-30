@@ -272,11 +272,13 @@ with st.sidebar.expander("Custom Combined Column", expanded=False):
 
 show_sig = st.sidebar.toggle("Significance vs Rest of Sample (95%/90%)", value=True,
                               help="Marks each category as significantly higher than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
-# Per user request: no user-facing 95%/90% or Both/High/Low controls —
-# always show both confidence tiers together, and always positive-only
-# (significantly HIGHER only, never lower). filter_sig_markers() already
-# handles "High only" by dropping the ▼/▽ markers at the single choke
-# point every chart/table call site routes through — no other code needed.
+# Per user request: no user-facing 95%/90% or Both/High/Low controls.
+# "Both" reverted back to "High only" (2026-07-30): per explicit user
+# request, app should only surface significantly-HIGHER markers (▲/△),
+# suppressing ▼/▽ drops, even though the live site itself colors both
+# directions (confirmed via DOM scrape: dark green = drop Z<=-1.95, light
+# green = rise Z>=1.28 uncapped — see stat_engine.py docstring). This is a
+# deliberate app-vs-site divergence, not a formula mismatch.
 sig_confidence = 0.95
 sig_direction = "High only"
 with st.sidebar.popover("ℹ️ What do the colors mean?", use_container_width=True):

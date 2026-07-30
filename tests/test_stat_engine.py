@@ -28,5 +28,8 @@ def test_confidence_defaults_to_95_backward_compatible():
     tbl = _table(all_val=70, month_val=70, base_month=200)
     baseline = _table(all_val=30, month_val=30, base_month=200)
     # No confidence kwarg passed — must not raise, must behave as before.
+    # Per the direction-asymmetric rule reverse-engineered from the live
+    # site (2026-07-29): a "higher than baseline" difference never reaches
+    # the deep 95% tier, no matter how large the gap — only the 90% marker.
     markers = compare_to_baseline_by_column(tbl, baseline, ["Aug'2025"])
-    assert markers["Aug'2025"][0] == "▲"
+    assert markers["Aug'2025"][0] == "△"

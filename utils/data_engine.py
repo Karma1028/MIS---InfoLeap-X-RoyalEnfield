@@ -329,9 +329,22 @@ class DataEngine:
         df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
 
     def _derive_month(self):
-        # The raw `month`/`year` text columns are dirty (typos, garbage years).
-        # SubmissionDate is a clean datetime — derive month labels from it.
-        dt = pd.to_datetime(self.df['SubmissionDate'], errors='coerce')
+        # The raw lowercase `month`/`year` text columns are dirty (typos,
+        # garbage years) -- unusable. SubmissionDate looked like a clean
+        # fallback but drifts near month-end (a respondent surveyed in the
+        # last days of March can submit in April), which silently moved a
+        # handful of rows into the wrong month bucket -- e.g. our old
+        # SubmissionDate-derived counts were Mar=316/Apr=369 vs the live
+        # site's Mar=324/Apr=361 (2026-07-29 finding). The capitalized
+        # `Month`/`Year` numeric columns are the actual clean fielding-period
+        # tags: grouping by them reproduces the live site's base counts for
+        # every one of the 10 months exactly (366/678/413/468/238/375/396/
+        # 324/361/391), so they're the source of truth, not SubmissionDate.
+        month_num = pd.to_numeric(self.df['Month'], errors='coerce')
+        year_num = pd.to_numeric(self.df['Year'], errors='coerce')
+        dt = pd.to_datetime(
+            dict(year=year_num, month=month_num, day=1), errors='coerce'
+        )
         self.df['month_label'] = dt.dt.strftime("%B'%Y")
 
     def quarter_combined_groups(self, extra_groups=None):
@@ -838,8 +851,15 @@ class DataEngine:
             return row
 
         def model_mask(code):
+            # BUG FIX (2026-07-29): this table is titled "Additional +
+            # Replaced" but only ever checked dq2a (the multi-select
+            # "Additional" answer) -- dq2b (single-select "Replaced"
+            # answer) was silently dropped, undercounting every model.
+            # Confirmed against live: Classic 350 was 10.8% (dq2a only) vs
+            # live's 14%; adding dq2b == code lands at 14.1%, matching.
             col = f"dq2a_{code}"
-            return (sub[col] == 1) if col in sub.columns else pd.Series(False, index=sub.index)
+            add_mask = (sub[col] == 1) if col in sub.columns else pd.Series(False, index=sub.index)
+            return add_mask | (sub['dq2b'] == code)
 
         if by == "brand":
             brands_in_order = []
@@ -867,7 +887,8 @@ class DataEngine:
             for bucket in cc_buckets:
                 codes = [c for c, v in codebook.items() if v.get('cc_netting') == bucket]
                 cols = [f"dq2a_{c}" for c in codes if f"dq2a_{c}" in sub.columns]
-                mask = sub[cols].eq(1).any(axis=1) if cols else pd.Series(False, index=sub.index)
+                add_mask = sub[cols].eq(1).any(axis=1) if cols else pd.Series(False, index=sub.index)
+                mask = add_mask | sub['dq2b'].isin(codes)
                 label = f"{bucket} CC" if bucket[0].isdigit() else bucket
                 rows.append(pct_row(label, mask))
         return pd.DataFrame(rows)

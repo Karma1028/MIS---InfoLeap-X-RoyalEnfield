@@ -116,7 +116,7 @@ def _pct_label(v, marker="", gap=None):
     base = "-" if v == 0 else f"{v:.0f}%"
     if not marker:
         return base
-    gap_str = f" +{gap:.0f}pp" if gap is not None and gap == gap else ""  # gap==gap filters NaN
+    gap_str = f" {gap:+.0f}pp" if gap is not None and gap == gap else ""  # gap==gap filters NaN
     return f"{base} {marker}{gap_str}".strip()
 
 
@@ -598,7 +598,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                         if col_sig_gaps and c in col_sig_gaps:
                             _col_gaps = col_sig_gaps[c]
                             _gap = _col_gaps[i - 1] if i - 1 < len(_col_gaps) else None
-                        _gap_str = f" +{_gap:.0f}pp" if _gap is not None and _gap == _gap else ""
+                        _gap_str = f" {_gap:+.0f}pp" if _gap is not None and _gap == _gap else ""
                         txt = f"{txt} {marker}{_gap_str}"
                     if marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
