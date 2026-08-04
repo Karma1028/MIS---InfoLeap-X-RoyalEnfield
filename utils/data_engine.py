@@ -493,7 +493,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, code_col].notna().sum()
 
@@ -511,7 +511,7 @@ class DataEngine:
             mask_all = df[code_col].isin(codes)
             pct_all = mask_all.sum() / base_n * 100 if base_n else 0
             row = {"Unnamed: 0": label, "All": pct_all if numeric else f"{pct_all:.0f}%"}
-            for col in MONTH_ORDER + extra_cols:
+            for col in self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 col_base = len(idx)
                 pct = (df.loc[idx, code_col].isin(codes)).sum() / col_base * 100 if col_base else 0
@@ -806,8 +806,11 @@ class DataEngine:
         cc_netting, which is the exact bucket scheme the live site
         displays ('200-249 CC', '250-350 CC', etc. — confirmed by
         comparing live's 7-row CC Wise table label-for-label)."""
-        with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
-            codebook = {int(k): v for k, v in json.load(f).items()}
+        try:
+            with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
+                codebook = {int(k): v for k, v in json.load(f).items()}
+        except (FileNotFoundError, json.JSONDecodeError):
+            codebook = {}
 
         # Base FIXED (2026-06-23): dq1b.notna() gave 878 vs live's fresh
         # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
@@ -1059,7 +1062,8 @@ class DataEngine:
         decoded = df.apply(decode_hierarchical, axis=1)
 
         # Per user request: exclude combined quarter months (JAS'25, OND'25, JFM'26) from open-ended netting table
-        all_time_cols = ["All"] + [c for c in MONTH_ORDER if c in df['month_label'].values or any(col in df.columns for col in MONTH_ORDER)]
+        present = set(df['month_label'].dropna().unique())
+        all_time_cols = ["All"] + [c for c in self.month_order if c in present]
 
         quarter_groups = self.quarter_combined_groups(extra_groups)
         col_indices = {}

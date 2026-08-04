@@ -124,7 +124,7 @@ def compare_to_baseline(table_df, baseline_df):
         label = table_df.iloc[i]['Unnamed: 0']
         p1 = float(table_df.iloc[i]['All']) / 100
         match = baseline_df[baseline_df['Unnamed: 0'] == label]
-        if len(match) == 0 or base_n == baseline_n:
+        if len(match) == 0 or table_df is baseline_df:
             markers.append('')
             continue
         p2 = float(match.iloc[0]['All']) / 100

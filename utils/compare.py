@@ -317,7 +317,7 @@ def render_comparison_page(engine):
                     sig_rows.append(row_out)
 
                 with st.expander(f"Significance — {metric_name} ({_sig_month})" + (" ⚡" if _any_sig else ""), expanded=False):
-                    st.caption("✓ = significantly different (95% confidence) · ~ = likely different (90%) · Similar = no clear difference · — = too few respondents (n<30). Unpooled Z-test.")
+                    st.caption("✓ = significantly different (95% confidence) · ~ = likely different (90%) · Similar = no clear difference · — = too few respondents (n<30). Pooled Z-test.")
                     _sig_df = pd.DataFrame(sig_rows)
                     def _color_sig_cells(val):
                         if isinstance(val, str):

@@ -349,11 +349,14 @@ if base_n == 0:
 
 total_n = len(engine.df)
 age_quick = engine.age_table(df, base_label=segment_value, numeric=True)
-top_age_row = age_quick.iloc[1:].loc[age_quick.iloc[1:]['All'].astype(float).idxmax()]
+_age_rest = age_quick.iloc[1:]
+top_age_row = _age_rest.loc[_age_rest['All'].astype(float).idxmax()] if not _age_rest.empty else age_quick.iloc[0]
 income_quick = engine.household_income_table(df, base_label=segment_value, numeric=True)
-top_income_row = income_quick.iloc[1:].loc[income_quick.iloc[1:]['All'].astype(float).idxmax()]
+_inc_rest = income_quick.iloc[1:]
+top_income_row = _inc_rest.loc[_inc_rest['All'].astype(float).idxmax()] if not _inc_rest.empty else income_quick.iloc[0]
 tob_quick = engine.type_of_buyer_table(df, base_label=segment_value, numeric=True)
-top_tob_row = tob_quick.iloc[1:].loc[tob_quick.iloc[1:]['All'].astype(float).idxmax()]
+_tob_rest = tob_quick.iloc[1:]
+top_tob_row = _tob_rest.loc[_tob_rest['All'].astype(float).idxmax()] if not _tob_rest.empty else tob_quick.iloc[0]
 _TOB_SHORT = {
     "This is my Additional 2W": "Additional 2W",
     "This is my Replaced 2W": "Replaced 2W",
