@@ -181,15 +181,16 @@ def render_comparison_page(engine):
                                        owned_brand_code=code if model_brand != "Royal Enfield" else None)
                 _mc = engine.filter_df(segment="Cancelled", model_code=code if model_brand == "Royal Enfield" else None,
                                        owned_brand_code=code if model_brand != "Royal Enfield" else None)
-                for _df in (_ma, _mr, _mc):
-                    _df = _df[_df['month_label'].isin(selected_months)] if not _df.empty else _df
+                _ma = _ma[_ma['month_label'].isin(selected_months)] if not _ma.empty else _ma
+                _mr = _mr[_mr['month_label'].isin(selected_months)] if not _mr.empty else _mr
+                _mc = _mc[_mc['month_label'].isin(selected_months)] if not _mc.empty else _mc
                 _mall = pd.concat([_ma, _mr, _mc]).drop_duplicates()
                 _base = max(len(_mall), 1)
                 _seg_rows.append({
                     "model": short_names[model_name], "unique_n": len(_mall),
-                    "acc_pct": len(_ma[_ma['month_label'].isin(selected_months)]) / _base * 100,
-                    "rej_pct": len(_mr[_mr['month_label'].isin(selected_months)]) / _base * 100,
-                    "can_pct": len(_mc[_mc['month_label'].isin(selected_months)]) / _base * 100,
+                    "acc_pct": len(_ma) / _base * 100,
+                    "rej_pct": len(_mr) / _base * 100,
+                    "can_pct": len(_mc) / _base * 100,
                 })
             _sp_models = [r['model'] for r in _seg_rows]
             _sp_fig = go.Figure()

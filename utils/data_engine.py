@@ -643,28 +643,29 @@ class DataEngine:
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, 'dq1a'].notna().sum()
 
-        prior_user_mask = df['dq1a'].isin([1, 2])
-        answered_mask = prior_user_mask & df['dq1b'].notna()
-        additional_ratio = (df.loc[answered_mask, 'dq1b'] == 1).sum() / answered_mask.sum() if answered_mask.sum() else 0
-        replaced_ratio = 1 - additional_ratio
+        def _split_ratios(sub):
+            prior = sub['dq1a'].isin([1, 2])
+            ans = prior & sub['dq1b'].notna()
+            add_r = (sub.loc[ans, 'dq1b'] == 1).sum() / ans.sum() if ans.sum() else 0
+            return add_r, 1 - add_r
 
         def pct_row(label, mask_fn):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 sub = df.loc[self._col_index(df, col, quarter_groups)]
                 sub_base = len(sub)
                 val = mask_fn(sub) / sub_base * 100 if sub_base else 0
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("This is my Additional 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * additional_ratio))
+        rows.append(pct_row("This is my Additional 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[0]))
         rows.append(pct_row("First Time Buyer of 2W (No one owns a 2W)", lambda d: (d['dq1a'] == 4).sum()))
         rows.append(pct_row("First Time Buyer of 2W (Family owns a 2W and not a primary user)", lambda d: (d['dq1a'] == 3).sum()))
-        rows.append(pct_row("This is my Replaced 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * replaced_ratio))
+        rows.append(pct_row("This is my Replaced 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[1]))
         tbl = pd.DataFrame(rows)
         return self.sort_by_value(tbl) if numeric else tbl
 
@@ -732,7 +733,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -821,7 +822,7 @@ class DataEngine:
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -977,7 +978,7 @@ class DataEngine:
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -1269,7 +1270,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def considered_mask(codes):
@@ -1342,7 +1343,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -1397,7 +1398,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, code):
@@ -1438,7 +1439,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, code):
