@@ -173,9 +173,9 @@ def render_login() -> bool:
     _, mid, _ = st.columns([1, 1.1, 1])
     with mid:
         st.markdown("<div style='height:9vh'></div>", unsafe_allow_html=True)
+        st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
-            st.markdown("<div style='padding:1.4rem 0.5rem 0 0.5rem;'>", unsafe_allow_html=True)
+            st.markdown("<div style='padding:0.8rem 0.5rem 0 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
                 "<div class='login-tagline'>Digital Showroom Intelligence Portal &mdash; built by Infoleap for Royal Enfield</div>"
@@ -250,9 +250,9 @@ def render_landing() -> bool:
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
+        st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
-            st.markdown("<div style='padding:1.4rem 0.5rem 1.6rem 0.5rem;'>", unsafe_allow_html=True)
+            st.markdown("<div style='padding:0.8rem 0.5rem 1.6rem 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
                 "<div class='landing-tagline'>Digital Showroom Intelligence Portal</div>"
