@@ -597,15 +597,18 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # had a bare marker glyph, no magnitude either). Now
                     # appends "▲ +Xpp" to the cell text itself, not just a
                     # background tint, so it reads without relying on color.
-                    if marker in ('▲', '△', '▼', '▽'):
+                    # Suppress marker display when value rounds to "0%" — underlying
+                    # proportion is <0.5% and showing "0% ▲" is visually misleading.
+                    _suppress = (txt == "0%")
+                    if not _suppress and marker in ('▲', '△', '▼', '▽'):
                         txt = f"{txt} {marker}"
-                    if marker == '▲':
+                    if not _suppress and marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
-                    elif marker == '△':
+                    elif not _suppress and marker == '△':
                         style += f"background:{SIG_LIGHT_GREEN};color:#1A1A1A;font-weight:600;"
-                    elif marker == '▼':
+                    elif not _suppress and marker == '▼':
                         style += f"background:{SIG_DEEP_RED};color:white;font-weight:700;"
-                    elif marker == '▽':
+                    elif not _suppress and marker == '▽':
                         style += f"background:{SIG_LIGHT_RED};color:#1A1A1A;font-weight:600;"
                 # Custom combined column tint — only when significance
                 # didn't already color this cell (sig stays the priority
@@ -1007,9 +1010,12 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
             style = f"padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid #cbd5e1; background: {row_bg};"
             if is_bold:
                 style += " font-weight: 700;"
-            if marker == '▲':
+            # Suppress significance highlight when display value rounds to "0%" —
+            # underlying proportion is <0.5% but z-test can still fire on near-zero
+            # values, producing a confusing "0% ▲" cell.
+            if txt != "0%" and marker == '▲':
                 style += f" background: {SIG_DEEP_GREEN} !important; color: white !important; font-weight: 700;"
-            elif marker == '△':
+            elif txt != "0%" and marker == '△':
                 style += f" background: {SIG_LIGHT_GREEN} !important; color: #0F5132 !important; font-weight: 600;"
             cells.append(f"<td style='{style}'>{txt}</td>")
         return "".join(cells)

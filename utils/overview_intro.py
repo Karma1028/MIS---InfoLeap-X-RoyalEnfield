@@ -28,6 +28,7 @@ DATA_LAG_TABLE = [
     ("July", "June"), ("August", "July"), ("September", "August"),
     ("October", "September"), ("November", "October"), ("December", "November"),
     ("January", "December"), ("February", "January"), ("March", "February"),
+    ("April", "March"), ("May", "April"),
 ]
 
 SEGMENT_DEFINITIONS = [
