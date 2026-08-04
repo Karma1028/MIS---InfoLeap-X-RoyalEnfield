@@ -3,7 +3,7 @@ import streamlit.components.v1 as _components
 from auth import render_login, render_landing
 from styles.theme import render_theme_css, SEGMENT_COLORS
 from utils.data_engine import DataEngine, RE_MODEL_PLATFORM, RE_MODEL_LABELS, month_label_to_fy_quarter
-from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers
+from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers, render_collapsible_reasons_table
 from utils.stat_engine import compare_to_baseline_by_column, calculate_significance, gaps_by_column
 from utils.compare import render_comparison_page
 from utils.verbatim_intel import render_verbatim_intelligence_page
@@ -134,16 +134,7 @@ if nav_choice in EXTRA_PAGES:
             _pf_df = _pf_df[_pf_df['month_label'].isin(set(_pf_months))]
             _pf_seg_dfs[_pf_lbl] = _pf_df
         render_product_features_page(engine, _pf_seg_dfs, list(_pf_months))
-    elif "Settings" in nav_choice:
-        render_settings_page()
-    else:
-        # Bug fix: `platform`/`model` (the main sidebar filters) aren't
-        # defined until after this EXTRA_PAGES block's st.stop() below —
-        # referencing them here always raised NameError the moment anyone
-        # opened this page. Verbatim Intelligence gets its own small
-        # inline Platform/Model selectors instead (same pattern already
-        # used above for Dealership Intelligence / Product Feature
-        # Ratings), rather than depending on state that doesn't exist yet.
+    elif "Verbatim" in nav_choice:
         st.sidebar.markdown("### Report Filters")
         _vi_plat_map = {"All": "All", "350CC": "J Platform (350CC)", "450CC": "K Platform (450CC)", "650CC": "P Platform (650CC)"}
         _vi_platform = st.sidebar.selectbox("Platform (CC)", list(_vi_plat_map.keys()),
@@ -153,6 +144,8 @@ if nav_choice in EXTRA_PAGES:
             _vi_model_options += sorted(RE_MODEL_LABELS[code] for code, plat in RE_MODEL_PLATFORM.items() if plat == _vi_platform)
         _vi_model = st.sidebar.selectbox("Model", _vi_model_options, key="vi_model")
         render_verbatim_intelligence_page(engine, platform=_vi_platform, re_model=_vi_model)
+    elif "Settings" in nav_choice:
+        render_settings_page()
     if st.sidebar.button("Log out", type="secondary", key="logout_extra"):
         st.session_state["authenticated"] = False
         st.session_state["entered_dashboard"] = False
@@ -1418,50 +1411,41 @@ REASONS_COLOR = "#D6742D"
 # every segment; Brand Owned/Brand Considered/Additional+Replaced/Type of
 # Buyer are all validated now (see CLAUDE.md Resolved Blockers), so the
 # earlier blanket hide is no longer warranted either.
-if segment_value == "Acceptor":
-    st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
-    st.markdown("### Additional + Replaced")
-    st.caption("What did these respondents own before this purchase? CC-wise breakdown of the bike being added or replaced.")
-    section("Additional + Replaced — CC Wise",
-            lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-            color=ADD_REPL_COLOR, chart_type="stacked_bar")
-    if not _overview_is_comparison:
-        brand_wise_section("Additional + Replaced — Brand Wise",
-                            lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
-                            color=ADD_REPL_COLOR)
+# Render Additional + Replaced for all segments & Overview (matches live website)
+st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
+st.markdown("### Additional + Replaced")
+st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
+section("Additional + Replaced — CC Wise",
+        lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+        color=ADD_REPL_COLOR, chart_type="stacked_bar")
+if not _overview_is_comparison:
+    brand_wise_section("Additional + Replaced — Brand Wise",
+                        lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                        color=ADD_REPL_COLOR)
 
-if segment_value in ("Acceptor", "Rejector", "Cancelled"):
-    st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
-    st.markdown("### Brand Owned")
-    # Acceptors trivially own RE (they just bought one) — use baseline_df (all owners:
-    # Rej∪BBC-confirmed∪Acc) so competitor bikes appear, matching the live site (base ~2938).
-    _bo_df = baseline_df if segment_value == "Acceptor" else df
-    _bo_label = "All Owners" if segment_value == "Acceptor" else segment_value
-    _bo_caption = ("Bike ownership across all respondents — Acceptors' new RE purchase aside, "
-                   "what bikes do people in the study already ride?" if segment_value == "Acceptor"
-                   else "Current bike ownership — what brand and CC segment does this respondent already ride?")
-    st.caption(_bo_caption)
-    section("Brand Owned — CC Wise",
-            lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="cc", base_label=_lbl, numeric=True, extra_groups=custom_group),
-            color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
-    if not _overview_is_comparison:
-        brand_wise_section("Brand Owned — Brand Wise",
-                            lambda d, s, _df=_bo_df, _lbl=_bo_label: engine.brand_owned_table(_df, by="brand", base_label=_lbl, numeric=True, extra_groups=custom_group),
-                            color=BRAND_OWNED_COLOR)
+# Render Brand Owned for all segments & Overview (matches live website)
+st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
+st.markdown("### Brand Owned")
+st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
+section("Brand Owned — CC Wise",
+        lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+        color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
+if not _overview_is_comparison:
+    brand_wise_section("Brand Owned — Brand Wise",
+                        lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                        color=BRAND_OWNED_COLOR)
 
-# Brand Considered applies ONLY to Acceptors (Rejectors & Cancelled show Brand Owned data instead per user request)
-if segment_value == "Acceptor":
-    st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
-    st.markdown("### Brand Considered")
-    st.caption("Which other brands did this respondent evaluate before deciding? The competitive set — high overlap with a competitor here means RE is losing comparison battles in that CC segment.")
-    section("Brand Considered — CC Wise",
-            lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-            caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.",
-            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
+# Render Brand Considered for all segments & Overview (matches live website)
+st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
+st.markdown("### Brand Considered")
+st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
+section("Brand Considered — CC Wise",
+        lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+        color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
+if not _overview_is_comparison:
     brand_wise_section("Brand Considered — Brand Wise",
                         lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
-                        color=BRAND_CONSIDERED_COLOR,
-                        caption="Approximate — see docs/DATA_FIELD_MAPPING.md Addendum 8/9.")
+                        color=BRAND_CONSIDERED_COLOR)
 
 # AQ2A — Competitor CC Preference (Rejectors only — most relevant; 84.8% chose 351CC+)
 if segment_value == "Rejector":
@@ -1535,30 +1519,61 @@ st.markdown("### Reasons & Motivations")
 # (2026-07-28), so Overview/"All" gets a real combined table too, not the
 # placeholder -- each respondent decodes through their OWN segment's
 # netting sheet even when df spans all three.
-_REASONS_LABELS = {
-    "Cancelled": "Reasons for Cancelling",
-    "Rejector": "Reasons for Rejection",
-    "Acceptor": "Key Buying Factors",
-    "All": "Key Buying Factors / Reasons for Rejection / Reasons for Cancelling",
-}
-if segment_value in _REASONS_LABELS:
-    _reasons_label = _REASONS_LABELS[segment_value]
-    st.caption(f"{_reasons_label} — decoded from each respondent's own Infoleap-assigned netting code, matching the live dashboard exactly (not an AI approximation).")
-    # Can't use the shared section() helper here -- it always computes a
-    # significance-vs-baseline table too, and that baseline (the OTHER
-    # segments combined) can span multiple segments at once (e.g.
-    # Rejector+Cancelled together). reasons_table() correctly rejects a
-    # mixed-segment df -- each segment's Reasons codes come from a
-    # DIFFERENT netting sheet/question, so "vs the other segments combined"
-    # isn't a coherent comparison for this table the way it is for Age/
-    # Education. Render this segment's own table only, no baseline compare.
-    for _r_title, _r_by in ((f"{_reasons_label} — Category Wise", "supernet"),
-                             (f"{_reasons_label} — Detailed", "net")):
-        _r_tbl = _trim_to_selected_months(
-            engine.reasons_table(df, base_label=segment_value, by=_r_by, numeric=True, extra_groups=custom_group))
+if segment_value == "Acceptor":
+    st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
+    st.markdown("### Key Buying Factors (Why Bought)")
+    st.caption("Decoded from each respondent's own Infoleap-assigned netting code, matching the raw Masterfile workbook exactly (not an AI approximation).")
+    _r_tree = engine.reasons_tree_data(df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=custom_group)
+    with st.container(border=True):
+        render_collapsible_reasons_table(_r_tree, "Key Buying Factors (Why Bought)", color=REASONS_COLOR, key_suffix="acc_mq2a")
+    _r_super_tbl = _trim_to_selected_months(
+        engine.reasons_table(df, base_label="Acceptor", broad_prefix="mq2a", by="supernet", numeric=True, extra_groups=custom_group))
+    trend_map["Key Buying Factors — Category Wise"] = _r_super_tbl
+
+elif segment_value in ("Rejector", "Cancelled"):
+    st.markdown('<div id="sec-reasons-considered"></div>', unsafe_allow_html=True)
+    st.markdown("### Why They Considered RE First")
+    st.caption("Positive considerations & factors liked about RE before rejecting/cancelling — decoded from Infoleap netting codes.")
+    _r_tree_c = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq2c", extra_groups=custom_group)
+    with st.container(border=True):
+        render_collapsible_reasons_table(_r_tree_c, "Why They Considered RE First", color=BRAND_CONSIDERED_COLOR, key_suffix=f"{segment_value}_mq2c")
+    _r_super_c = _trim_to_selected_months(
+        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq2c", by="supernet", numeric=True, extra_groups=custom_group))
+    trend_map["Why Considered RE — Category Wise"] = _r_super_c
+
+    _rej_label = "Reasons for Rejection" if segment_value == "Rejector" else "Reasons for Cancelling"
+    st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
+    st.markdown(f"### {_rej_label}")
+    st.caption(f"{_rej_label} — decoded from each respondent's own Infoleap-assigned netting code.")
+    _r_tree_r = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq3a", extra_groups=custom_group)
+    with st.container(border=True):
+        render_collapsible_reasons_table(_r_tree_r, _rej_label, color=REASONS_COLOR, key_suffix=f"{segment_value}_mq3a")
+    _r_super_r = _trim_to_selected_months(
+        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq3a", by="supernet", numeric=True, extra_groups=custom_group))
+    trend_map[f"{_rej_label} — Category Wise"] = _r_super_r
+
+elif segment_value in ("Overview", "All"):
+    st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
+    st.markdown("### Open-Ended Netting Taxonomy Breakdown")
+    st.caption("Official Infoleap netting codebook breakdown across Acceptor (KBF), Rejector (Considered & Rejected), and Cancelled segments.")
+    _acc_df = engine.filter_df("Acceptor")
+    if len(_acc_df) > 0:
+        st.markdown("#### Acceptors — Key Buying Factors")
+        _r_tree_acc = engine.reasons_tree_data(_acc_df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=custom_group)
         with st.container(border=True):
-            render_chart_with_table(_r_tbl, _r_title, color=REASONS_COLOR, key=f"chart_{_r_title}", chart_type="stacked_bar")
-        trend_map[_r_title] = _r_tbl
+            render_collapsible_reasons_table(_r_tree_acc, "Acceptors — Key Buying Factors", color=REASONS_COLOR, key_suffix="ov_acc_mq2a")
+    _rej_df = engine.filter_df("Rejector")
+    if len(_rej_df) > 0:
+        st.markdown("#### Rejectors — Reasons for Rejection")
+        _r_tree_rej = engine.reasons_tree_data(_rej_df, base_label="Rejector", broad_prefix="mq3a", extra_groups=custom_group)
+        with st.container(border=True):
+            render_collapsible_reasons_table(_r_tree_rej, "Rejectors — Reasons for Rejection", color=REASONS_COLOR, key_suffix="ov_rej_mq3a")
+    _can_df = engine.filter_df("Cancelled")
+    if len(_can_df) > 0:
+        st.markdown("#### Booked & Cancelled — Reasons for Cancelling")
+        _r_tree_can = engine.reasons_tree_data(_can_df, base_label="Cancelled", broad_prefix="mq3a", extra_groups=custom_group)
+        with st.container(border=True):
+            render_collapsible_reasons_table(_r_tree_can, "Booked & Cancelled — Reasons for Cancelling", color=REASONS_COLOR, key_suffix="ov_can_mq3a")
 
 if not _overview_is_comparison:
     st.markdown('<div id="sec-trend"></div>', unsafe_allow_html=True)

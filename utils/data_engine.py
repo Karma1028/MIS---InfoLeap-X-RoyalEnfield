@@ -293,7 +293,7 @@ class DataEngine:
         (their `acc` is null since they were never asked that question),
         `rej`/`can` for Rejector/Cancelled as before.
         """
-        df = self.df
+        df = self.df.copy()
         acceptor_mask = df['aq3_po'].between(1, 14)
         df['segment'] = None
         df.loc[acceptor_mask, 'segment'] = 'Acceptor'
@@ -301,11 +301,6 @@ class DataEngine:
         df.loc[(df['grida'] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
 
         acc_or_aq3po = df['acc'].fillna(df['aq3_po'])
-        # Rejector/Cancelled model code sourced from `seg` (offset-decoded),
-        # not `rej`/`can` directly -- see _segment_slice()'s Rejector/
-        # Cancelled branches for why (seg-14/seg-28 confirmed exact against
-        # a fresh live-site scrape across all 14 RE models; rej/can were
-        # off by 0-3 respondents per model).
         df['re_model_code'] = np.select(
             [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
             [acc_or_aq3po, df['seg'] - 14, df['seg'] - 28],
@@ -314,19 +309,11 @@ class DataEngine:
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
         df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
 
-        # Unified "what model does this respondent actually own" across
-        # RE AND every competitor brand (1-124 scheme), per user request to
-        # filter/segregate by brand+model beyond just RE's 14 models.
-        # Acceptors: acc (their RE purchase). Rejector/Cancelled: aq3 (what
-        # they actually bought instead — RE codes 1-14 here would mean a
-        # Rejector/Cancelled who still ended up owning an RE model; codes
-        # 15-123 are competitor purchases; NaN = no resolvable purchase,
-        # e.g. a Cancelled respondent who never confirmed buying anything).
         df['owned_brand_code'] = acc_or_aq3po.where(df['segment'] == 'Acceptor', df['aq3'])
         acc_map = self.value_maps.get('acc', {})
         df['owned_brand_name'] = df['owned_brand_code'].map(acc_map)
-
         df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
+        self.df = df.copy()
 
     def _derive_month(self):
         # The raw lowercase `month`/`year` text columns are dirty (typos,
@@ -346,34 +333,27 @@ class DataEngine:
             dict(year=year_num, month=month_num, day=1), errors='coerce'
         )
         self.df['month_label'] = dt.dt.strftime("%B'%Y")
+        self.df = self.df.copy()
 
-    def quarter_combined_groups(self, extra_groups=None):
-        """{display_label: [month_labels]} for the live site's always-shown
-        quarter-combined columns (e.g. 'JAS\\'25') — see QUARTER_INITIALS.
-        The trailing (most recent, still-filling) quarter is excluded, same
-        as live: confirmed it shows JAS'25/OND'25/JFM'26 but NOT the current
-        Apr-Jun quarter even though Apr/May already have rows.
-
-        extra_groups: optional {label: [month_labels]} merged in on top —
-        used for the user-defined custom Year+Month combined comparison
-        column (app.py's sidebar picker). Passed in PER CALL rather than
-        stored on `self`, since `engine` is a @st.cache_resource singleton
-        shared across every concurrent session — mutating instance state
-        from one user's filter selection would leak into everyone else's
-        tables."""
+    def quarter_combined_groups(self, extra_groups=None, include_quarters=False):
+        """{display_label: [month_labels]} for quarter-combined columns.
+        include_quarters defaults to False so tables remain clean with monthly columns
+        and do not append trailing JAS'25 / OND'25 / JFM'26 columns across sections.
+        """
         groups = {}
-        for m in self.month_order:
-            q = month_label_to_fy_quarter(m)
-            groups.setdefault(q, []).append(m)
-        quarters_to_show = self.fy_quarter_order[:-1] if len(self.fy_quarter_order) > 1 else []
         out = {}
-        for q in quarters_to_show:
-            months = groups.get(q)
-            if not months:
-                continue
-            qnum = int(q.split()[0][1:])
-            year_suffix = months[0].split("'")[1][2:]
-            out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
+        if include_quarters:
+            for m in self.month_order:
+                q = month_label_to_fy_quarter(m)
+                groups.setdefault(q, []).append(m)
+            quarters_to_show = self.fy_quarter_order[:-1] if len(self.fy_quarter_order) > 1 else []
+            for q in quarters_to_show:
+                months = groups.get(q)
+                if not months:
+                    continue
+                qnum = int(q.split()[0][1:])
+                year_suffix = months[0].split("'")[1][2:]
+                out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
         if extra_groups:
             out.update(extra_groups)
         return out
@@ -456,10 +436,10 @@ class DataEngine:
         def _apply_filters(d):
             if platform and platform != "All":
                 d = d[d['re_platform'] == platform]
-            if model_code:
-                d = d[d['re_model_code'] == model_code]
-            if owned_brand_code:
-                d = d[d['owned_brand_code'] == owned_brand_code]
+            if model_code is not None:
+                d = d[pd.to_numeric(d['re_model_code'], errors='coerce') == float(model_code)]
+            if owned_brand_code is not None:
+                d = d[pd.to_numeric(d['owned_brand_code'], errors='coerce') == float(owned_brand_code)]
             return d
 
         if segment in ("Acceptor", "Rejector", "Cancelled"):
@@ -983,7 +963,7 @@ class DataEngine:
             for c in chunks:
                 hit = code_map.get(c)
                 if hit:
-                    supernet, net = hit
+                    supernet, net = hit[0], hit[1]
                     supernet = aliases.get(supernet, supernet)
                     cats.add(supernet if by == "supernet" else f"{supernet} > {net}")
             return frozenset(cats)
@@ -1013,6 +993,245 @@ class DataEngine:
             rows.append(pct_row(cat, mask))
         return pd.DataFrame(rows)
 
+    def reasons_tree_data(self, df, base_label="All", numeric=False, extra_groups=None, broad_prefix=None):
+        """Computes a hierarchical Supernet -> Net structure for open-ended netting taxonomy responses.
+        Returns a dictionary with columns, base counts, and sorted supernets with child nets.
+        """
+        from utils.netting_taxonomy import load_code_map, sheet_for
+
+        if len(df) == 0:
+            return {"columns": ["All"], "col_bases": {"All": 0}, "supernets": []}
+
+        segments_present = set(df['segment'].dropna().unique())
+        _VALID = ("Acceptor", "Rejector", "Cancelled")
+        if not segments_present or not segments_present <= set(_VALID):
+            return {"columns": ["All"], "col_bases": {"All": 0}, "supernets": []}
+
+        from utils.stat_engine import calculate_significance
+
+        _seg_conf = {}
+        for seg in segments_present:
+            _prefix = broad_prefix or ("mq2a" if seg == "Acceptor" else "mq3a")
+            sheet_name = sheet_for(seg, _prefix)
+            code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
+            _seg_conf[seg] = (
+                code_col,
+                load_code_map(self.masterfile_path, sheet_name),
+                self.REASONS_SUPERNET_ALIASES.get(sheet_name, {}),
+            )
+
+        def decode_hierarchical(row):
+            code_col, code_map, aliases = _seg_conf[row['segment']]
+            code_str = row[code_col]
+            code_str = code_str if isinstance(code_str, str) else ""
+            if not code_str:
+                return (frozenset(), frozenset(), frozenset(), frozenset())
+            chunks = [code_str[i:i + 3] for i in range(0, len(code_str), 3)]
+            supernets = set()
+            supernet_nets = set()
+            supernet_net_subnets = set()
+            supernet_net_subnet_items = set()
+            for c in chunks:
+                hit = code_map.get(c)
+                if hit:
+                    if len(hit) >= 4:
+                        supernet, net, subnet, item = hit[0], hit[1], hit[2], hit[3]
+                    elif len(hit) == 3:
+                        supernet, net, subnet = hit[0], hit[1], hit[2]
+                        item = subnet
+                    elif len(hit) == 2:
+                        supernet, net = hit[0], hit[1]
+                        subnet = net
+                        item = net
+                    else:
+                        supernet = hit[0]
+                        net = supernet
+                        subnet = supernet
+                        item = supernet
+
+                    supernet = aliases.get(supernet, supernet)
+                    supernets.add(supernet)
+                    supernet_nets.add((supernet, net))
+                    supernet_net_subnets.add((supernet, net, subnet))
+                    supernet_net_subnet_items.add((supernet, net, subnet, item))
+            return (frozenset(supernets), frozenset(supernet_nets), frozenset(supernet_net_subnets), frozenset(supernet_net_subnet_items))
+
+        decoded = df.apply(decode_hierarchical, axis=1)
+
+        # Per user request: exclude combined quarter months (JAS'25, OND'25, JFM'26) from open-ended netting table
+        all_time_cols = ["All"] + [c for c in MONTH_ORDER if c in df['month_label'].values or any(col in df.columns for col in MONTH_ORDER)]
+
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        col_indices = {}
+        col_bases = {}
+        for col in all_time_cols:
+            if col == "All":
+                idx = df.index
+            else:
+                idx = self._col_index(df, col, quarter_groups)
+            col_indices[col] = idx
+            col_bases[col] = len(idx)
+
+        # Filter out time columns with 0 base size unless it's All
+        all_time_cols = [c for c in all_time_cols if c == "All" or col_bases[c] > 0]
+
+        all_supernets = set()
+        all_nets_map = {}
+        all_subnets_map = {}
+        all_items_map = {}
+        for tup in decoded:
+            super_set = tup[0] if len(tup) >= 1 else set()
+            net_set = tup[1] if len(tup) >= 2 else set()
+            subnet_set = tup[2] if len(tup) >= 3 else set()
+            item_set = tup[3] if len(tup) >= 4 else set()
+
+            for s in super_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+            for s, n in net_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+            for s, n, sub in subnet_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+                all_subnets_map[(s, n)].add(sub)
+                if (s, n, sub) not in all_items_map:
+                    all_items_map[(s, n, sub)] = set()
+            for s, n, sub, itm in item_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+                all_subnets_map[(s, n)].add(sub)
+                if (s, n, sub) not in all_items_map:
+                    all_items_map[(s, n, sub)] = set()
+                all_items_map[(s, n, sub)].add(itm)
+
+        def _calc_pcts_and_sig(mask):
+            num_pcts = {}
+            str_pcts = {}
+            sig_markers = {}
+
+            all_n = col_bases.get("All", 0)
+            all_mask = mask & (df.index.isin(col_indices["All"]))
+            all_k = all_mask.sum()
+            all_pct = (all_k / all_n * 100.0) if all_n > 0 else 0.0
+            p2 = all_pct / 100.0
+            all_b = all_n
+
+            for col in all_time_cols:
+                idx = col_indices[col]
+                b = col_bases[col]
+                if b == 0:
+                    str_pcts[col] = "-"
+                    num_pcts[col] = 0.0
+                    sig_markers[col] = ""
+                    continue
+
+                col_m = mask & (df.index.isin(idx))
+                k = col_m.sum()
+                val = (k / b * 100.0) if b > 0 else 0.0
+                num_pcts[col] = val
+                p1 = val / 100.0
+
+                marker = ""
+                if col != "All" and b >= 30 and all_b >= 30:
+                    res = calculate_significance(p1, b, p2, all_b)
+                    if res["z_score"] > 0:
+                        if res["tier"] == "95":
+                            marker = "▲"
+                        elif res["tier"] == "90":
+                            marker = "△"
+
+                sig_markers[col] = marker
+                str_val = f"{val:.0f}%" if not numeric else val
+                if marker:
+                    str_pcts[col] = f"{str_val} {marker}"
+                else:
+                    str_pcts[col] = str_val
+
+            return str_pcts, num_pcts, sig_markers
+
+        supernet_list = []
+        for s in all_supernets:
+            s_mask = decoded.apply(lambda tup, _s=s: _s in tup[0])
+            s_str_pcts, s_num_pcts, s_sig = _calc_pcts_and_sig(s_mask)
+
+            nets_list = []
+            for n in all_nets_map.get(s, []):
+                sn_mask = decoded.apply(lambda tup, _s=s, _n=n: (_s, _n) in tup[1])
+                n_str_pcts, n_num_pcts, n_sig = _calc_pcts_and_sig(sn_mask)
+
+                subnets_list = []
+                for sub in all_subnets_map.get((s, n), []):
+                    sns_mask = decoded.apply(lambda tup, _s=s, _n=n, _sub=sub: len(tup) >= 3 and (_s, _n, _sub) in tup[2])
+                    sub_str_pcts, sub_num_pcts, sub_sig = _calc_pcts_and_sig(sns_mask)
+
+                    items_list = []
+                    for itm in all_items_map.get((s, n, sub), []):
+                        if itm and str(itm).strip() and str(itm).strip() != str(sub).strip():
+                            itms_mask = decoded.apply(lambda tup, _s=s, _n=n, _sub=sub, _itm=itm: len(tup) >= 4 and (_s, _n, _sub, _itm) in tup[3])
+                            itm_str_pcts, itm_num_pcts, itm_sig = _calc_pcts_and_sig(itms_mask)
+                            items_list.append({
+                                'name': itm,
+                                'pcts': itm_str_pcts,
+                                'numeric_pcts': itm_num_pcts,
+                                'sig_markers': itm_sig,
+                                'all_pct': itm_num_pcts['All']
+                            })
+
+                    items_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+                    subnets_list.append({
+                        'name': sub,
+                        'pcts': sub_str_pcts,
+                        'numeric_pcts': sub_num_pcts,
+                        'sig_markers': sub_sig,
+                        'all_pct': sub_num_pcts['All'],
+                        'items': items_list
+                    })
+
+                subnets_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+                nets_list.append({
+                    'name': n,
+                    'pcts': n_str_pcts,
+                    'numeric_pcts': n_num_pcts,
+                    'sig_markers': n_sig,
+                    'all_pct': n_num_pcts['All'],
+                    'subnets': subnets_list
+                })
+
+            nets_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+            supernet_list.append({
+                'name': s,
+                'pcts': s_str_pcts,
+                'numeric_pcts': s_num_pcts,
+                'sig_markers': s_sig,
+                'all_pct': s_num_pcts['All'],
+                'nets': nets_list
+            })
+
+        supernet_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+        return {
+            'columns': all_time_cols,
+            'col_bases': col_bases,
+            'base_label': f"Base : Total_{base_label}",
+            'supernets': supernet_list,
+        }
     # ------------------------------------------------------------------
     # Brand Considered — multi-select aq5a_1..aq5a_124 (1=selected), same
     # code order as acc/rej/can (confirmed via Enroute_AP_V2_netting.xlsx

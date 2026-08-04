@@ -52,9 +52,9 @@ def test_load_code_map_keys_by_zero_padded_code():
     with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
         code_map = load_code_map("fake_path.xlsx", "MQ2a+MQ2b_KBF")
     assert code_map == {
-        "002": ("Visual Appearance", "Body Design"),
-        "011": ("Visual Appearance", "Design Language"),
-        "045": ("Overall price", "Value for money"),
+        "002": ("Visual Appearance", "Body Design", "Front profile", "Liked the round shaped headlight design"),
+        "011": ("Visual Appearance", "Design Language", "Design Language", "Aggressive looks"),
+        "045": ("Overall price", "Value for money", "Value for money", "Priced reasonably"),
     }
 
 
@@ -70,7 +70,7 @@ def test_load_code_map_zero_pads_short_codes():
     mock_wb.__getitem__.return_value = mock_ws
     with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
         code_map = load_code_map("fake_path.xlsx", "MQ2a+MQ2b_KBF")
-    assert code_map == {"002": ("Visual Appearance", "Body Design")}
+    assert code_map == {"002": ("Visual Appearance", "Body Design", "Front profile", "Liked headlight")}
 
 
 def test_load_code_map_keeps_row_with_blank_net_falling_back_to_supernet():
@@ -90,7 +90,7 @@ def test_load_code_map_keeps_row_with_blank_net_falling_back_to_supernet():
     mock_wb.__getitem__.return_value = mock_ws
     with patch("utils.netting_taxonomy.openpyxl.load_workbook", return_value=mock_wb):
         code_map = load_code_map("fake_path.xlsx", "MQ3a+MQ3b_Rejecter")
-    assert code_map == {"183": ("Waiting Period", "Waiting Period")}
+    assert code_map == {"183": ("Waiting Period", "Waiting Period", "Waiting Period", "Very long waiting period")}
 
 
 def test_load_code_map_raises_clear_error_for_missing_sheet():

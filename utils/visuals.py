@@ -8,6 +8,11 @@ import streamlit as st
 from styles.theme import RE_RED, CHART_SEQUENCE, BORDER, MUTED, INFOLEAP_GREEN, INFOLEAP_ORANGE, INFOLEAP_BLUE
 from utils.stat_engine import calculate_significance
 
+BRAND_CONSIDERED_COLOR = "#1B8A8A"
+REASONS_COLOR = "#D6742D"
+ADD_REPL_COLOR = "#2E3192"
+BRAND_OWNED_COLOR = "#662D91"
+
 PLOTLY_CONFIG = {"displayModeBar": False, "staticPlot": False}
 
 # Fixed width (px) of every data table's leftmost "Category" row-label
@@ -116,8 +121,7 @@ def _pct_label(v, marker="", gap=None):
     base = "-" if v == 0 else f"{v:.0f}%"
     if not marker:
         return base
-    gap_str = f" {gap:+.0f}pp" if gap is not None and gap == gap else ""  # gap==gap filters NaN
-    return f"{base} {marker}{gap_str}".strip()
+    return f"{base} {marker}".strip()
 
 
 def _sig_border(marker):
@@ -594,12 +598,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # appends "▲ +Xpp" to the cell text itself, not just a
                     # background tint, so it reads without relying on color.
                     if marker in ('▲', '△', '▼', '▽'):
-                        _gap = None
-                        if col_sig_gaps and c in col_sig_gaps:
-                            _col_gaps = col_sig_gaps[c]
-                            _gap = _col_gaps[i - 1] if i - 1 < len(_col_gaps) else None
-                        _gap_str = f" {_gap:+.0f}pp" if _gap is not None and _gap == _gap else ""
-                        txt = f"{txt} {marker}{_gap_str}"
+                        txt = f"{txt} {marker}"
                     if marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
                     elif marker == '△':
@@ -955,3 +954,295 @@ def month_trend_chart(table_df, month_cols, category_filter=None):
         tooltip=['Category:N', 'Month:N', 'Value:Q'],
     ).properties(height=260).configure_view(strokeWidth=0).configure_axis(grid=True, gridColor=BORDER)
     return chart
+
+
+import textwrap
+
+
+def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suffix=""):
+    """Renders a 3-level hierarchical, collapsible Supernet -> Net -> Subnet table for open-ended netting taxonomy questions.
+    Row backgrounds are color-coded by level per user request:
+    - Level 1 (Supernet): Orange tint (#FFEDD5)
+    - Level 2 (Net): Yellow tint (#FEF9C3)
+    - Level 3 (Subnet): Light Blue tint (#E0F2FE)
+    Significance highlights:
+    - 95% confidence (▲): Dark Green (#1A7A3C, white text)
+    - 90% confidence (△): Light Green (#B7E4C0, dark green text)
+    - NO red highlights (positive increases only).
+    """
+    if not tree_data or not tree_data.get('supernets'):
+        st.info("No data available for this question / selection.")
+        return
+
+    cols = tree_data['columns']
+    col_bases = tree_data['col_bases']
+    base_label = tree_data['base_label']
+    supernets = tree_data['supernets']
+
+    expand_all = st.checkbox("Expand All Categories", value=False, key=f"expand_all_{key_suffix}")
+
+    def _th_cell(c):
+        if c == 'Category':
+            return "<th class='col-cat'>Category / Netting Factor</th>"
+        label = c.split("'")[0][:3] + "'" + c.split("'")[1][2:] if "'" in c else c
+        return f"<th class='col-val'>{label}</th>"
+
+    header_html = "".join([_th_cell('Category')] + [_th_cell(c) for c in cols])
+
+    def _base_cell(c):
+        if c == 'Category':
+            return f"<td class='col-cat'><strong>{_html.escape(base_label)}</strong></td>"
+        n_val = col_bases.get(c, 0)
+        return f"<td class='col-val'><strong>n={n_val:,}</strong></td>"
+
+    base_row_html = "".join([_base_cell('Category')] + [_base_cell(c) for c in cols])
+
+    def _val_cells(item, row_bg, is_bold=False):
+        cells = []
+        pcts = item.get('pcts', {})
+        markers = item.get('sig_markers', {})
+        for c in cols:
+            txt = str(pcts.get(c, '-'))
+            marker = markers.get(c, '')
+            style = f"padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid #cbd5e1; background: {row_bg};"
+            if is_bold:
+                style += " font-weight: 700;"
+            if marker == '▲':
+                style += f" background: {SIG_DEEP_GREEN} !important; color: white !important; font-weight: 700;"
+            elif marker == '△':
+                style += f" background: {SIG_LIGHT_GREEN} !important; color: #0F5132 !important; font-weight: 600;"
+            cells.append(f"<td style='{style}'>{txt}</td>")
+        return "".join(cells)
+
+    tbodies = []
+    dynamic_css_rules = []
+
+    # Row background tints per user instructions:
+    # Level 1 (Supernet): Orange tint (#FFEDD5, text #7C2D12)
+    # Level 2 (Net): Yellow tint (#FEF9C3, text #713F12)
+    # Level 3 (Subnet): Light Blue tint (#E0F2FE, text #0C4A6E)
+    SNET_BG = "#FFEDD5"
+    NET_BG = "#FEF9C3"
+    SUBNET_BG = "#E0F2FE"
+
+    for s_idx, snet in enumerate(supernets):
+        chk_s_id = f"chk_s_{key_suffix}_{s_idx}"
+        checked_attr = "checked" if expand_all else ""
+
+        s_cat_cell = (
+            f"<td class='col-cat' style='background:{SNET_BG}; color:#7C2D12; border-bottom:1px solid #cbd5e1;'>"
+            f"<label for='{chk_s_id}' class='snet-label'>"
+            f"<input type='checkbox' id='{chk_s_id}' class='snet-chk' {checked_attr} />"
+            f"<span class='snet-arrow'></span>"
+            f"<strong>{_html.escape(snet['name'])}</strong>"
+            f"</label>"
+            f"</td>"
+        )
+        snet_row = f"<tr class='snet-row'>{s_cat_cell}{_val_cells(snet, row_bg=SNET_BG, is_bold=True)}</tr>"
+
+        level2_3_rows = []
+        for n_idx, net in enumerate(snet.get('nets', [])):
+            chk_n_id = f"chk_n_{key_suffix}_{s_idx}_{n_idx}"
+            subnets = net.get('subnets', [])
+            has_subnets = len(subnets) > 0
+
+            if has_subnets:
+                n_cat_cell = (
+                    f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1;'>"
+                    f"<label for='{chk_n_id}' class='net-label'>"
+                    f"<input type='checkbox' id='{chk_n_id}' class='net-chk' {checked_attr} />"
+                    f"<span class='net-arrow'></span>"
+                    f"<strong>[{_html.escape(net['name'])}]</strong>"
+                    f"</label>"
+                    f"</td>"
+                )
+                dynamic_css_rules.append(
+                    f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked) tr.sub-{key_suffix}-{s_idx}-{n_idx} {{ display: table-row !important; }}"
+                )
+            else:
+                n_cat_cell = f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1;'><span class='net-prefix'>↳</span>[{_html.escape(net['name'])}]</td>"
+
+            net_row = f"<tr class='net-row'>{n_cat_cell}{_val_cells(net, row_bg=NET_BG, is_bold=has_subnets)}</tr>"
+            level2_3_rows.append(net_row)
+
+            for sub_idx, sub in enumerate(subnets):
+                chk_sub_id = f"chk_sub_{key_suffix}_{s_idx}_{n_idx}_{sub_idx}"
+                items = sub.get('items', [])
+                has_items = len(items) > 0
+
+                if has_items:
+                    sub_cat_cell = (
+                        f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1;'>"
+                        f"<label for='{chk_sub_id}' class='sub-label'>"
+                        f"<input type='checkbox' id='{chk_sub_id}' class='sub-chk' {checked_attr} />"
+                        f"<span class='sub-arrow'></span>"
+                        f"<strong>[{_html.escape(sub['name'])}]</strong>"
+                        f"</label>"
+                        f"</td>"
+                    )
+                    dynamic_css_rules.append(
+                        f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked):has(#{chk_sub_id}:checked) tr.itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx} {{ display: table-row !important; }}"
+                    )
+                else:
+                    sub_cat_cell = f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1;'><span class='sub-prefix'>↳↳</span>[{_html.escape(sub['name'])}]</td>"
+
+                sub_row = f"<tr class='subnet-row sub-{key_suffix}-{s_idx}-{n_idx}'>{sub_cat_cell}{_val_cells(sub, row_bg=SUBNET_BG, is_bold=has_items)}</tr>"
+                level2_3_rows.append(sub_row)
+
+                for itm in items:
+                    itm_cat_cell = f"<td class='col-cat indent-item' style='background:#FAFAF9; color:#334155; border-bottom:1px solid #cbd5e1; padding-left: 36px;'><span class='item-prefix'>↳↳↳</span>{_html.escape(itm['name'])}</td>"
+                    itm_row = f"<tr class='item-row sub-{key_suffix}-{s_idx}-{n_idx} itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx}'>{itm_cat_cell}{_val_cells(itm, row_bg='#FAFAF9', is_bold=False)}</tr>"
+                    level2_3_rows.append(itm_row)
+
+        tbody_html = f"<tbody class='supernet-body'>{snet_row}{''.join(level2_3_rows)}</tbody>"
+        tbodies.append(tbody_html)
+
+    extra_css = "\n".join(dynamic_css_rules)
+    css_styles = f"""
+    <style>
+    .netting-table-card {{
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        margin: 6px 0 16px 0;
+    }}
+    .netting-table-title {{
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 8px;
+    }}
+    .netting-scroll-wrap {{
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        overflow-x: auto;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }}
+    .netting-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+    }}
+    .netting-table th {{
+        background: #f8fafc;
+        color: #334155;
+        font-weight: 700;
+        font-size: 0.8rem;
+        padding: 9px 12px;
+        border-bottom: 2px solid #cbd5e1;
+        text-align: right;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }}
+    .netting-table th.col-cat {{
+        text-align: left;
+        min-width: 260px;
+    }}
+    .netting-table td.col-cat {{
+        text-align: left;
+    }}
+    .base-row td {{
+        background: #f1f5f9;
+        color: #1e293b;
+        font-weight: 700;
+        border-bottom: 2px solid #cbd5e1;
+    }}
+    .supernet-body {{
+        border-bottom: 2px solid #cbd5e1;
+    }}
+    .snet-row {{
+        font-weight: 700;
+        color: #7C2D12;
+    }}
+    .snet-chk, .net-chk {{
+        display: none !important;
+    }}
+    .snet-label, .net-label {{
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        user-select: none;
+    }}
+    .snet-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 14px;
+        font-size: 0.72rem;
+        color: #C2410C;
+        margin-right: 6px;
+    }}
+    .snet-chk:checked + .snet-arrow::before {{
+        content: '▼';
+    }}
+    .net-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 12px;
+        font-size: 0.68rem;
+        color: #854D0E;
+        margin-right: 6px;
+    }}
+    .net-chk:checked + .net-arrow::before {{
+        content: '▼';
+    }}
+    .supernet-body tr.net-row,
+    .supernet-body tr.subnet-row {{
+        display: none;
+    }}
+    .supernet-body:has(.snet-chk:checked) tr.net-row {{
+        display: table-row !important;
+    }}
+    {extra_css}
+    .net-row {{
+        color: #713F12;
+        font-size: 0.81rem;
+    }}
+    .subnet-row {{
+        color: #0C4A6E;
+        font-size: 0.78rem;
+    }}
+    .indent-net {{
+        padding-left: 24px !important;
+    }}
+    .indent-subnet {{
+        padding-left: 44px !important;
+    }}
+    .net-prefix, .sub-prefix {{
+        color: #64748b;
+        margin-right: 6px;
+        font-weight: bold;
+    }}
+    </style>
+    """
+
+    html_code = f"""
+    {css_styles}
+    <div class="netting-table-card">
+    <div class="netting-table-title">{_html.escape(title)}</div>
+    <div class="netting-scroll-wrap">
+    <table class="netting-table">
+    <thead>
+    <tr class="header-row">{header_html}</tr>
+    <tr class="base-row">{base_row_html}</tr>
+    </thead>
+    {''.join(tbodies)}
+    </table>
+    </div>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;padding-left:2px;">
+    💡 <em>Click any Supernet or Net row to expand/collapse underlying factors.</em>
+    </div>
+    </div>
+    """
+
+    if hasattr(st, 'html'):
+        st.html(html_code)
+    else:
+        st.markdown(html_code, unsafe_allow_html=True)
+
+
+
+
+
+

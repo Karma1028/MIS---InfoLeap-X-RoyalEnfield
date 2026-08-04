@@ -1,21 +1,18 @@
-"""Model-wise comparison view — MIS_Dashboard_Requirements.docx 5.2:
-'Side-by-side model comparison... Bullet 350 and Classic 350 data should be
-viewable on the same window pane simultaneously... support selection of any
-two or more models within the same or across CC platforms.'
-
-Per user direction (2026-06-18): this page must carry the SAME filter set
-(Month Range/Quarter) and the SAME metric coverage as the Acceptor/
-Rejector/Cancelled pages, not a stripped-down subset.
-
-Per later user direction (2026-07-22): brand and model selection are now
-locked to strictly 2 each (max_selections=2 on both multiselects below) —
-this page is a head-to-head comparison, not an open-ended overlay.
+"""Model-wise comparison view — Head-to-Head Model Benchmark Page:
+Side-by-side model comparison for any 2 selected models across CC platforms.
+Combines pristine stacked-bar charts, full data tables, significance testing,
+and 4-level open-ended netting taxonomy trees.
 """
 import base64
+import html as _html
+import re
 import streamlit as st
 import pandas as pd
 from utils.data_engine import RE_MODEL_LABELS, month_label_to_fy_quarter
-from utils.visuals import render_chart_with_table, _lighten, _pct_label, MUTED, INFOLEAP_GREEN, RE_RED, INFOLEAP_ORANGE
+from utils.visuals import (
+    render_chart_with_table, _lighten, _pct_label, MUTED, INFOLEAP_GREEN, RE_RED, INFOLEAP_ORANGE,
+    BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table
+)
 from utils.stat_engine import calculate_significance, compare_to_baseline_by_column
 from utils.ai_providers import call_llm, get_active_provider
 from utils.ai_summary import render_chart_ai_blurb
@@ -24,10 +21,7 @@ from utils.model_images import model_image_path
 
 @st.cache_data(show_spinner=False)
 def _img_b64(path):
-    """Base64-encode a product photo for embedding as a fixed-height
-    <img> — st.image can't crop/contain to a uniform aspect ratio on its
-    own, so the gallery's two cards (portrait vs. landscape source
-    photos) ended up visibly different heights."""
+    """Base64-encode a product photo for embedding as a fixed-height <img>."""
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("ascii")
 
@@ -35,6 +29,7 @@ def _img_b64(path):
 def _img_mime(path):
     ext = path.rsplit(".", 1)[-1].lower()
     return {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp"}.get(ext, "png")
+
 
 DEMOGRAPHIC_BUILDERS = {
     "Age": (lambda engine, df, seg: engine.age_table(df, base_label=seg, numeric=True), "bar"),
@@ -68,14 +63,6 @@ def render_comparison_page(engine):
     st.markdown("<h1>Model Comparison</h1>", unsafe_allow_html=True)
     st.caption("Compare exactly 2 models side by side, within the same or across CC platforms — same filters and metrics as the segment pages.")
 
-    # Per user instruction (2026-06-18): "filters will be same across all
-    # segments from the side bar" — Time Period uses the SAME widget keys
-    # as the segment pages (no cmp_ prefix) so switching between Model
-    # Comparison and Overview/Acceptors/etc. keeps the same selection
-    # instead of resetting. Segment context stays comparison-specific (it
-    # means something different here: which population each model's stats
-    # are drawn from, not "which page"). Zone filter removed per explicit
-    # instruction (2026-06-19).
     st.sidebar.markdown("### Comparison Filters")
     segment_for_compare = st.sidebar.selectbox("Segment context", ["All", "Acceptor", "Rejector", "Cancelled"], key="cmp_segment")
 
@@ -93,15 +80,6 @@ def render_comparison_page(engine):
         quarters = st.sidebar.multiselect("Quarter (Apr-Mar FY)", fy_quarter_order, default=fy_quarter_order, key="quarters")
         selected_months = [m for m in month_order if month_label_to_fy_quarter(m) in quarters]
 
-    # Brand + model pickers — wrapped in one bordered card so this filter
-    # block reads as a distinct panel, matching the card treatment used
-    # everywhere else in the app (Overview narrative, segment hero cards)
-    # instead of sitting as bare, disconnected widgets.
-    #
-    # Brands: any number (per 2026-07-27 request -- picking brands just
-    # widens the model pool below, it's not itself the comparison).
-    # Models: locked to strictly 2 -- this page is a head-to-head
-    # comparison, not an open-ended multi-model overlay.
     with st.container(border=True):
         manufacturers = engine.manufacturers()
         default_brands = ["Royal Enfield"] if "Royal Enfield" in manufacturers else manufacturers[:1]
@@ -111,11 +89,8 @@ def render_comparison_page(engine):
             return
         has_competitor = any(b != "Royal Enfield" for b in brands)
         if has_competitor:
-            st.caption("Competitor brand models are tracked via 'what they actually bought' (no rejected/cancelled concept for competitor brands in this dataset) — counts may legitimately be 0 for segments where that doesn't apply (e.g. Acceptors never bought a competitor model).")
+            st.caption("Competitor brand models are tracked via 'what they actually bought' (no rejected/cancelled concept for competitor brands in this dataset) — counts may legitimately be 0 for segments where that doesn't apply.")
 
-        # name_to_info maps the (possibly brand-prefixed, for disambiguation) display
-        # name to (brand, model_code) so each model's filter_df call can route through
-        # the right column (model_code for RE, owned_brand_code for competitors).
         name_to_info = {}
         all_models = []
         for brand in brands:
@@ -135,9 +110,6 @@ def render_comparison_page(engine):
         selected_models = st.multiselect("Models to compare", all_models, default=default_models, max_selections=2)
 
     # Product-image + headline stats gallery — one card per selected model.
-    # Photos are embedded as a fixed-height, object-fit:cover <img> (not
-    # st.image, which can't crop) so both cards line up at the same
-    # height even when the two source photos have different aspect ratios.
     if selected_models:
         _gal_cols = st.columns(len(selected_models))
         for _gi, _model_name in enumerate(selected_models):
@@ -151,10 +123,6 @@ def render_comparison_page(engine):
             with _gal_cols[_gi]:
                 with st.container(border=True):
                     if _m_img_path:
-                        # object-fit:contain (not cover) -- per user report
-                        # the bike was getting cropped/cut off; a light
-                        # background fills the letterboxed space instead of
-                        # cutting off wheels/handlebars to force-fill the box.
                         st.markdown(
                             f"<div style='width:100%;height:260px;border-radius:8px;background:#F7F5F2;"
                             f"display:flex;align-items:center;justify-content:center;overflow:hidden;'>"
@@ -186,7 +154,7 @@ def render_comparison_page(engine):
         st.info("Select 2 models to compare.")
         return
 
-    # ── Load model DataFrames ONCE — reused across all metrics ─────────────
+    # Load model DataFrames ONCE
     model_dfs = {}
     short_names = {}
     for model_name in selected_models:
@@ -199,17 +167,7 @@ def render_comparison_page(engine):
         model_dfs[model_name] = mdf
         short_names[model_name] = model_name.replace("Royal Enfield ", "")
 
-    # ── M2: Segment split bar — Acc/Rej/Can per model ─────────────────────
-    # Shows conversion profile per model before any demographic deep-dive.
-    # Segments overlap (G3-A: 50%+ Rej are also Acc) — use unique base via concat+dedup.
-    #
-    # Visual pass (2026-07-27): brought this in line with every other
-    # chart in the app instead of a bare, unstyled go.Figure -- bordered
-    # card, Oswald title with an n= badge baked into the chart (not a
-    # separate st.markdown heading), lightened/pastel fills matching the
-    # "soothing not solid" treatment used everywhere else, rounded bar
-    # corners, and _pct_label so a genuine 0% reads as "-" like every
-    # other chart's labels do.
+    # Segment split bar
     with st.container(border=True):
         st.caption("% of unique respondents per model in each segment. Does NOT sum to 100% — segments overlap by survey design.")
         try:
@@ -263,19 +221,14 @@ def render_comparison_page(engine):
         except Exception as _e:
             st.caption(f"Segment split unavailable: {_e}")
 
-    # ── M1: All metrics in expanders — no dropdown, scroll to compare all ──
-    st.markdown("### Demographic Comparison — All Metrics")
-    st.caption("Each metric shown below in its own section. Scroll to compare profiles across all dimensions simultaneously.")
+    # Demographic Comparison — All Metrics
+    st.markdown("### Demographic & Market Comparison — All Metrics")
+    st.caption("Each metric shown below in its own section with full charts, tables, and significance testing.")
 
     metric_builders = _metric_builders_for(segment_for_compare)
 
     _sig_cols_row = st.columns([2, 2])
     with _sig_cols_row[0]:
-        # "All" first/default -- per user request, defaults to the whole
-        # selected period instead of forcing a single specific month;
-        # every table already has an "All" column so this needs no
-        # downstream change, the Z-test lookups below already accept any
-        # valid column name.
         sig_test_col = st.selectbox("Significance test month", ["All"] + [m for m in selected_months], key="cmp_sig_col",
                                     help="Which column to run pairwise Z-tests on (N≥30 required) — 'All' uses the whole selected period, or narrow to one month.")
     with _sig_cols_row[1]:
@@ -283,16 +236,13 @@ def render_comparison_page(engine):
                             key="cmp_sig_mode", horizontal=True,
                             help="'Model vs Overall Market' flags where a model over/under-indexes vs all respondents in this segment.")
 
-    # Build overall-market baseline table once (reused across all metrics when sig_mode = Overall)
     _baseline_df = engine.filter_df(segment=segment_for_compare)
     _baseline_df = _baseline_df[_baseline_df['month_label'].isin(selected_months)]
 
-    # Accumulate top-category facts per model per metric for AI summary
     _ai_facts = {short_names[m]: {} for m in selected_models}
 
     for _mi, (metric_name, (builder, _)) in enumerate(metric_builders.items()):
         with st.expander(f"📊 {metric_name}", expanded=(_mi == 0)):
-            # Build table per model for this metric
             tables = {}
             for model_name, mdf in model_dfs.items():
                 if len(mdf) == 0:
@@ -303,7 +253,6 @@ def render_comparison_page(engine):
                         keep_cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
                         tbl = tbl[[c for c in keep_cols if c in tbl.columns]]
                     tables[model_name] = tbl
-                    # Capture top category for AI summary
                     _data_rows = tbl.iloc[1:]
                     if len(_data_rows) and "All" in tbl.columns:
                         _top = _data_rows.loc[_data_rows["All"].astype(float).idxmax()]
@@ -315,26 +264,6 @@ def render_comparison_page(engine):
                 st.caption("Insufficient data for this metric under current filters.")
                 continue
 
-            # Per user request: one consistent chart shape across the whole
-            # app — each model gets its OWN stacked-bar chart + table (same
-            # render_chart_with_table/stacked_bar_chart used on every
-            # segment page). (Stacking the two models' percentages into one
-            # shared bar isn't meaningful — they're independent, non-summing
-            # populations — so "same chart shape" means each panel
-            # individually, not merged into one bar.)
-            #
-            # Stacked vertically, one model's full chart+table then the
-            # next below it (per 2026-07-27 request) -- was side-by-side
-            # columns, which shrank each chart and didn't scale past 2
-            # models.
-            #
-            # The per-metric table uses `tbl` directly (not a further-
-            # capped Category+All view) -- `tbl` already respects the
-            # active Time Period filter (the keep_cols step above: full
-            # month range under "All Months", or just the selected
-            # months/quarter otherwise). An earlier pass here hard-capped
-            # to Category+All regardless of that filter, which lost
-            # month-wise data the user still wanted visible (2026-07-28).
             for model_name, tbl in tables.items():
                 st.markdown(f"**{short_names[model_name]}**")
                 render_chart_with_table(tbl, short_names[model_name], chart_type="stacked_bar",
@@ -354,7 +283,6 @@ def render_comparison_page(engine):
             _any_sig = False
 
             if sig_mode == "Model vs Model":
-                # Pairwise significance
                 rows_index = tables[model_names[0]].iloc[1:]["Unnamed: 0"].tolist()
                 sig_rows = []
                 for row_label in rows_index:
@@ -400,7 +328,6 @@ def render_comparison_page(engine):
                                  use_container_width=True, hide_index=True)
 
             else:
-                # Model vs Overall Market — each model compared to full-segment baseline
                 try:
                     baseline_tbl = builder(engine, _baseline_df, segment_for_compare)
                     if time_mode != "All Months":
@@ -449,8 +376,54 @@ def render_comparison_page(engine):
                 except Exception as _e:
                     st.caption(f"Baseline comparison unavailable: {_e}")
 
+    # Open-Ended Netting Comparison Section
+    st.markdown("---")
+    st.markdown("### 💬 Open-Ended Netting Comparison (Taxonomy & Reasons)")
+    st.caption("Side-by-side 4-level netting taxonomy comparison for the selected models across Key Buying Factors, Reasons for Rejection, and Reasons for Cancelling.")
 
-    # ── Iteration 7: AI Model Positioning Analysis ──────────────────────────
+    _reasons_tables_to_show = []
+    if segment_for_compare == "Acceptor":
+        _reasons_tables_to_show.append(("Key Buying Factors (Why Bought)", "mq2a", REASONS_COLOR))
+    elif segment_for_compare in ("Rejector", "Cancelled"):
+        _reasons_tables_to_show.append(("Why They Considered RE First", "mq2c", BRAND_CONSIDERED_COLOR))
+        _rej_lbl = "Reasons for Rejection" if segment_for_compare == "Rejector" else "Reasons for Cancelling"
+        _reasons_tables_to_show.append((_rej_lbl, "mq3a", REASONS_COLOR))
+    else:
+        _reasons_tables_to_show.append(("Acceptors — Key Buying Factors", "mq2a", REASONS_COLOR))
+        _reasons_tables_to_show.append(("Rejectors — Reasons for Rejection", "mq3a", REASONS_COLOR))
+        _reasons_tables_to_show.append(("Booked & Cancelled — Reasons for Cancelling", "mq3a", REASONS_COLOR))
+
+    for _tbl_idx, (_tbl_title, _prefix, _tbl_color) in enumerate(_reasons_tables_to_show):
+        with st.expander(f"💬 {_tbl_title}", expanded=True):
+            st.markdown(f"#### {_tbl_title}")
+            _m_cols = st.columns(len(selected_models))
+            for _mi, model_name in enumerate(selected_models):
+                mdf = model_dfs[model_name]
+                _seg_lbl = segment_for_compare
+                if segment_for_compare in ("All", "Overview"):
+                    if "Key Buying Factors" in _tbl_title:
+                        _seg_lbl = "Acceptor"
+                    elif "Rejection" in _tbl_title:
+                        _seg_lbl = "Rejector"
+                    else:
+                        _seg_lbl = "Cancelled"
+                    mdf = mdf[mdf['segment'] == _seg_lbl]
+
+                with _m_cols[_mi]:
+                    st.markdown(f"**{short_names[model_name]}**")
+                    if len(mdf) > 0:
+                        _r_tree = engine.reasons_tree_data(mdf, base_label=_seg_lbl, broad_prefix=_prefix)
+                        with st.container(border=True):
+                            render_collapsible_reasons_table(
+                                _r_tree,
+                                f"{short_names[model_name]} — {_tbl_title}",
+                                color=_tbl_color,
+                                key_suffix=f"cmp_{_prefix}_{_tbl_idx}_{model_name.replace(' ', '_')}_{_mi}"
+                            )
+                    else:
+                        st.caption(f"No respondents match the current filters for {short_names[model_name]}.")
+
+    # AI Model Positioning Analysis
     st.markdown("---")
     st.markdown("### 🤖 AI Model Positioning Analysis")
     _ai_key = f"cmp_ai_{'_'.join(short_names[m] for m in selected_models)}"
