@@ -32,24 +32,19 @@ from scipy.stats import norm
 #   0.95 confidence -> Z >= 1.95   (rounded 1.96)
 #   0.90 confidence -> Z in [1.64, 1.94]  (directional/lower-tier flag)
 #
-# DIRECTION ASYMMETRY (2026-07-29): reverse-engineered against live-site DOM
-# data (colors read via getComputedStyle, not eyeballed) across 3 independent
-# Overall demographic tables (Age, Education, Occupation), ~28 sampled cells,
-# zero exceptions. The live site does NOT apply the above tiers symmetrically
-# by magnitude in both directions -- it splits by direction:
-#   - value LOWER than baseline: dark green (95%) only, cutoff Z <= -1.95.
-#     Nothing in between -1.64 and -1.95 gets colored at all (no light tier
-#     for weak drops) -- confirmed by an unflagged Z=-1.696 sample.
-#   - value HIGHER than baseline: light green fires from a lower bar than
-#     the 95% drop cutoff (two-tailed 90%, Z >= 1.64) and NEVER escalates to
-#     dark, no matter how large -- confirmed flagged-light Z's up to 3.96
-#     (ProfGrad/Sep) all stayed light, never dark. See the Z_HIGHER_LIGHT
-#     correction note below the tier constants for how the exact cutoff
-#     (1.64, not the originally-guessed 1.2816) was pinned down.
-# Net effect: dark green means "significantly worse than baseline" (strict,
-# two-tailed 95%); light green means "better than baseline" (lenient,
-# one-tailed ~90%, uncapped). This is a deliberate asymmetric business rule,
-# not a formula bug on their end.
+# DIRECTION ASYMMETRY:
+# The live MIS site shows light green for ALL higher values (no dark tier for
+# rises), and dark green for drops at z<=-1.95 only. Our app intentionally
+# departs from that: per user requirement (2026-08-04) both tiers apply to
+# HIGHER values too, so the full mapping is:
+#   - value HIGHER than baseline:
+#       z >= 1.95 → dark green (95%, ▲)
+#       z in [1.64, 1.95) → light green (90%, △)
+#   - value LOWER than baseline:
+#       z <= -1.95 → dark green (95%, ▼)
+#       z in (-1.95, -1.64] → nothing (no light tier for drops)
+# Net: dark green = strongly significant in either direction; light green =
+# directionally higher at 90% only.
 
 Z_95 = 1.95
 Z_90_LOW = 1.64
@@ -93,10 +88,14 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
     z_score = (pct1 - pct2) / sdiff
 
     # Asymmetric by direction -- see module docstring above.
-    if z_score <= -Z_95:
+    # Higher direction: dark (95%) at z>=1.95, light (90%) at z in [1.64, 1.95).
+    # Lower direction: dark (95%) only at z<=-1.95, no light tier for drops.
+    if z_score >= Z_95:
         tier = "95"
     elif z_score >= Z_HIGHER_LIGHT:
         tier = "90"
+    elif z_score <= -Z_95:
+        tier = "95"
     else:
         tier = None
     is_significant = tier is not None
