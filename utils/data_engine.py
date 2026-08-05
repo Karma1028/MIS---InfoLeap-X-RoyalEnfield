@@ -1151,7 +1151,7 @@ class DataEngine:
                 p1 = val / 100.0
 
                 marker = ""
-                if col != "All" and b >= 30 and all_b >= 30:
+                if col != "All" and b > 0 and all_b > 0:
                     res = calculate_significance(p1, b, p2, all_b)
                     if res["z_score"] > 0:
                         if res["tier"] == "95":

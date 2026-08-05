@@ -40,8 +40,8 @@ SEGMENT_DEFINITIONS = [
 
 def _card(inner, accent="#C8102E", extra=""):
     return (
-        f"<div style='flex:1;min-width:230px;background:#fff;border:1px solid #ECE9E4;"
-        f"border-top:3px solid {accent};border-radius:12px;padding:18px 20px;{extra}'>{inner}</div>"
+        f"<div style='flex:1;min-width:280px;max-width:calc(50% - 7px);background:#fff;border:1px solid #ECE9E4;"
+        f"border-top:3px solid {accent};border-radius:12px;padding:20px 22px;box-sizing:border-box;{extra}'>{inner}</div>"
     )
 
 

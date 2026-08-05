@@ -178,7 +178,7 @@ def render_login() -> bool:
             st.markdown("<div style='padding:0.8rem 0.5rem 0 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
-                "<div class='login-tagline'>Digital Showroom Intelligence Portal &mdash; built by Infoleap for Royal Enfield</div>"
+                "<div class='login-tagline'>Intelligence Portal &mdash; built by Infoleap for Royal Enfield</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -255,7 +255,7 @@ def render_landing() -> bool:
             st.markdown("<div style='padding:0.8rem 0.5rem 1.6rem 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
-                "<div class='landing-tagline'>Digital Showroom Intelligence Portal</div>"
+                "<div class='landing-tagline'>Intelligence Portal</div>"
                 "<div class='landing-sub'>Live segment analytics for Acceptors, Rejectors &amp; Booked-but-Cancelled — "
                 "recomputed directly from the research Masterfile, built by Infoleap for Royal Enfield.</div>"
                 "</div>",

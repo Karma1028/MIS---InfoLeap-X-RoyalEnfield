@@ -294,12 +294,22 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             insidetextanchor='middle',
             hovertemplate=f"<b>{label}</b><br>%{{x}}: %{{y:.1f}}%<extra></extra>",
         ))
+    # Columns aren't guaranteed to sum to 100% — multi-select questions
+    # (e.g. "what CC did you own before" when a respondent can report more
+    # than one prior bike) legitimately total over 100%. A hardcoded
+    # y-axis range of ~105 clipped those columns' top slices clean off
+    # (bug report: "some of them showing uneven column heights" —
+    # Additional+Replaced onward, where multi-select totals run >100%).
+    # Range now tracks the tallest actual stack instead of assuming 100%.
+    col_totals = [sum(float(row[c]) for _, row in cat_rows.iterrows()) for c in cols] if len(cat_rows) else [0]
+    max_total = max(col_totals) if col_totals else 100
     # Significance column-level annotations — visible flags ABOVE each month column
     # that has at least one significant category. Much clearer than tiny in-bar symbols.
     # Positive-only (per user request): markers are already filtered to
     # High/▲/△ only before reaching here (filter_sig_markers, app.py), so
     # only the "higher" branches are ever reachable.
     sig_annotations = []
+    ann_y = max_total + 6
     for c in cols:
         if c == 'All' or not col_sig_markers:
             continue
@@ -313,7 +323,7 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
         else:
             sym, col_c = '~High', SIG_LIGHT_GREEN
         sig_annotations.append(dict(
-            x=c, y=106, text=sym,
+            x=c, y=ann_y, text=sym,
             showarrow=False, xref='x', yref='y',
             font=dict(size=12, color=col_c, family="Inter, sans-serif"),
             bgcolor='rgba(255,255,255,0.75)', borderpad=2,
@@ -357,7 +367,7 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
         margin=dict(l=CATEGORY_COL_WIDTH, r=10, t=44, b=30),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
         yaxis=dict(title=None, showgrid=False, zeroline=False, ticksuffix="%",
-                   range=[0, 112 if sig_annotations else 105],
+                   range=[0, max(ann_y + 6, max_total + 5, 112 if sig_annotations else 105)],
                    tickfont=dict(size=11, color=MUTED)),
         xaxis=dict(showgrid=False, tickfont=dict(size=11, color="#2B2B2B", family="Inter, Segoe UI, sans-serif"),
                    tickangle=-35,
@@ -601,7 +611,16 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # proportion is <0.5% and showing "0% ▲" is visually misleading.
                     _suppress = (txt == "0%")
                     if not _suppress and marker in ('▲', '△', '▼', '▽'):
-                        txt = f"{txt} {marker}"
+                        _gap_val = None
+                        if col_sig_gaps and c in col_sig_gaps:
+                            _gap_list = col_sig_gaps[c]
+                            if i - 1 < len(_gap_list):
+                                _gap_val = _gap_list[i - 1]
+                        if _gap_val is not None and abs(_gap_val) >= 0.5:
+                            _gsign = "+" if _gap_val >= 0 else ""
+                            txt = f"{txt} {marker} {_gsign}{_gap_val:.0f}pp"
+                        else:
+                            txt = f"{txt} {marker}"
                     if not _suppress and marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
                     elif not _suppress and marker == '△':
@@ -1097,7 +1116,7 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
 
                 for itm in items:
                     itm_cat_cell = f"<td class='col-cat indent-item' style='background:#FAFAF9; color:#334155; border-bottom:1px solid #cbd5e1; padding-left: 36px;'><span class='item-prefix'>↳↳↳</span>{_html.escape(itm['name'])}</td>"
-                    itm_row = f"<tr class='item-row sub-{key_suffix}-{s_idx}-{n_idx} itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx}'>{itm_cat_cell}{_val_cells(itm, row_bg='#FAFAF9', is_bold=False)}</tr>"
+                    itm_row = f"<tr class='item-row itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx}'>{itm_cat_cell}{_val_cells(itm, row_bg='#FAFAF9', is_bold=False)}</tr>"
                     level2_3_rows.append(itm_row)
 
         tbody_html = f"<tbody class='supernet-body'>{snet_row}{''.join(level2_3_rows)}</tbody>"
@@ -1161,10 +1180,10 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         font-weight: 700;
         color: #7C2D12;
     }}
-    .snet-chk, .net-chk {{
+    .snet-chk, .net-chk, .sub-chk {{
         display: none !important;
     }}
-    .snet-label, .net-label {{
+    .snet-label, .net-label, .sub-label {{
         cursor: pointer;
         display: inline-flex;
         align-items: center;
@@ -1194,7 +1213,8 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         content: '▼';
     }}
     .supernet-body tr.net-row,
-    .supernet-body tr.subnet-row {{
+    .supernet-body tr.subnet-row,
+    .supernet-body tr.item-row {{
         display: none;
     }}
     .supernet-body:has(.snet-chk:checked) tr.net-row {{
@@ -1215,10 +1235,25 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
     .indent-subnet {{
         padding-left: 44px !important;
     }}
+    .sub-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 10px;
+        font-size: 0.62rem;
+        color: #0369A1;
+        margin-right: 6px;
+    }}
+    .sub-chk:checked + .sub-arrow::before {{
+        content: '▼';
+    }}
     .net-prefix, .sub-prefix {{
         color: #64748b;
         margin-right: 6px;
         font-weight: bold;
+    }}
+    .item-prefix {{
+        color: #94a3b8;
+        margin-right: 6px;
     }}
     </style>
     """

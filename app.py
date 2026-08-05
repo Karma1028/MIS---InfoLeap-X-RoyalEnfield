@@ -13,8 +13,9 @@ from utils.ai_summary import render_ai_summary_button, render_chart_ai_blurb
 from utils.settings_page import render_settings_page
 from utils.overview_intro import render_overview_intro
 from utils.branding import re_logo_img_html, sidebar_brand_html
+from utils.model_images import model_image_path
 
-st.set_page_config(page_title="RE Digital Showroom | Infoleap", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="RE Intelligence Portal | Infoleap", layout="wide", initial_sidebar_state="expanded")
 
 if not render_login():
     st.stop()
@@ -176,7 +177,7 @@ _re_logo_html = re_logo_img_html(34, extra_style="margin-right:10px;")
 st.markdown(
     f"<div style='height:3px;border-radius:0 2px 2px 0;margin-bottom:0.75rem;"
     f"background:linear-gradient(90deg,{_stripe_color} 0%,{_stripe_color} 55%,rgba(200,16,46,0.10) 100%);'></div>"
-    f"<h1 style='margin-top:0;'>{_re_logo_html}Royal Enfield Digital Showroom{_seg_badge}</h1>",
+    f"<h1 style='margin-top:0;'>{_re_logo_html}Royal Enfield{_seg_badge}</h1>",
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -431,6 +432,28 @@ if _overview_is_comparison:
 
 else:
     # P3 + P6: Segment identity hero — colored anchor card + 3 profile stat cards + 1 segment-specific card
+    # Model image card — shown as last card in the row when a model is selected
+    _model_img_card_html = ""
+    if model != "All":
+        import base64 as _b64m
+        _mip2 = model_image_path(model)
+        if _mip2:
+            with open(_mip2, "rb") as _mf2:
+                _mib642 = _b64m.b64encode(_mf2.read()).decode("ascii")
+            _mime2 = {"jpg":"jpeg","jpeg":"jpeg","png":"png","webp":"webp"}.get(_mip2.rsplit(".",1)[-1].lower(),"png")
+            _model_name_short = model.replace("Royal Enfield ", "")
+            _model_img_card_html = (
+                f"<div style='flex:1;background:transparent;border:1px solid #ECE9E4;border-radius:12px;"
+                f"padding:14px 18px 8px;display:flex;flex-direction:column;align-items:center;"
+                f"justify-content:center;min-height:180px;'>"
+                f"<div style='font-size:1.1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;"
+                f"color:#1A1A1A;margin-bottom:10px;'>{_model_name_short}</div>"
+                f"<img src='data:image/{_mime2};base64,{_mib642}' "
+                f"style='width:110%;max-height:260px;object-fit:contain;object-position:center;"
+                f"mix-blend-mode:multiply;margin:0 -5%;'/>"
+                f"</div>"
+            )
+
     _card4_html = ""
     try:
         if segment_value == "Acceptor" and 're_model_code' in df.columns:
@@ -441,7 +464,8 @@ else:
                 _t_m_name = RE_MODEL_LABELS.get(_top_code, f"Model {int(_top_code)}").replace("Royal Enfield ", "")
                 _t_m_pct = (_acc_codes == _top_code).sum() / len(_acc_codes) * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
+                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top RE Model</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_m_name}</div>"
                     f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
@@ -456,7 +480,8 @@ else:
                 _t_comp = _non_re.index[0]
                 _t_comp_pct = _non_re.iloc[0] / len(df) * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
+                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top Competitor</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_comp}</div>"
                     f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
@@ -470,7 +495,8 @@ else:
             if _still_base > 0:
                 _still_pct = _still_n / _still_base * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
+                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Still Searching</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>Win-Back Opportunity</div>"
                     f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
@@ -481,49 +507,64 @@ else:
     except Exception:
         _card4_html = ""
 
-    st.markdown(
-        f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;'>"
-        f"<div style='flex:1.8;min-width:200px;background:{accent}0D;"
-        f"border:1.5px solid {accent}40;border-left:5px solid {accent};"
-        f"border-radius:12px;padding:16px 20px;'>"
+    _active_seg_card = (
+        f"<div style='flex:1.8;min-width:200px;max-width:420px;background:{accent}0D;border:1.5px solid {accent}40;"
+        f"border-left:5px solid {accent};border-radius:12px;padding:18px 22px;'>"
         f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:{accent};font-weight:700;margin-bottom:6px;'>Active Segment</div>"
-        f"<div style='font-size:2.2rem;font-weight:800;color:{accent};font-family:Oswald,sans-serif;line-height:1;'>{segment_nav.upper()}</div>"
-        f"<div style='font-size:0.95rem;font-weight:700;color:#1A1A1A;margin-top:6px;'>"
+        f"<div style='font-size:2.6rem;font-weight:800;color:{accent};font-family:Oswald,sans-serif;line-height:1;'>{segment_nav.upper()}</div>"
+        f"<div style='font-size:1rem;font-weight:700;color:#1A1A1A;margin-top:8px;'>"
         f"{base_n:,} respondents &nbsp;·&nbsp; <span style='color:#7A7670;font-weight:500;'>{seg_pct:.0f}% of {total_n:,} total</span>"
         f"</div>"
-        f"<div style='font-size:0.82rem;color:#4A4644;margin-top:8px;line-height:1.5;'>{_frame_text}</div>"
+        f"<div style='font-size:0.85rem;color:#4A4644;margin-top:8px;line-height:1.6;'>{_frame_text}</div>"
         f"</div>"
-        f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
-        f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top Age</div>"
-        f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{top_age_row['Unnamed: 0']}</div>"
-        f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-        f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{float(top_age_row['All']):.0f}%</span>"
-        f"{_delta_badge(_chip_deltas.get('age'))}</div>"
-        f"{_mini_bar(float(top_age_row['All']), accent)}"
-        f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of segment &nbsp;·&nbsp; n≈{round(base_n*float(top_age_row['All'])/100):,}</div>"
-        f"</div>"
-        f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
-        f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top Income</div>"
-        f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{top_income_row['Unnamed: 0']}</div>"
-        f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-        f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{float(top_income_row['All']):.0f}%</span>"
-        f"{_delta_badge(_chip_deltas.get('income'))}</div>"
-        f"{_mini_bar(float(top_income_row['All']), accent)}"
-        f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of segment &nbsp;·&nbsp; n≈{round(base_n*float(top_income_row['All'])/100):,}</div>"
-        f"</div>"
-        f"<div style='flex:1;min-width:120px;background:#fff;border:1px solid #ECE9E4;border-radius:12px;padding:14px 16px;'>"
-        f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Buyer Type</div>"
-        f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{tob_display}</div>"
-        f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-        f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{float(top_tob_row['All']):.0f}%</span>"
-        f"{_delta_badge(_chip_deltas.get('tob'))}</div>"
-        f"{_mini_bar(float(top_tob_row['All']), accent)}"
-        f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of segment &nbsp;·&nbsp; n≈{round(base_n*float(top_tob_row['All'])/100):,}</div>"
-        f"</div>"
-        f"{_card4_html}"
-        f"</div>",
-        unsafe_allow_html=True,
     )
+
+    def _stat_card(label, value_label, pct, delta_key, n_approx):
+        return (
+            f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+            f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
+            f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>{label}</div>"
+            f"<div style='font-size:0.9rem;font-weight:700;color:#1A1A1A;margin-top:6px;line-height:1.3;'>{value_label}</div>"
+            f"<div style='display:flex;align-items:baseline;margin-top:5px;'>"
+            f"<span style='font-size:1.8rem;font-weight:800;color:{accent};line-height:1;'>{pct:.0f}%</span>"
+            f"{_delta_badge(_chip_deltas.get(delta_key))}</div>"
+            f"{_mini_bar(pct, accent)}"
+            f"<div style='font-size:0.72rem;color:#9A958D;margin-top:6px;'>of segment &nbsp;·&nbsp; n≈{n_approx:,}</div>"
+            f"</div>"
+        )
+
+    _four_cards_html = (
+        f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
+        + _stat_card("Top Age", top_age_row['Unnamed: 0'], float(top_age_row['All']), 'age', round(base_n*float(top_age_row['All'])/100))
+        + _stat_card("Top Income", top_income_row['Unnamed: 0'], float(top_income_row['All']), 'income', round(base_n*float(top_income_row['All'])/100))
+        + _stat_card("Buyer Type", tob_display, float(top_tob_row['All']), 'tob', round(base_n*float(top_tob_row['All'])/100))
+        + (_card4_html or "")
+        + f"</div>"
+    )
+
+    if _model_img_card_html:
+        # Row 1: bike image + Active Segment side by side
+        st.markdown(
+            f"<div style='display:flex;gap:14px;align-items:stretch;margin-bottom:0;'>"
+            f"{_model_img_card_html}"
+            f"{_active_seg_card}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        # Row 2: 4 stat cards full width below
+        st.markdown(_four_cards_html + "<div style='margin-bottom:1rem;'></div>", unsafe_allow_html=True)
+    else:
+        # No model — single row: Active Segment + 4 stat cards
+        st.markdown(
+            f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;justify-content:flex-start;'>"
+            + _active_seg_card
+            + _stat_card("Top Age", top_age_row['Unnamed: 0'], float(top_age_row['All']), 'age', round(base_n*float(top_age_row['All'])/100))
+            + _stat_card("Top Income", top_income_row['Unnamed: 0'], float(top_income_row['All']), 'income', round(base_n*float(top_income_row['All'])/100))
+            + _stat_card("Buyer Type", tob_display, float(top_tob_row['All']), 'tob', round(base_n*float(top_tob_row['All'])/100))
+            + (_card4_html or "")
+            + f"</div>",
+            unsafe_allow_html=True,
+        )
     st.caption(
         "Each chip = the single largest category in this segment for that question, out of the full filtered "
         "base above. The colored badge (+Xpp/-Xpp) compares that category's % here vs. the same category in the "
@@ -585,31 +626,19 @@ def _nav_pill(label, anchor):
         f"font-weight:600;background:{accent}12;color:{accent};border:1px solid {accent}35;"
         f"cursor:pointer;white-space:nowrap;transition:all 0.2s;'>{label}</span></a>"
     )
-if _overview_is_comparison:
-    st.markdown(
-        f"<div id='jump-nav-bar' style='display:flex;gap:8px;flex-wrap:wrap;margin:0.6rem 0 1.4rem;"
-        f"position:sticky;top:3.2rem;z-index:90;background:rgba(250,250,248,0.96);"
-        f"backdrop-filter:blur(6px);padding:6px 0 8px;margin-left:-0.5rem;padding-left:0.5rem;'>"
-        + _nav_pill("Demographics", "sec-demographics")
-        + _nav_pill("Buyer Type", "sec-buyer-type")
-        + _nav_pill("Additional & Replaced", "sec-addrepl")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown(
-        f"<div id='jump-nav-bar' style='display:flex;gap:8px;flex-wrap:wrap;margin:0.6rem 0 1.4rem;"
-        f"position:sticky;top:3.2rem;z-index:90;background:rgba(250,250,248,0.96);"
-        f"backdrop-filter:blur(6px);padding:6px 0 8px;margin-left:-0.5rem;padding-left:0.5rem;'>"
-        + _nav_pill("Demographics", "sec-demographics")
-        + _nav_pill("Buyer Type", "sec-buyer-type")
-        + _nav_pill("Additional & Replaced", "sec-addrepl")
-        # Brand Owned / Brand Considered pills dropped — their sections are
-        # hidden (SHOW_BRAND_OWNED_ONWARD = False above); pills would dead-link.
-        + _nav_pill("Month Trend", "sec-trend")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
+_nav_pills_html = (
+    f"<div id='jump-nav-bar' style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;"
+    f"margin:0.6rem 0 0.6rem;position:sticky;top:3.2rem;z-index:90;"
+    f"background:rgba(250,250,248,0.96);backdrop-filter:blur(6px);"
+    f"padding:6px 0 8px;margin-left:-0.5rem;padding-left:0.5rem;'>"
+    + _nav_pill("Demographics", "sec-demographics")
+    + _nav_pill("Buyer Type", "sec-buyer-type")
+    + _nav_pill("Additional & Replaced", "sec-addrepl")
+    + ("" if _overview_is_comparison else _nav_pill("Month Trend", "sec-trend"))
+    + "</div>"
+)
+
+st.markdown(_nav_pills_html, unsafe_allow_html=True)
 
 # Active-pill scroll observer (same-origin iframe → parent DOM)
 _components.html(
@@ -1414,105 +1443,43 @@ REASONS_COLOR = "#D6742D"
 # every segment; Brand Owned/Brand Considered/Additional+Replaced/Type of
 # Buyer are all validated now (see CLAUDE.md Resolved Blockers), so the
 # earlier blanket hide is no longer warranted either.
-# Render Additional + Replaced for all segments & Overview (matches live website)
-st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
-st.markdown("### Additional + Replaced")
-st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
-section("Additional + Replaced — CC Wise",
-        lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-        color=ADD_REPL_COLOR, chart_type="stacked_bar")
-if not _overview_is_comparison:
+# Additional+Replaced: Acceptor + Overall
+if segment_value in ("Acceptor", "All"):
+    st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
+    st.markdown("### Additional + Replaced")
+    st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
+    section("Additional + Replaced — CC Wise",
+            lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            color=ADD_REPL_COLOR, chart_type="stacked_bar")
     brand_wise_section("Additional + Replaced — Brand Wise",
                         lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                         color=ADD_REPL_COLOR)
 
-# Render Brand Owned for all segments & Overview (matches live website)
-st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
-st.markdown("### Brand Owned")
-st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
-section("Brand Owned — CC Wise",
-        lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-        color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
-if not _overview_is_comparison:
+# Brand Owned: Rejector + Cancelled only (they own a competitor bike)
+if segment_value in ("Rejector", "Cancelled"):
+    st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
+    st.markdown("### Brand Owned")
+    st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
+    section("Brand Owned — CC Wise",
+            lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
     brand_wise_section("Brand Owned — Brand Wise",
                         lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
                         color=BRAND_OWNED_COLOR)
 
-# Render Brand Considered for all segments & Overview (matches live website)
-st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
-st.markdown("### Brand Considered")
-st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
-section("Brand Considered — CC Wise",
-        lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
-        color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
-if not _overview_is_comparison:
-    brand_wise_section("Brand Considered — Brand Wise",
-                        lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
-                        color=BRAND_CONSIDERED_COLOR)
+# Brand Considered: Acceptors only
+if segment_value == "Acceptor":
+    st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
+    st.markdown("### Brand Considered")
+    st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
+    section("Brand Considered — CC Wise",
+            lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
+    if not _overview_is_comparison:
+        brand_wise_section("Brand Considered — Brand Wise",
+                            lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                            color=BRAND_CONSIDERED_COLOR)
 
-# AQ2A — Competitor CC Preference (Rejectors only — most relevant; 84.8% chose 351CC+)
-if segment_value == "Rejector":
-    st.markdown("### Competitor CC Preference")
-    st.caption(
-        "AQ2A: CC range of the competitor bike ultimately purchased. "
-        "Base = Rejectors who answered (n=1,789). "
-        "Shows whether Rejectors traded up, traded sideways, or downgraded vs RE's 350CC core."
-    )
-    section("Competitor CC Segment — Rejectors",
-            lambda d, s: engine.competitor_cc_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#FDCB6E", chart_type="stacked_bar")
-
-# AQ5b — RE Model Consideration Funnel (Rejectors only)
-if segment_value == "Rejector":
-    st.markdown("### RE Model Consideration Funnel")
-    st.caption(
-        "AQ5b: 'Which Royal Enfield model did you consider most seriously before choosing a competitor?' "
-        "Base = all Rejectors (n=1,789). % = share of total Rejectors who considered each RE model. "
-        "Top models sorted by consideration rate."
-    )
-    section("RE Model Considered — Rejectors",
-            lambda d, s: engine.aq5b_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#C8102E", chart_type="stacked_bar")
-
-# Test Ride Intelligence — AQ6: which RE models did respondents test ride?
-# Per user report: pulled off Acceptor too (2026-07-27) -- Rejector/
-# Cancelled only now (also never on Overall/"All", same pattern as
-# Additional+Replaced/Brand Owned/Brand Considered above).
-if segment_value in ("Rejector", "Cancelled"):
-    st.markdown("### Test Ride Intelligence")
-    st.caption(
-        "AQ6: Which Royal Enfield models did you test ride? Multi-select across all 14 RE models. "
-        "% = share of segment who test-rode each model. Base = total segment respondents."
-    )
-    section("Test Ride Rate — RE Models",
-            lambda d, s: engine.test_ride_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#0984E3", chart_type="stacked_bar")
-
-# Brand Resilience — AQ5c: "If your preferred brand were unavailable, what would you buy?"
-# Asked to Acceptors (n=140) and Rejectors (n=251) -- Cancelled have 0
-# responses -- but per user report (2026-07-27), pulled off Acceptor too;
-# Rejector only now.
-if segment_value == "Rejector":
-    st.markdown("### Brand Resilience")
-    st.caption(
-        "AQ5c: 'If your preferred brand/model were unavailable, what would you have bought?' "
-        "Measures brand equity lock-in. Base = respondents who answered (not total segment). "
-        "Not on live dashboard — additional insight layer."
-    )
-    section("Brand Resilience — Substitute Choice",
-            lambda d, s: engine.brand_resilience_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#6C5CE7", chart_type="stacked_bar")
-
-# Post-Cancellation Trajectory — AQ1B (Cancelled only, n=1,527)
-if segment_value == "Cancelled":
-    st.markdown("### Post-Cancellation Trajectory")
-    st.caption(
-        "AQ1B: After cancelling the RE booking, what did you do? "
-        "Base = all Cancelled respondents. Not on live dashboard — additional insight layer."
-    )
-    section("Post-Cancellation Action",
-            lambda d, s: engine.post_cancellation_table(d, base_label=s, numeric=True, extra_groups=custom_group),
-            color="#E17055", chart_type="stacked_bar")
 
 st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
 st.markdown("### Reasons & Motivations")
