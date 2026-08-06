@@ -267,7 +267,10 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             # / month-lightening for the FILL too, not just the border.
             _sig_fc = _sig_fill(marker)
             if _sig_fc:
-                fill_colors.append(_sig_fc)
+                # Blend significance tint with category color (60/40) so the
+                # category is still identifiable while significance is visible.
+                # Full override made all significant segments look the same green.
+                fill_colors.append(_blend(base_color, _sig_fc, 0.45))
             elif highlight_col and c == highlight_col:
                 fill_colors.append(_blend(base_color, HIGHLIGHT_COL_TINT, 0.55))
             elif is_all:
