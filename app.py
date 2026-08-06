@@ -232,12 +232,10 @@ elif time_mode == "Quarter (Financial Calendar)":
     quarters = st.sidebar.multiselect("Quarter (Apr-Mar FY)", FY_QUARTER_ORDER, default=FY_QUARTER_ORDER, key="quarters")
     selected_months = [m for m in MONTH_ORDER if month_label_to_fy_quarter(m) in quarters]
 
-# Removed per explicit user request ("remove the quarter combined column
-# it was not something that i asked for") — the table builders still know
-# how to compute these (quarter_combined_groups()), but this flag being
-# False means _trim_to_selected_months() always strips them out, same as
-# the toggle being off.
-show_quarter_cols = False
+# Quarter combined columns: active when Quarter time period is selected.
+# Shows one pooled column per selected quarter (e.g. "JAS'25") instead of
+# individual monthly columns — requested 2026-08-06.
+show_quarter_cols = (time_mode == "Quarter (Financial Calendar)")
 
 # Custom Year+Month combined comparison column — per later, separate user
 # request: alongside (not replacing) the "View by" control above, pick any
@@ -263,6 +261,18 @@ with st.sidebar.expander("Custom Combined Column", expanded=False):
             custom_group = {custom_col_name: custom_months}
             custom_months_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in custom_months]
             st.caption(f"Combines: {', '.join(custom_months_short)}")
+
+# Quarter combined groups for the active quarters (empty when not in quarter mode).
+# Keys use the FY quarter label (e.g. "Q2 FY25-26") so the column header matches
+# what the user selected in the sidebar filter.
+_active_q_groups = {}
+if show_quarter_cols:
+    _q_month_map = {}
+    for m in MONTH_ORDER:
+        _q_month_map.setdefault(month_label_to_fy_quarter(m), []).append(m)
+    _active_q_groups = {q: _q_month_map[q] for q in quarters if q in _q_month_map}
+# Merged extra groups passed to every table builder: quarter cols + custom col.
+effective_extra_groups = {**_active_q_groups, **(custom_group or {})}
 
 show_sig = st.sidebar.toggle("Significance vs Rest of Sample (95%/90%)", value=True,
                               help="Marks each category as significantly higher than the OTHER segments combined (e.g. Acceptor vs Rejector+Cancelled) — a true 'this group vs the rest' test, not diluted by including the group in its own baseline.")
@@ -449,8 +459,8 @@ else:
                 f"<div style='font-size:1.1rem;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;"
                 f"color:#1A1A1A;margin-bottom:10px;'>{_model_name_short}</div>"
                 f"<img src='data:image/{_mime2};base64,{_mib642}' "
-                f"style='width:110%;max-height:260px;object-fit:contain;object-position:center;"
-                f"mix-blend-mode:multiply;margin:0 -5%;'/>"
+                f"style='max-width:100%;max-height:260px;object-fit:contain;object-position:center;"
+                f"mix-blend-mode:multiply;'/>"
                 f"</div>"
             )
 
@@ -464,7 +474,7 @@ else:
                 _t_m_name = RE_MODEL_LABELS.get(_top_code, f"Model {int(_top_code)}").replace("Royal Enfield ", "")
                 _t_m_pct = (_acc_codes == _top_code).sum() / len(_acc_codes) * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
                     f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top RE Model</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_m_name}</div>"
@@ -480,7 +490,7 @@ else:
                 _t_comp = _non_re.index[0]
                 _t_comp_pct = _non_re.iloc[0] / len(df) * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
                     f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top Competitor</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_comp}</div>"
@@ -495,7 +505,7 @@ else:
             if _still_base > 0:
                 _still_pct = _still_n / _still_base * 100
                 _card4_html = (
-                    f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
                     f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
                     f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Still Searching</div>"
                     f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>Win-Back Opportunity</div>"
@@ -508,7 +518,7 @@ else:
         _card4_html = ""
 
     _active_seg_card = (
-        f"<div style='flex:1.8;min-width:200px;max-width:420px;background:{accent}0D;border:1.5px solid {accent}40;"
+        f"<div style='flex:1;min-width:200px;background:{accent}0D;border:1.5px solid {accent}40;"
         f"border-left:5px solid {accent};border-radius:12px;padding:18px 22px;'>"
         f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:{accent};font-weight:700;margin-bottom:6px;'>Active Segment</div>"
         f"<div style='font-size:2.6rem;font-weight:800;color:{accent};font-family:Oswald,sans-serif;line-height:1;'>{segment_nav.upper()}</div>"
@@ -521,7 +531,7 @@ else:
 
     def _stat_card(label, value_label, pct, delta_key, n_approx):
         return (
-            f"<div style='flex:1;min-width:150px;max-width:260px;background:#fff;border:1px solid #ECE9E4;"
+            f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
             f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
             f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>{label}</div>"
             f"<div style='font-size:0.9rem;font-weight:700;color:#1A1A1A;margin-top:6px;line-height:1.3;'>{value_label}</div>"
@@ -543,11 +553,11 @@ else:
     )
 
     if _model_img_card_html:
-        # Row 1: bike image + Active Segment side by side
+        # Row 1: bike image + Active Segment side by side, 65/35 split
         st.markdown(
             f"<div style='display:flex;gap:14px;align-items:stretch;margin-bottom:0;'>"
-            f"{_model_img_card_html}"
-            f"{_active_seg_card}"
+            f"<div style='flex:0 0 65%;max-width:65%;display:flex;'>{_model_img_card_html}</div>"
+            f"<div style='flex:0 0 35%;max-width:35%;display:flex;'>{_active_seg_card}</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -1061,13 +1071,15 @@ def _trim_to_selected_months(tbl):
     distinct from the Quarter time-period filter) only make sense in the
     full 'All Months' view — dropped here otherwise, and also droppable via
     the 'Show Quarter-Combined Columns' toggle."""
+    _q_col_set = set(_active_q_groups.keys())
     if time_mode == "All Months":
-        if show_quarter_cols:
-            cols = list(tbl.columns)
-        else:
-            quarter_cols = set(engine.quarter_combined_groups().keys())
-            cols = [c for c in tbl.columns if c not in quarter_cols]
+        # No quarter combined cols in all-months view — strip any that leaked in.
+        cols = [c for c in tbl.columns if c not in _q_col_set]
+    elif time_mode == "Quarter (Financial Calendar)":
+        # Show quarter combined cols only; strip individual month columns.
+        cols = ["Unnamed: 0", "All"] + [c for c in tbl.columns if c in _q_col_set]
     else:
+        # Month Range — individual months, no quarter cols.
         cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
     # The custom Year+Month combined column is independent of the "View by"
     # time-period filter above — always keep it if present, regardless of
@@ -1112,7 +1124,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     per 'add some kind of filter... ofc user will have the liberty to see
     the whole data'. Also switches the table to the live site's nested
     rollup+member look (indented member rows)."""
-    _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}"
+    _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}_{custom_col_name or ''}"
     if _ck not in st.session_state or (_ck + "_b") not in st.session_state:
         st.session_state[_ck] = _trim_to_selected_months(table_fn(df, segment_value))
         st.session_state[_ck + "_b"] = _trim_to_selected_months(table_fn(baseline_df, "All"))
@@ -1132,7 +1144,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     # methodology (each month vs that table's own 'All' column) instead of
     # vs other segments, per user request -- keeps our n>=30 gate, unlike
     # the live site which has none.
-    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
+    sig_cols = (list(_active_q_groups.keys()) if show_quarter_cols else selected_months) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence, vs_own_all=True) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
     # Per user request ("if one section is significant how much
@@ -1328,7 +1340,7 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
     catch-all pinned to the very end — replacing the earlier capped
     treemap approach. Each of the three sections gets its own distinct
     color (passed in), not the segment's shared accent."""
-    _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}"
+    _ck = f"_tbl_{title}_{segment_value}_{platform}_{model}_{time_mode}_{','.join(sorted(selected_months))}_{custom_col_name or ''}"
     if _ck not in st.session_state or (_ck + "_b") not in st.session_state:
         st.session_state[_ck] = _trim_to_selected_months(table_fn(df, segment_value))
         st.session_state[_ck + "_b"] = _trim_to_selected_months(table_fn(baseline_df, "All"))
@@ -1343,7 +1355,7 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
         st.info(f"{title}: no brands selected.")
         return
 
-    sig_cols = selected_months + (list(engine.quarter_combined_groups().keys()) if show_quarter_cols else []) + ([custom_col_name] if custom_col_name else [])
+    sig_cols = (list(_active_q_groups.keys()) if show_quarter_cols else selected_months) + ([custom_col_name] if custom_col_name else [])
     col_markers = compare_to_baseline_by_column(tbl, baseline_tbl, sig_cols, confidence=sig_confidence, vs_own_all=True) if show_sig else None
     col_markers = filter_sig_markers(col_markers, sig_direction)
     col_gaps = gaps_by_column(tbl, baseline_tbl, sig_cols, vs_own_all=True) if show_sig else None
@@ -1418,15 +1430,15 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
 st.markdown('<div id="sec-demographics"></div>', unsafe_allow_html=True)
 st.markdown("### Demographics")
 st.caption("Age, education, occupation, and household income profile of this segment — who are these respondents?")
-section("Age", lambda d, s: _tbl_age(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
-section("Education", lambda d, s: _tbl_education(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
-section("Occupation", lambda d, s: _tbl_occupation(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
-section("Household Income", lambda d, s: _tbl_income(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
+section("Age", lambda d, s: _tbl_age(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
+section("Education", lambda d, s: _tbl_education(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
+section("Occupation", lambda d, s: _tbl_occupation(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
+section("Household Income", lambda d, s: _tbl_income(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
 
 st.markdown('<div id="sec-buyer-type"></div>', unsafe_allow_html=True)
 st.markdown("### Type of Buyer")
 st.caption("Was this purchase an additional bike, a replacement, or a first-time 2W purchase? This shapes the entire decision context.")
-section("Type of Buyer", lambda d, s: _tbl_type_of_buyer(d, base_label=s, numeric=True, extra_groups=custom_group), chart_type="stacked_bar")
+section("Type of Buyer", lambda d, s: _tbl_type_of_buyer(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
 
 ROLLUP_LABELS = ["Royal Enfield"] + [m for m in engine.manufacturers() if m != "Royal Enfield"]
 
@@ -1449,10 +1461,10 @@ if segment_value in ("Acceptor", "All"):
     st.markdown("### Additional + Replaced")
     st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
     section("Additional + Replaced — CC Wise",
-            lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
             color=ADD_REPL_COLOR, chart_type="stacked_bar")
     brand_wise_section("Additional + Replaced — Brand Wise",
-                        lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                        lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
                         color=ADD_REPL_COLOR)
 
 # Brand Owned: Rejector + Cancelled only (they own a competitor bike)
@@ -1461,10 +1473,10 @@ if segment_value in ("Rejector", "Cancelled"):
     st.markdown("### Brand Owned")
     st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
     section("Brand Owned — CC Wise",
-            lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
             color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
     brand_wise_section("Brand Owned — Brand Wise",
-                        lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                        lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
                         color=BRAND_OWNED_COLOR)
 
 # Brand Considered: Acceptors only
@@ -1473,11 +1485,11 @@ if segment_value == "Acceptor":
     st.markdown("### Brand Considered")
     st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
     section("Brand Considered — CC Wise",
-            lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=custom_group),
+            lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
             color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
     if not _overview_is_comparison:
         brand_wise_section("Brand Considered — Brand Wise",
-                            lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=custom_group),
+                            lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
                             color=BRAND_CONSIDERED_COLOR)
 
 
@@ -1493,33 +1505,33 @@ if segment_value == "Acceptor":
     st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
     st.markdown("### Key Buying Factors (Why Bought)")
     st.caption("Decoded from each respondent's own Infoleap-assigned netting code, matching the raw Masterfile workbook exactly (not an AI approximation).")
-    _r_tree = engine.reasons_tree_data(df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=custom_group)
+    _r_tree = engine.reasons_tree_data(df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree, "Key Buying Factors (Why Bought)", color=REASONS_COLOR, key_suffix="acc_mq2a")
     _r_super_tbl = _trim_to_selected_months(
-        engine.reasons_table(df, base_label="Acceptor", broad_prefix="mq2a", by="supernet", numeric=True, extra_groups=custom_group))
+        engine.reasons_table(df, base_label="Acceptor", broad_prefix="mq2a", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map["Key Buying Factors — Category Wise"] = _r_super_tbl
 
 elif segment_value in ("Rejector", "Cancelled"):
     st.markdown('<div id="sec-reasons-considered"></div>', unsafe_allow_html=True)
     st.markdown("### Why They Considered RE First")
     st.caption("Positive considerations & factors liked about RE before rejecting/cancelling — decoded from Infoleap netting codes.")
-    _r_tree_c = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq2c", extra_groups=custom_group)
+    _r_tree_c = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq2c", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree_c, "Why They Considered RE First", color=BRAND_CONSIDERED_COLOR, key_suffix=f"{segment_value}_mq2c")
     _r_super_c = _trim_to_selected_months(
-        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq2c", by="supernet", numeric=True, extra_groups=custom_group))
+        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq2c", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map["Why Considered RE — Category Wise"] = _r_super_c
 
     _rej_label = "Reasons for Rejection" if segment_value == "Rejector" else "Reasons for Cancelling"
     st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
     st.markdown(f"### {_rej_label}")
     st.caption(f"{_rej_label} — decoded from each respondent's own Infoleap-assigned netting code.")
-    _r_tree_r = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq3a", extra_groups=custom_group)
+    _r_tree_r = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq3a", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree_r, _rej_label, color=REASONS_COLOR, key_suffix=f"{segment_value}_mq3a")
     _r_super_r = _trim_to_selected_months(
-        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq3a", by="supernet", numeric=True, extra_groups=custom_group))
+        engine.reasons_table(df, base_label=segment_value, broad_prefix="mq3a", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map[f"{_rej_label} — Category Wise"] = _r_super_r
 
 elif segment_value in ("Overview", "All"):
@@ -1529,19 +1541,19 @@ elif segment_value in ("Overview", "All"):
     _acc_df = engine.filter_df("Acceptor")
     if len(_acc_df) > 0:
         st.markdown("#### Acceptors — Key Buying Factors")
-        _r_tree_acc = engine.reasons_tree_data(_acc_df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=custom_group)
+        _r_tree_acc = engine.reasons_tree_data(_acc_df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_acc, "Acceptors — Key Buying Factors", color=REASONS_COLOR, key_suffix="ov_acc_mq2a")
     _rej_df = engine.filter_df("Rejector")
     if len(_rej_df) > 0:
         st.markdown("#### Rejectors — Reasons for Rejection")
-        _r_tree_rej = engine.reasons_tree_data(_rej_df, base_label="Rejector", broad_prefix="mq3a", extra_groups=custom_group)
+        _r_tree_rej = engine.reasons_tree_data(_rej_df, base_label="Rejector", broad_prefix="mq3a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_rej, "Rejectors — Reasons for Rejection", color=REASONS_COLOR, key_suffix="ov_rej_mq3a")
     _can_df = engine.filter_df("Cancelled")
     if len(_can_df) > 0:
         st.markdown("#### Booked & Cancelled — Reasons for Cancelling")
-        _r_tree_can = engine.reasons_tree_data(_can_df, base_label="Cancelled", broad_prefix="mq3a", extra_groups=custom_group)
+        _r_tree_can = engine.reasons_tree_data(_can_df, base_label="Cancelled", broad_prefix="mq3a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_can, "Booked & Cancelled — Reasons for Cancelling", color=REASONS_COLOR, key_suffix="ov_can_mq3a")
 

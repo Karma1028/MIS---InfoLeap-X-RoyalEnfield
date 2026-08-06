@@ -457,7 +457,9 @@ def _month_header(m):
     combined columns (e.g. "JAS'25") are already short — pass through
     unchanged rather than mangling them (year[2:] on a 2-digit year is empty,
     which would silently truncate the label)."""
-    name, year = m.split("'")
+    if "'" not in m:
+        return m  # quarter label like "Q2 FY25-26" — pass through unchanged
+    name, year = m.split("'", 1)
     if name not in _FULL_MONTH_NAMES:
         return m
     return f"{name[:3]}'{year[2:]}"
@@ -552,7 +554,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 txt = str(val)
                 _cat_w = f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;white-space:normal;word-break:break-word;"
                 if is_base:
-                    style = f"padding:7px 10px;font-weight:800;color:{accent};" + _cat_w
+                    style = f"padding:7px 10px;font-weight:800;color:{accent};text-align:center;" + _cat_w
                 elif is_member:
                     txt = f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {txt}"
                     style = "padding:5px 10px;color:#6A665F;font-size:12px;" + _cat_w
@@ -584,7 +586,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 except (ValueError, TypeError):
                     txt = str(val)
                 if is_base:
-                    style = f"padding:7px 10px;text-align:right;font-weight:800;color:{accent};"
+                    style = f"padding:7px 10px;text-align:center;font-weight:800;color:{accent};"
                 elif is_member:
                     style = "padding:5px 10px;text-align:right;font-size:12px;color:#6A665F;"
                 elif rollup_labels is not None:
@@ -611,16 +613,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # proportion is <0.5% and showing "0% ▲" is visually misleading.
                     _suppress = (txt == "0%")
                     if not _suppress and marker in ('▲', '△', '▼', '▽'):
-                        _gap_val = None
-                        if col_sig_gaps and c in col_sig_gaps:
-                            _gap_list = col_sig_gaps[c]
-                            if i - 1 < len(_gap_list):
-                                _gap_val = _gap_list[i - 1]
-                        if _gap_val is not None and abs(_gap_val) >= 0.5:
-                            _gsign = "+" if _gap_val >= 0 else ""
-                            txt = f"{txt} {marker} {_gsign}{_gap_val:.0f}pp"
-                        else:
-                            txt = f"{txt} {marker}"
+                        txt = f"{txt} {marker}"
                     if not _suppress and marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
                     elif not _suppress and marker == '△':
