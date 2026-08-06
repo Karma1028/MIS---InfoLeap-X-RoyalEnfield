@@ -99,13 +99,28 @@ EDUCATION_DISPLAY_GROUPS = {
     7.0: "Professional Graduate/PG",
 }
 OCCUPATION_DISPLAY_GROUPS = {
+    # FIXED (2026-08-06): live shows dq4 categories nearly 1:1 per-code, not
+    # bucketed into one broad "Other" -- confirmed via a live per-model scrape
+    # (Bullet 350 "All" shows Full time worker/Businessman/Student/
+    # Agriculture/Self-employed/Other as 6 separate rows; Rejector segment
+    # shows a standalone "Art, music, sport etc." row; Booked-but-Cancelled
+    # shows a standalone "Housewife" row). Live only merges codes 1+2 into
+    # "Full time worker" and 5+6+7 into "Businessman"; everything else gets
+    # its own row, appearing/disappearing per segment depending on whether
+    # that code has any respondents there. Previous version folded
+    # 3/4/9/10/13/14/15 into one "Other" bucket, which inflated that bucket
+    # vs live and lost the Housewife/Retired/Part-time/Art-music-sport rows
+    # entirely.
     1.0: "Full time worker", 2.0: "Full time worker",
-    3.0: "Other", 4.0: "Other",
-    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman", 8.0: "Businessman",
-    9.0: "Other", 10.0: "Other",
+    3.0: "Part time worker", 4.0: "Part time worker",
+    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman",
+    8.0: "Self-employed",
+    9.0: "Art, music, sport etc.", 10.0: "Art, music, sport etc.",
     11.0: "Agriculture",
     12.0: "Student",
-    13.0: "Other", 14.0: "Other", 15.0: "Other",
+    13.0: "Housewife",
+    14.0: "Retired",
+    15.0: "Other",
 }
 
 
@@ -628,15 +643,19 @@ class DataEngine:
         return self.distribution_table(df, 'dq6', base_label, numeric=numeric, extra_groups=extra_groups)
 
     # ------------------------------------------------------------------
-    # Type of Buyer — dq1a (prior 2W usage) x dq1b (additional vs replaced).
-    # dq1a==3/4 match the scrape almost exactly as standalone buckets. The
-    # Additional/Replaced split is trickier: dq1b was only answered by 878 of
-    # the 2137 respondents with dq1a in {1,2} (skip-logic gap in the raw
-    # data). We extrapolate dq1b's answered ratio across the full {1,2}
-    # group rather than reporting only the 878 who answered — validated
-    # against scrape: 47.6%/5.7% computed vs 49%/5% scraped (close, within
-    # the same ~10% overall base gap documented elsewhere in this file).
-    # See docs/DATA_FIELD_MAPPING.md Addendum 5.
+    # Type of Buyer — dq1a (prior 2W usage) x Additional/Replaced split.
+    # dq1a==3/4 match the scrape almost exactly as standalone buckets.
+    # Additional/Replaced FIXED (2026-08-06) per questionnaire skip logic:
+    # dq1b is only a routing flag (asked once, gates DQ2a vs DQ2b) and goes
+    # fully blank Nov'25 onward (skip-logic gap) — do NOT use it to compute
+    # the split. Per questionnaire, DQ2a (multi-select, "other 2W owned") is
+    # asked only if coded 1 in dq1a AND dq1b, DQ2b (single-select, "2W
+    # replaced") only if coded 2 in both — same gating columns already used
+    # by the Additional+Replaced brand-wise section below. So a respondent's
+    # actual answer lives in whichever of dq2a_*/dq2b they answered; use
+    # that directly instead of re-deriving from dq1b. This also keeps both
+    # sections (Type of Buyer here, and the brand-wise table) internally
+    # consistent on the same source columns.
     # ------------------------------------------------------------------
     def type_of_buyer_table(self, df, base_label="All", numeric=False, extra_groups=None):
         base_n = df['dq1a'].notna().sum()
@@ -647,10 +666,14 @@ class DataEngine:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, 'dq1a'].notna().sum()
 
+        dq2a_cols = [c for c in df.columns if str(c).startswith('dq2a_') and c != 'dq2a_oth']
+
         def _split_ratios(sub):
             prior = sub['dq1a'].isin([1, 2])
-            ans = prior & sub['dq1b'].notna()
-            add_r = (sub.loc[ans, 'dq1b'] == 1).sum() / ans.sum() if ans.sum() else 0
+            added = prior & sub[dq2a_cols].notna().any(axis=1)
+            replaced = prior & sub['dq2b'].notna() & ~added
+            ans = added | replaced
+            add_r = added.sum() / ans.sum() if ans.sum() else 0
             return add_r, 1 - add_r
 
         def pct_row(label, mask_fn):
