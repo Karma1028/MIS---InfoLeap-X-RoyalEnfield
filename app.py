@@ -9,7 +9,7 @@ from utils.compare import render_comparison_page
 from utils.verbatim_intel import render_verbatim_intelligence_page
 from utils.dealership import render_dealership_page
 from utils.product_features import render_product_features_page
-from utils.ai_summary import render_ai_summary_button, render_chart_ai_blurb
+from utils.ai_summary import render_ai_summary_button  # kept for potential future reuse
 from utils.settings_page import render_settings_page
 from utils.overview_intro import render_overview_intro
 from utils.branding import re_logo_img_html, sidebar_brand_html
@@ -520,26 +520,118 @@ else:
         f"</div>"
     )
 
-    def _stat_card(label, value_label, pct, delta_key, n_approx):
+    def _sparkline_svg(month_vals, current_month, color):
+        """Inline SVG sparkline: line + dots, highlight current month + sig-high months."""
+        if not month_vals or len(month_vals) < 2:
+            return ""
+        months = [m for m, v in month_vals]
+        vals = [v for m, v in month_vals]
+        mn, mx = min(vals), max(vals)
+        rng = mx - mn if mx != mn else 1
+        avg = sum(vals) / len(vals)
+        W, H, PAD = 200, 44, 6
+        def xp(i): return PAD + i * (W - 2 * PAD) / max(len(vals) - 1, 1)
+        def yp(v): return H - PAD - (v - mn) / rng * (H - 2 * PAD)
+        pts = " ".join(f"{xp(i):.1f},{yp(v):.1f}" for i, v in enumerate(vals))
+        circles = ""
+        for i, (m, v) in enumerate(month_vals):
+            cx, cy = xp(i), yp(v)
+            is_current = (m == current_month)
+            is_high = (v >= avg + 2) and not is_current
+            if is_current:
+                circles += (f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='5' fill='{color}' stroke='#fff' stroke-width='1.5'/>"
+                            f"<text x='{cx:.1f}' y='{cy - 8:.1f}' text-anchor='middle' "
+                            f"font-size='8' font-weight='700' fill='{color}'>{v:.0f}%</text>")
+            elif is_high:
+                circles += f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='3' fill='#1B8A3F' opacity='0.85'/>"
+            else:
+                circles += f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='2' fill='{color}' opacity='0.35'/>"
+        return (f"<svg viewBox='0 0 {W} {H}' width='100%' height='{H}' style='overflow:visible;margin-top:6px;display:block;'>"
+                f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='1.5' opacity='0.55' stroke-linejoin='round'/>"
+                f"{circles}</svg>")
+
+    def _ai_headline(label, value_label, month_vals, current_month, delta):
+        """Deterministic single-line insight — no API call."""
+        if not month_vals or len(month_vals) < 2:
+            return ""
+        vals_dict = dict(month_vals)
+        vals = list(vals_dict.values())
+        avg = sum(vals) / len(vals)
+        peak_m = max(month_vals, key=lambda x: x[1])
+        trough_m = min(month_vals, key=lambda x: x[1])
+        cur = vals_dict.get(current_month)
+        if cur is None:
+            return ""
+        trend_window = vals[-3:] if len(vals) >= 3 else vals
+        trend = "rising" if trend_window[-1] > trend_window[0] + 1.5 else ("falling" if trend_window[-1] < trend_window[0] - 1.5 else "stable")
+        if delta is not None and abs(delta) >= 2:
+            direction = "above" if delta > 0 else "below"
+            badge = f"+{delta:.0f}pp {direction} overall" if delta > 0 else f"{delta:.0f}pp below overall"
+        else:
+            badge = "in line with overall"
+        if peak_m[0] != current_month:
+            insight = f"Peaked {peak_m[0]} at {peak_m[1]:.0f}%; now {cur:.0f}% ({badge}), trend {trend}"
+        else:
+            insight = f"At peak {cur:.0f}% this month ({badge}); trend {trend} over last 3 months"
+        return (f"<div style='font-size:0.7rem;color:#4A5568;margin-top:6px;line-height:1.4;"
+                f"border-top:1px solid #F0EDE8;padding-top:5px;font-style:italic;'>{insight}</div>")
+
+    def _build_month_series(full_table, row_label_val):
+        """Extract per-month % series for a given category row."""
+        month_cols = [c for c in engine.month_order if c in full_table.columns]
+        row = full_table[full_table['Unnamed: 0'] == row_label_val]
+        if row.empty:
+            return []
+        r = row.iloc[0]
+        result = []
+        for m in month_cols:
+            try:
+                result.append((m, float(r[m])))
+            except (KeyError, ValueError, TypeError):
+                pass
+        return result
+
+    def _stat_card(label, value_label, pct, delta_key, n_approx, full_table=None, row_label_val=None):
+        month_vals = _build_month_series(full_table, row_label_val) if full_table is not None and row_label_val is not None else []
+        delta = _chip_deltas.get(delta_key)
+        spark = _sparkline_svg(month_vals, _last_selected_month, accent)
+        headline = _ai_headline(label, value_label, month_vals, _last_selected_month, delta)
+        sig_note = ""
+        if delta is not None and delta >= 2:
+            sig_note = f"<span style='font-size:0.65rem;color:#1B8A3F;font-weight:700;margin-left:4px;'>SIG HIGH</span>"
+        elif delta is not None and delta <= -2:
+            sig_note = f"<span style='font-size:0.65rem;color:#C8102E;font-weight:700;margin-left:4px;'>SIG LOW</span>"
         return (
-            f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
-            f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
-            f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>{label} ({_last_selected_month})</div>"
-            f"<div style='font-size:0.9rem;font-weight:700;color:#1A1A1A;margin-top:6px;line-height:1.3;'>{value_label}</div>"
-            f"<div style='display:flex;align-items:baseline;margin-top:5px;'>"
-            f"<span style='font-size:1.8rem;font-weight:800;color:{accent};line-height:1;'>{pct:.0f}%</span>"
-            f"{_delta_badge(_chip_deltas.get(delta_key))}</div>"
-            f"{_mini_bar(pct, accent)}"
-            f"<div style='font-size:0.72rem;color:#9A958D;margin-top:6px;'>of segment &nbsp;·&nbsp; n≈{n_approx:,}</div>"
+            f"<div style='flex:1;min-width:180px;background:#fff;border:1px solid #E2E8F0;"
+            f"border-radius:14px;padding:16px 18px 12px;box-sizing:border-box;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.05);display:flex;flex-direction:column;'>"
+            f"<div style='font-size:9.5px;text-transform:uppercase;letter-spacing:0.07em;color:#94A3B8;font-weight:700;'>{label}</div>"
+            f"<div style='font-size:0.88rem;font-weight:700;color:#1E293B;margin-top:5px;line-height:1.3;'>{value_label}</div>"
+            f"<div style='display:flex;align-items:baseline;margin-top:4px;gap:4px;'>"
+            f"<span style='font-size:1.9rem;font-weight:800;color:{accent};line-height:1;font-family:Oswald,sans-serif;letter-spacing:-0.01em;'>{pct:.0f}%</span>"
+            f"{_delta_badge(delta)}{sig_note}</div>"
+            f"{spark}"
+            f"{headline}"
+            f"<div style='font-size:0.68rem;color:#94A3B8;margin-top:5px;'>n&#8776;{n_approx:,} &nbsp;&#183;&nbsp; {_last_selected_month}</div>"
             f"</div>"
         )
 
+    _kbf_table_for_spark = None
+    try:
+        _kbf_table_for_spark = engine.reasons_table(df, broad_prefix="mq2a")
+    except Exception:
+        pass
+
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100))
-        + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100))
-        + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100))
-        + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100))
+        + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100),
+                     full_table=age_table_full, row_label_val=top_age_row['Unnamed: 0'])
+        + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
+                     full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'])
+        + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100),
+                     full_table=tob_table_full, row_label_val=top_tob_row['Unnamed: 0'])
+        + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100),
+                     full_table=_kbf_table_for_spark, row_label_val=kbf_display if _kbf_table_for_spark is not None else None)
         + f"</div>"
     )
 
@@ -556,39 +648,20 @@ else:
         st.markdown(
             f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100))
-            + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100))
-            + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100))
-            + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100))
+            + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100),
+                         full_table=age_table_full, row_label_val=top_age_row['Unnamed: 0'])
+            + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
+                         full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'])
+            + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100),
+                         full_table=tob_table_full, row_label_val=top_tob_row['Unnamed: 0'])
+            + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100),
+                         full_table=_kbf_table_for_spark, row_label_val=kbf_display if _kbf_table_for_spark is not None else None)
             + f"</div>",
             unsafe_allow_html=True,
         )
-    st.caption(
-        "Each chip = the single largest category in this segment for that question, out of the full filtered "
-        "base above. The colored badge (+Xpp/-Xpp) compares that category's % here vs. the same category in the "
-        "**overall sample** (same platform/model filters, no segment restriction) — green ≥+2pp, red ≤-2pp, "
-        "grey = within 2 points (not a meaningful gap). Higher isn't automatically 'good': read it against what "
-        "this segment is (e.g. a high First-Time-Buyer share is good context for Acceptors, a warning sign for Rejectors)."
-    )
-
-ai_facts = {
-    "segment": segment_nav, "base_n": int(base_n), "total_n": int(total_n),
-    "filters": {"platform": platform, "model": model, "time_period": time_mode},
-    "top_age_group": {"label": top_age_row['Unnamed: 0'], "pct": round(float(top_age_row['All']), 1)},
-    "top_income_bracket": {"label": top_income_row['Unnamed: 0'], "pct": round(float(top_income_row['All']), 1)},
-    "top_buyer_type": {"label": top_tob_row['Unnamed: 0'], "pct": round(float(top_tob_row['All']), 1)},
-}
 
 regen_key = f"regen_nonce_{segment_nav}"
 st.session_state.setdefault(regen_key, 0)
-_ai_col, _regen_col = st.columns([5, 1])
-with _ai_col:
-    render_ai_summary_button(ai_facts, key=f"{segment_nav}_{platform}_{model}_{time_mode}")
-with _regen_col:
-    st.markdown("<div style='margin-top:0.35rem'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Refresh", key=f"regen_btn_{segment_nav}", help="Regenerate all AI chart insights on this page", type="secondary"):
-        st.session_state[regen_key] += 1
-        st.rerun()
 
 # ----------------------------------------------------------------------
 # Pie-Chart Summary — one donut per category, aggregate ("All" column)
@@ -1313,16 +1386,6 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
                     "direction": "higher" if m in ('▲', '△') else "lower",
                     "confidence": "95%" if m in ('▲', '▼') else "90% directional",
                 })
-        chart_facts = {
-            "chart": title, "segment": segment_nav, "base_n": int(tbl.iloc[0]['All']),
-            "filters": {"platform": platform, "model": model},
-            "time_period": time_mode, "months_included": selected_months,
-            "top_category": {"label": top_row['Unnamed: 0'], "pct": round(float(top_row['All']), 1)},
-            "significant_vs_rest_of_sample": sig_hits,
-            "_regen": st.session_state.get(regen_key, 0),
-        }
-        if not _overview_is_comparison:
-            render_chart_ai_blurb(chart_facts, key=f"aiblurb_{title}_{segment_value}_{platform}_{model}_{time_mode}")
     trend_map[title] = tbl
 
 
@@ -1406,16 +1469,6 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
                     "direction": "higher" if m in ('▲', '△') else "lower",
                     "confidence": "95%" if m in ('▲', '▼') else "90% directional",
                 })
-        chart_facts = {
-            "chart": title, "segment": segment_nav, "base_n": int(tbl.iloc[0]['All']),
-            "filters": {"platform": platform, "model": model},
-            "time_period": time_mode, "months_included": selected_months,
-            "top_category": {"label": top_row['Unnamed: 0'], "pct": round(float(top_row['All']), 1)},
-            "significant_vs_rest_of_sample": sig_hits,
-            "_regen": st.session_state.get(regen_key, 0),
-        }
-        if not _overview_is_comparison:
-            render_chart_ai_blurb(chart_facts, key=f"aiblurb_{title}_{segment_value}_{platform}_{model}_{time_mode}")
     trend_map[title] = sorted_tbl
 
 
