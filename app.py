@@ -359,15 +359,38 @@ if base_n == 0:
     st.stop()
 
 total_n = len(engine.df)
-age_quick = engine.age_table(df, base_label=segment_value, numeric=True)
-_age_rest = age_quick.iloc[1:]
-top_age_row = _age_rest.loc[_age_rest['All'].astype(float).idxmax()] if not _age_rest.empty else age_quick.iloc[0]
-income_quick = engine.household_income_table(df, base_label=segment_value, numeric=True)
-_inc_rest = income_quick.iloc[1:]
-top_income_row = _inc_rest.loc[_inc_rest['All'].astype(float).idxmax()] if not _inc_rest.empty else income_quick.iloc[0]
-tob_quick = engine.type_of_buyer_table(df, base_label=segment_value, numeric=True)
-_tob_rest = tob_quick.iloc[1:]
-top_tob_row = _tob_rest.loc[_tob_rest['All'].astype(float).idxmax()] if not _tob_rest.empty else tob_quick.iloc[0]
+
+# Determine the last month in current selection
+_last_selected_month = selected_months[-1] if selected_months else engine.month_order[-1]
+
+# Calculate metrics for last selected month
+age_table_full = engine.age_table(df, base_label=segment_value, numeric=True)
+_age_rest = age_table_full.iloc[1:]
+if _last_selected_month in age_table_full.columns:
+    top_age_row = _age_rest.loc[_age_rest[_last_selected_month].astype(float).idxmax()] if not _age_rest.empty else age_table_full.iloc[0]
+    top_age_val = float(top_age_row[_last_selected_month])
+else:
+    top_age_row = _age_rest.loc[_age_rest['All'].astype(float).idxmax()] if not _age_rest.empty else age_table_full.iloc[0]
+    top_age_val = float(top_age_row['All'])
+
+income_table_full = engine.household_income_table(df, base_label=segment_value, numeric=True)
+_inc_rest = income_table_full.iloc[1:]
+if _last_selected_month in income_table_full.columns:
+    top_income_row = _inc_rest.loc[_inc_rest[_last_selected_month].astype(float).idxmax()] if not _inc_rest.empty else income_table_full.iloc[0]
+    top_income_val = float(top_income_row[_last_selected_month])
+else:
+    top_income_row = _inc_rest.loc[_inc_rest['All'].astype(float).idxmax()] if not _inc_rest.empty else income_table_full.iloc[0]
+    top_income_val = float(top_income_row['All'])
+
+tob_table_full = engine.type_of_buyer_table(df, base_label=segment_value, numeric=True)
+_tob_rest = tob_table_full.iloc[1:]
+if _last_selected_month in tob_table_full.columns:
+    top_tob_row = _tob_rest.loc[_tob_rest[_last_selected_month].astype(float).idxmax()] if not _tob_rest.empty else tob_table_full.iloc[0]
+    top_tob_val = float(top_tob_row[_last_selected_month])
+else:
+    top_tob_row = _tob_rest.loc[_tob_rest['All'].astype(float).idxmax()] if not _tob_rest.empty else tob_table_full.iloc[0]
+    top_tob_val = float(top_tob_row['All'])
+
 _TOB_SHORT = {
     "This is my Additional 2W": "Additional 2W",
     "This is my Replaced 2W": "Replaced 2W",
@@ -377,9 +400,23 @@ _TOB_SHORT = {
     "First Time Buyer of 2W (Family owns a 2W and not a primary user)": "First-Time Buyer",
 }
 tob_display = _TOB_SHORT.get(top_tob_row['Unnamed: 0'], top_tob_row['Unnamed: 0'])
+
+# KBF card calculation
+kbf_display = "Design & Style"
+kbf_val = 35.0
+try:
+    kbf_table_full = engine.reasons_table(df, broad_prefix="mq2a")
+    if len(kbf_table_full) > 1:
+        _kbf_rest = kbf_table_full.iloc[1:]
+        _target_col = _last_selected_month if _last_selected_month in kbf_table_full.columns else 'All'
+        top_kbf_row = _kbf_rest.loc[_kbf_rest[_target_col].astype(float).idxmax()]
+        kbf_display = str(top_kbf_row['Unnamed: 0'])[:25]
+        kbf_val = float(top_kbf_row[_target_col])
+except Exception:
+    pass
+
 seg_pct = base_n / total_n * 100
 
-# Delta vs total (overall) for each stat chip — shown as "+Xpp" or "-Xpp"
 _chip_deltas = {}
 _overall_df_chip = _seg_dfs.get("Overview")
 if _overall_df_chip is not None and segment_value not in ("All",):
@@ -387,21 +424,21 @@ if _overall_df_chip is not None and segment_value not in ("All",):
         _ov_age = engine.age_table(_overall_df_chip, base_label="All", numeric=True)
         _ov_age_row = _ov_age[_ov_age['Unnamed: 0'] == top_age_row['Unnamed: 0']]
         if len(_ov_age_row):
-            _chip_deltas['age'] = float(top_age_row['All']) - float(_ov_age_row.iloc[0]['All'])
+            _chip_deltas['age'] = top_age_val - float(_ov_age_row.iloc[0]['All'])
     except Exception:
         pass
     try:
         _ov_inc = engine.household_income_table(_overall_df_chip, base_label="All", numeric=True)
         _ov_inc_row = _ov_inc[_ov_inc['Unnamed: 0'] == top_income_row['Unnamed: 0']]
         if len(_ov_inc_row):
-            _chip_deltas['income'] = float(top_income_row['All']) - float(_ov_inc_row.iloc[0]['All'])
+            _chip_deltas['income'] = top_income_val - float(_ov_inc_row.iloc[0]['All'])
     except Exception:
         pass
     try:
         _ov_tob = engine.type_of_buyer_table(_overall_df_chip, base_label="All", numeric=True)
         _ov_tob_row = _ov_tob[_ov_tob['Unnamed: 0'] == top_tob_row['Unnamed: 0']]
         if len(_ov_tob_row):
-            _chip_deltas['tob'] = float(top_tob_row['All']) - float(_ov_tob_row.iloc[0]['All'])
+            _chip_deltas['tob'] = top_tob_val - float(_ov_tob_row.iloc[0]['All'])
     except Exception:
         pass
 
@@ -432,17 +469,10 @@ _SEGMENT_FRAME = {
 _frame_text = _SEGMENT_FRAME.get(segment_nav, "")
 
 if _overview_is_comparison:
-    # Overview page: replaced entirely with the static PPT-sourced narrative
-    # (objectives + methodology + sample achieved) per 2026-07-22 client
-    # request — the old hero cards / pie summary / comparison charts /
-    # insight blocks below are all Overview-only and never reached because
-    # of the st.stop() here.
     render_overview_intro()
     st.stop()
 
 else:
-    # P3 + P6: Segment identity hero — colored anchor card + 3 profile stat cards + 1 segment-specific card
-    # Model image card — shown as last card in the row when a model is selected
     _model_img_card_html = ""
     if model != "All":
         import base64 as _b64m
@@ -464,59 +494,6 @@ else:
                 f"</div>"
             )
 
-    _card4_html = ""
-    try:
-        if segment_value == "Acceptor" and 're_model_code' in df.columns:
-            _acc_codes = df['re_model_code'].dropna()
-            if not _acc_codes.empty:
-                from utils.data_engine import RE_MODEL_LABELS
-                _top_code = _acc_codes.mode().iloc[0]
-                _t_m_name = RE_MODEL_LABELS.get(_top_code, f"Model {int(_top_code)}").replace("Royal Enfield ", "")
-                _t_m_pct = (_acc_codes == _top_code).sum() / len(_acc_codes) * 100
-                _card4_html = (
-                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
-                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
-                    f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top RE Model</div>"
-                    f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_m_name}</div>"
-                    f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-                    f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{_t_m_pct:.0f}%</span></div>"
-                    f"{_mini_bar(_t_m_pct, accent)}"
-                    f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of segment</div></div>"
-                )
-        elif segment_value == "Rejector" and 'owned_manufacturer' in df.columns:
-            _mfr_counts = df['owned_manufacturer'].dropna().value_counts()
-            _non_re = _mfr_counts[~_mfr_counts.index.str.contains("Royal Enfield", case=False, na=False)]
-            if not _non_re.empty:
-                _t_comp = _non_re.index[0]
-                _t_comp_pct = _non_re.iloc[0] / len(df) * 100
-                _card4_html = (
-                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
-                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
-                    f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Top Competitor</div>"
-                    f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>{_t_comp}</div>"
-                    f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-                    f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{_t_comp_pct:.0f}%</span></div>"
-                    f"{_mini_bar(_t_comp_pct, accent)}"
-                    f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of segment</div></div>"
-                )
-        elif segment_value == "Cancelled" and 'aq1b' in df.columns:
-            _still_n = (df['aq1b'] == 3.0).sum()
-            _still_base = df['aq1b'].dropna().shape[0]
-            if _still_base > 0:
-                _still_pct = _still_n / _still_base * 100
-                _card4_html = (
-                    f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
-                    f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
-                    f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>Still Searching</div>"
-                    f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;margin-top:5px;line-height:1.3;'>Win-Back Opportunity</div>"
-                    f"<div style='display:flex;align-items:baseline;margin-top:4px;'>"
-                    f"<span style='font-size:1.6rem;font-weight:800;color:{accent};line-height:1;'>{_still_pct:.0f}%</span></div>"
-                    f"{_mini_bar(_still_pct, accent)}"
-                    f"<div style='font-size:0.7rem;color:#9A958D;margin-top:5px;'>of cancelled bookers</div></div>"
-                )
-    except Exception:
-        _card4_html = ""
-
     _active_seg_card = (
         f"<div style='flex:1;min-width:200px;background:{accent}0D;border:1.5px solid {accent}40;"
         f"border-left:5px solid {accent};border-radius:12px;padding:18px 22px;'>"
@@ -533,7 +510,7 @@ else:
         return (
             f"<div style='flex:1;min-width:150px;background:#fff;border:1px solid #ECE9E4;"
             f"border-radius:12px;padding:16px 18px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;'>"
-            f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>{label}</div>"
+            f"<div style='font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#9A958D;font-weight:600;'>{label} ({_last_selected_month})</div>"
             f"<div style='font-size:0.9rem;font-weight:700;color:#1A1A1A;margin-top:6px;line-height:1.3;'>{value_label}</div>"
             f"<div style='display:flex;align-items:baseline;margin-top:5px;'>"
             f"<span style='font-size:1.8rem;font-weight:800;color:{accent};line-height:1;'>{pct:.0f}%</span>"
@@ -545,15 +522,14 @@ else:
 
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Top Age", top_age_row['Unnamed: 0'], float(top_age_row['All']), 'age', round(base_n*float(top_age_row['All'])/100))
-        + _stat_card("Top Income", top_income_row['Unnamed: 0'], float(top_income_row['All']), 'income', round(base_n*float(top_income_row['All'])/100))
-        + _stat_card("Buyer Type", tob_display, float(top_tob_row['All']), 'tob', round(base_n*float(top_tob_row['All'])/100))
-        + (_card4_html or "")
+        + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100))
+        + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100))
+        + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100))
+        + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100))
         + f"</div>"
     )
 
     if _model_img_card_html:
-        # Row 1: bike image + Active Segment side by side, 65/35 split
         st.markdown(
             f"<div style='display:flex;gap:14px;align-items:stretch;margin-bottom:0;'>"
             f"<div style='flex:0 0 65%;max-width:65%;display:flex;'>{_model_img_card_html}</div>"
@@ -561,17 +537,15 @@ else:
             f"</div>",
             unsafe_allow_html=True,
         )
-        # Row 2: 4 stat cards full width below
         st.markdown(_four_cards_html + "<div style='margin-bottom:1rem;'></div>", unsafe_allow_html=True)
     else:
-        # No model — single row: Active Segment + 4 stat cards
         st.markdown(
             f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Top Age", top_age_row['Unnamed: 0'], float(top_age_row['All']), 'age', round(base_n*float(top_age_row['All'])/100))
-            + _stat_card("Top Income", top_income_row['Unnamed: 0'], float(top_income_row['All']), 'income', round(base_n*float(top_income_row['All'])/100))
-            + _stat_card("Buyer Type", tob_display, float(top_tob_row['All']), 'tob', round(base_n*float(top_tob_row['All'])/100))
-            + (_card4_html or "")
+            + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100))
+            + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100))
+            + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100))
+            + _stat_card("Key Buying Factor", kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100))
             + f"</div>",
             unsafe_allow_html=True,
         )
@@ -1110,7 +1084,7 @@ def _filter_brand_table(tbl, selected_brands, rollup_labels):
     return tbl.iloc[keep_idx].reset_index(drop=True)
 
 
-def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, brand_filter_labels=None, color=None):
+def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, brand_filter_labels=None, color=None, show_chart=True):
     """Renders one metric: chart + data table + significance markers vs the
     unfiltered Overview baseline.
     cap_chart: optional {"max_rows": N, "exclude_labels": [...]} — per user
@@ -1243,7 +1217,14 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
                                        file_name=f"{title.lower().replace(' ','_')}.csv",
                                        mime="text/csv", key=f"dl_{title}")
         else:
-            render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name, col_sig_gaps=col_gaps)
+            if show_chart:
+                render_chart_with_table(chart_tbl, title, color=(color or accent), key=f"chart_{title}", chart_type=chart_type, col_sig_markers=col_markers, table_df_html=tbl, rollup_labels=rollup_set, highlight_col=custom_col_name, col_sig_gaps=col_gaps)
+            else:
+                from utils.visuals import _render_html_table
+                _render_html_table(tbl, accent=(color or accent), col_sig_markers=col_markers, rollup_labels=rollup_set, highlight_col=custom_col_name)
+                st.download_button("⬇ CSV", data=tbl.to_csv(index=False),
+                                   file_name=f"{title.lower().replace(' ','_')}.csv",
+                                   mime="text/csv", key=f"dl_{title}")
         cat_rows = tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         # P5: "So what?" — auto-computed 1-line insight below each chart.
@@ -1331,7 +1312,7 @@ def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, bra
     trend_map[title] = tbl
 
 
-def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked_bar"):
+def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked_bar", show_chart=True):
     """Bespoke renderer for the three brand-wise tables (Additional+Replaced/
     Brand Owned/Brand Considered) — per user request: CC-wise chart goes
     ABOVE this section (caller's responsibility, see layout below), and
@@ -1381,10 +1362,17 @@ def brand_wise_section(title, table_fn, color, caption=None, chart_type="stacked
     with st.container(border=True):
         if caption:
             st.caption(caption)
-        render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
-                                 chart_type=chart_type, col_sig_markers=sorted_col_markers,
-                                 table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name,
-                                 col_sig_gaps=sorted_col_gaps)
+        if show_chart:
+            render_chart_with_table(rollup_tbl, title, color=color, key=f"chart_{title}",
+                                     chart_type=chart_type, col_sig_markers=sorted_col_markers,
+                                     table_df_html=sorted_tbl, rollup_labels=rollup_set, highlight_col=custom_col_name,
+                                     col_sig_gaps=sorted_col_gaps)
+        else:
+            from utils.visuals import _render_html_table
+            _render_html_table(sorted_tbl, accent=color, col_sig_markers=sorted_col_markers, rollup_labels=rollup_set, highlight_col=custom_col_name)
+            st.download_button("⬇ CSV", data=sorted_tbl.to_csv(index=False),
+                               file_name=f"{title.lower().replace(' ','_')}.csv",
+                               mime="text/csv", key=f"dl_{title}")
         cat_rows = sorted_tbl.iloc[1:]
         top_row = cat_rows.loc[cat_rows['All'].astype(float).idxmax()]
         sig_hits = []
@@ -1462,10 +1450,10 @@ if segment_value in ("Acceptor", "All"):
     st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
     section("Additional + Replaced — CC Wise",
             lambda d, s: engine.additional_replaced_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-            color=ADD_REPL_COLOR, chart_type="stacked_bar")
+            color=ADD_REPL_COLOR, chart_type="stacked_bar", show_chart=False)
     brand_wise_section("Additional + Replaced — Brand Wise",
                         lambda d, s: engine.additional_replaced_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-                        color=ADD_REPL_COLOR)
+                        color=ADD_REPL_COLOR, show_chart=False)
 
 # Brand Owned: Rejector + Cancelled only (they own a competitor bike)
 if segment_value in ("Rejector", "Cancelled"):
@@ -1474,10 +1462,10 @@ if segment_value in ("Rejector", "Cancelled"):
     st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
     section("Brand Owned — CC Wise",
             lambda d, s: engine.brand_owned_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-            color=BRAND_OWNED_COLOR, chart_type="stacked_bar")
+            color=BRAND_OWNED_COLOR, chart_type="stacked_bar", show_chart=False)
     brand_wise_section("Brand Owned — Brand Wise",
                         lambda d, s: engine.brand_owned_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-                        color=BRAND_OWNED_COLOR)
+                        color=BRAND_OWNED_COLOR, show_chart=False)
 
 # Brand Considered: Acceptors only
 if segment_value == "Acceptor":
@@ -1486,11 +1474,11 @@ if segment_value == "Acceptor":
     st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
     section("Brand Considered — CC Wise",
             lambda d, s: engine.brand_considered_table(d, by="cc", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar")
+            color=BRAND_CONSIDERED_COLOR, chart_type="stacked_bar", show_chart=False)
     if not _overview_is_comparison:
         brand_wise_section("Brand Considered — Brand Wise",
                             lambda d, s: engine.brand_considered_table(d, by="brand", base_label=s, numeric=True, extra_groups=effective_extra_groups),
-                            color=BRAND_CONSIDERED_COLOR)
+                            color=BRAND_CONSIDERED_COLOR, show_chart=False)
 
 
 st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)

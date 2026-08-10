@@ -167,215 +167,44 @@ def render_comparison_page(engine):
         model_dfs[model_name] = mdf
         short_names[model_name] = model_name.replace("Royal Enfield ", "")
 
-    # Segment split bar
-    with st.container(border=True):
-        st.caption("% of unique respondents per model in each segment. Does NOT sum to 100% — segments overlap by survey design.")
-        try:
-            import plotly.graph_objects as go
-            _seg_rows = []
-            for model_name in selected_models:
-                model_brand, code = name_to_info[model_name]
-                _ma = engine.filter_df(segment="Acceptor", model_code=code if model_brand == "Royal Enfield" else None,
-                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
-                _mr = engine.filter_df(segment="Rejector", model_code=code if model_brand == "Royal Enfield" else None,
-                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
-                _mc = engine.filter_df(segment="Cancelled", model_code=code if model_brand == "Royal Enfield" else None,
-                                       owned_brand_code=code if model_brand != "Royal Enfield" else None)
-                _ma = _ma[_ma['month_label'].isin(selected_months)] if not _ma.empty else _ma
-                _mr = _mr[_mr['month_label'].isin(selected_months)] if not _mr.empty else _mr
-                _mc = _mc[_mc['month_label'].isin(selected_months)] if not _mc.empty else _mc
-                _mall = pd.concat([_ma, _mr, _mc]).drop_duplicates()
-                _base = max(len(_mall), 1)
-                _seg_rows.append({
-                    "model": short_names[model_name], "unique_n": len(_mall),
-                    "acc_pct": len(_ma) / _base * 100,
-                    "rej_pct": len(_mr) / _base * 100,
-                    "can_pct": len(_mc) / _base * 100,
-                })
-            _sp_models = [r['model'] for r in _seg_rows]
-            _sp_fig = go.Figure()
-            _sp_fig.add_trace(go.Bar(name="Acceptors", y=_sp_models, x=[r["acc_pct"] for r in _seg_rows],
-                orientation='h', marker=dict(color=_lighten(INFOLEAP_GREEN, 0.35), cornerradius=4),
-                text=[_pct_label(r["acc_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
-            _sp_fig.add_trace(go.Bar(name="Rejectors", y=_sp_models, x=[r["rej_pct"] for r in _seg_rows],
-                orientation='h', marker=dict(color=_lighten(RE_RED, 0.35), cornerradius=4),
-                text=[_pct_label(r["rej_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
-            _sp_fig.add_trace(go.Bar(name="Cancelled", y=_sp_models, x=[r["can_pct"] for r in _seg_rows],
-                orientation='h', marker=dict(color=_lighten(INFOLEAP_ORANGE, 0.35), cornerradius=4),
-                text=[_pct_label(r["can_pct"]) for r in _seg_rows], textposition='outside', cliponaxis=False))
-            _max_sp = max(max(r["acc_pct"], r["rej_pct"], r["can_pct"]) for r in _seg_rows) if _seg_rows else 80
-            _n_note = "  ·  ".join(f"{r['model']} n={r['unique_n']:,}" for r in _seg_rows)
-            _sp_fig.update_layout(
-                barmode='group', bargap=0.32, bargroupgap=0.08,
-                height=max(240, 64 * len(_seg_rows)),
-                margin=dict(l=10, r=60, t=54, b=20),
-                title=dict(text=f"Segment Profile per Model  <span style='font-size:11px;color:{MUTED}'>({_n_note})</span>",
-                            font=dict(size=15, color="#1A1A1A", family="Oswald, Inter, sans-serif")),
-                xaxis=dict(range=[0, min(_max_sp * 1.3, 110)], ticksuffix='%', showgrid=True, gridcolor='#F0EDE8',
-                           title=None, tickfont=dict(size=11, color=MUTED)),
-                yaxis=dict(autorange='reversed', tickfont=dict(size=12.5, color="#2B2B2B", family="Inter, Segoe UI, sans-serif")),
-                legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='center', x=0.5, font=dict(size=11)),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#2B2B2B", family="Inter, Segoe UI, sans-serif"),
-            )
-            st.plotly_chart(_sp_fig, use_container_width=True, config={"displayModeBar": False}, key="cmp_seg_split")
-        except Exception as _e:
-            st.caption(f"Segment split unavailable: {_e}")
+    # Segment split bar removed per user instruction for clean benchmark comparison
 
-    # Demographic Comparison — All Metrics
-    st.markdown("### Demographic & Market Comparison — All Metrics")
-    st.caption("Each metric shown below in its own section with full charts, tables, and significance testing.")
+    # Clean 2-Column Model Benchmark Comparison — 5 Core Demographic Metrics
+    st.markdown("### Model Benchmark — Core Profile Metrics")
+    st.caption("Side-by-side comparison of 2 selected models comparing Category All vs Last Selected Month.")
 
-    metric_builders = _metric_builders_for(segment_for_compare)
+    last_selected_month = selected_months[-1] if selected_months else engine.month_order[-1]
+    m1_name, m2_name = selected_models[0], selected_models[1]
+    m1_short, m2_short = short_names[m1_name], short_names[m2_name]
+    m1_df, m2_df = model_dfs[m1_name], model_dfs[m2_name]
 
-    _sig_cols_row = st.columns([2, 2])
-    with _sig_cols_row[0]:
-        sig_test_col = st.selectbox("Significance test month", ["All"] + [m for m in selected_months], key="cmp_sig_col",
-                                    help="Which column to run pairwise Z-tests on (N≥30 required) — 'All' uses the whole selected period, or narrow to one month.")
-    with _sig_cols_row[1]:
-        sig_mode = st.radio("Significance baseline", ["Model vs Model", "Model vs Overall Market"],
-                            key="cmp_sig_mode", horizontal=True,
-                            help="'Model vs Overall Market' flags where a model over/under-indexes vs all respondents in this segment.")
+    for metric_name, (builder, _) in DEMOGRAPHIC_BUILDERS.items():
+        st.markdown(f"#### {metric_name}")
+        tbl1 = builder(engine, m1_df, segment_for_compare)
+        tbl2 = builder(engine, m2_df, segment_for_compare)
 
-    _baseline_df = engine.filter_df(segment=segment_for_compare)
-    _baseline_df = _baseline_df[_baseline_df['month_label'].isin(selected_months)]
+        def _format_two_col_table(tbl):
+            if tbl.empty:
+                return tbl
+            keep_cols = ['Unnamed: 0']
+            if 'All' in tbl.columns:
+                keep_cols.append('All')
+            if last_selected_month in tbl.columns and last_selected_month != 'All':
+                keep_cols.append(last_selected_month)
+            return tbl[keep_cols].copy()
 
-    _ai_facts = {short_names[m]: {} for m in selected_models}
+        f_tbl1 = _format_two_col_table(tbl1)
+        f_tbl2 = _format_two_col_table(tbl2)
 
-    for _mi, (metric_name, (builder, _)) in enumerate(metric_builders.items()):
-        with st.expander(f"📊 {metric_name}", expanded=(_mi == 0)):
-            tables = {}
-            for model_name, mdf in model_dfs.items():
-                if len(mdf) == 0:
-                    continue
-                try:
-                    tbl = builder(engine, mdf, segment_for_compare)
-                    if time_mode != "All Months":
-                        keep_cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
-                        tbl = tbl[[c for c in keep_cols if c in tbl.columns]]
-                    tables[model_name] = tbl
-                    _data_rows = tbl.iloc[1:]
-                    if len(_data_rows) and "All" in tbl.columns:
-                        _top = _data_rows.loc[_data_rows["All"].astype(float).idxmax()]
-                        _ai_facts[short_names[model_name]][metric_name] = f"{_top['Unnamed: 0']} ({float(_top['All']):.0f}%)"
-                except Exception:
-                    pass
-
-            if len(tables) < 2:
-                st.caption("Insufficient data for this metric under current filters.")
-                continue
-
-            for model_name, tbl in tables.items():
-                st.markdown(f"**{short_names[model_name]}**")
-                render_chart_with_table(tbl, short_names[model_name], chart_type="stacked_bar",
-                                         key=f"cmp_chart_{metric_name}_{model_name}")
-
-            _metric_facts = {
-                "chart": metric_name, "segment_context": segment_for_compare,
-                "filters": {"time_period": time_mode, "months_included": selected_months},
-                "models_compared": {short_names[m]: _ai_facts[short_names[m]].get(metric_name)
-                                     for m in tables if _ai_facts[short_names[m]].get(metric_name)},
-            }
-            render_chart_ai_blurb(_metric_facts,
-                                   key=f"cmp_aiblurb_{metric_name}_{'_'.join(short_names[m] for m in tables)}")
-
-            model_names = list(tables.keys())
-            _sig_month = sig_test_col
-            _any_sig = False
-
-            if sig_mode == "Model vs Model":
-                rows_index = tables[model_names[0]].iloc[1:]["Unnamed: 0"].tolist()
-                sig_rows = []
-                for row_label in rows_index:
-                    row_out = {"Category": row_label}
-                    base_vals, n_vals = {}, {}
-                    for m in model_names:
-                        t = tables[m]
-                        if _sig_month not in t.columns:
-                            continue
-                        match = t[t["Unnamed: 0"] == row_label]
-                        base_vals[m] = float(match[_sig_month].values[0]) / 100 if len(match) else None
-                        n_vals[m] = float(t.iloc[0][_sig_month]) if _sig_month in t.columns else 0
-                    for i, m1 in enumerate(model_names):
-                        for m2 in model_names[i + 1:]:
-                            p1, p2 = base_vals.get(m1), base_vals.get(m2)
-                            n1, n2 = n_vals.get(m1, 0), n_vals.get(m2, 0)
-                            col_label = f"{short_names[m1]} vs {short_names[m2]}"
-                            if p1 is None or p2 is None or n1 < 30 or n2 < 30:
-                                row_out[col_label] = "—"
-                            else:
-                                res = calculate_significance(p1, n1, p2, n2)
-                                if res["tier"] == "95":
-                                    winner = short_names[m1] if res['z_score'] > 0 else short_names[m2]
-                                    row_out[col_label] = f"{winner} higher ✓"
-                                    _any_sig = True
-                                elif res["tier"] == "90":
-                                    winner = short_names[m1] if res['z_score'] > 0 else short_names[m2]
-                                    row_out[col_label] = f"{winner} higher ~"
-                                    _any_sig = True
-                                else:
-                                    row_out[col_label] = "Similar"
-                    sig_rows.append(row_out)
-
-                with st.expander(f"Significance — {metric_name} ({_sig_month})" + (" ⚡" if _any_sig else ""), expanded=False):
-                    st.caption("✓ = significantly different (95% confidence) · ~ = likely different (90%) · Similar = no clear difference · — = too few respondents (n<30). Pooled Z-test.")
-                    _sig_df = pd.DataFrame(sig_rows)
-                    def _color_sig_cells(val):
-                        if isinstance(val, str):
-                            if "✓" in val: return "background-color:#E8F5E9;color:#1B5E20"
-                            if "~" in val: return "background-color:#F1F8E9;color:#33691E"
-                        return ""
-                    st.dataframe(_sig_df.style.map(_color_sig_cells, subset=[c for c in _sig_df.columns if c != "Category"]),
-                                 use_container_width=True, hide_index=True)
-
-            else:
-                try:
-                    baseline_tbl = builder(engine, _baseline_df, segment_for_compare)
-                    if time_mode != "All Months":
-                        keep_cols = ["Unnamed: 0", "All"] + [m for m in selected_months if m in baseline_tbl.columns]
-                        baseline_tbl = baseline_tbl[[c for c in keep_cols if c in baseline_tbl.columns]]
-                    _ov_sig_rows = []
-                    rows_index = baseline_tbl.iloc[1:]["Unnamed: 0"].tolist()
-                    for row_label in rows_index:
-                        row_out = {"Category": row_label}
-                        _bl_match = baseline_tbl[baseline_tbl["Unnamed: 0"] == row_label]
-                        _bl_p = float(_bl_match[_sig_month].values[0]) / 100 if (len(_bl_match) and _sig_month in baseline_tbl.columns) else None
-                        _bl_n = float(baseline_tbl.iloc[0][_sig_month]) if _sig_month in baseline_tbl.columns else 0
-                        for m in model_names:
-                            t = tables[m]
-                            match = t[t["Unnamed: 0"] == row_label]
-                            _mp = float(match[_sig_month].values[0]) / 100 if (len(match) and _sig_month in t.columns) else None
-                            _mn = float(t.iloc[0][_sig_month]) if _sig_month in t.columns else 0
-                            col_label = short_names[m]
-                            if _bl_p is None or _mp is None or _bl_n < 30 or _mn < 30:
-                                row_out[col_label] = "—"
-                            else:
-                                res = calculate_significance(_mp, _mn, _bl_p, _bl_n)
-                                if res["tier"] == "95":
-                                    row_out[col_label] = "Above avg ✓" if res['z_score'] > 0 else "Below avg ✓"
-                                    _any_sig = True
-                                elif res["tier"] == "90":
-                                    row_out[col_label] = "Trending above" if res['z_score'] > 0 else "Trending below"
-                                    _any_sig = True
-                                else:
-                                    row_out[col_label] = "Similar"
-                        _ov_sig_rows.append(row_out)
-
-                    with st.expander(f"vs Overall Market — {metric_name} ({_sig_month})" + (" ⚡" if _any_sig else ""), expanded=False):
-                        st.caption("✓ = significantly above/below market average (95%) · Trending = likely different (90%) · Similar = no clear gap · — = too few (n<30).")
-                        _ov_df = pd.DataFrame(_ov_sig_rows)
-                        def _color_ov(val):
-                            if isinstance(val, str):
-                                if "Above avg ✓" in val: return "background-color:#E8F5E9;color:#1B5E20"
-                                if "Trending above" in val: return "background-color:#F1F8E9;color:#33691E"
-                                if "Below avg ✓" in val: return "background-color:#FFEBEE;color:#B71C1C"
-                                if "Trending below" in val: return "background-color:#FFF3E0;color:#E65100"
-                            return ""
-                        _ov_cols = [c for c in _ov_df.columns if c != "Category"]
-                        st.dataframe(_ov_df.style.map(_color_ov, subset=_ov_cols),
-                                     use_container_width=True, hide_index=True)
-                except Exception as _e:
-                    st.caption(f"Baseline comparison unavailable: {_e}")
+        from utils.visuals import _render_html_table
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**{m1_short}**")
+            _render_html_table(f_tbl1, accent="#2E3192")
+        with c2:
+            st.markdown(f"**{m2_short}**")
+            _render_html_table(f_tbl2, accent="#1B8A8A")
+        st.markdown("<div style='margin-bottom:1.2rem;'></div>", unsafe_allow_html=True)
 
     # Open-Ended Netting Comparison Section
     st.markdown("---")

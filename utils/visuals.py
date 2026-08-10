@@ -529,14 +529,14 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     # left margin is a constant (see CATEGORY_COL_WIDTH below), so it can
     # only match a table whose row-label column is ALSO a constant width.
     header_cells = "".join(
-        f"<th style='padding:7px 10px;text-align:left;"
-        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#F3F1ED'};"
-        f"border-bottom:2px solid {BORDER};"
+        f"<th style='padding:9px 12px;text-align:center;font-weight:700;font-size:0.8rem;color:#334155;"
+        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#f8fafc'};"
+        f"border-bottom:2px solid #cbd5e1;"
         + (f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;"
            "white-space:normal;word-break:break-word;"
            if c == "Unnamed: 0" else
            ("max-width:90px;white-space:nowrap;" if c == highlight_col else "white-space:nowrap;"))
-        + "position:sticky;top:0;z-index:1;'>"
+        + "position:sticky;top:0;z-index:2;'>"
         f"{_header_html(c)}</th>"
         for c in cols
     )
@@ -560,11 +560,11 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     style = f"padding:7px 10px;font-weight:800;color:{accent};text-align:center;" + _cat_w
                 elif is_member:
                     txt = f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {txt}"
-                    style = "padding:5px 10px;color:#6A665F;font-size:12px;" + _cat_w
+                    style = "padding:5px 10px;color:#6A665F;font-size:12px;text-align:center;" + _cat_w
                 elif rollup_labels is not None:
-                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};" + _cat_w
+                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};text-align:center;" + _cat_w
                 else:
-                    style = "padding:6px 10px;" + _cat_w
+                    style = "padding:6px 10px;text-align:center;" + _cat_w
             else:
                 try:
                     val = float(val)
@@ -591,11 +591,11 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 if is_base:
                     style = f"padding:7px 10px;text-align:center;font-weight:800;color:{accent};"
                 elif is_member:
-                    style = "padding:5px 10px;text-align:right;font-size:12px;color:#6A665F;"
+                    style = "padding:5px 10px;text-align:center;font-size:12px;color:#6A665F;"
                 elif rollup_labels is not None:
-                    style = f"padding:7px 10px;text-align:right;font-weight:700;border-top:2px solid {BORDER};"
+                    style = f"padding:7px 10px;text-align:center;font-weight:700;border-top:2px solid {BORDER};"
                 else:
-                    style = "padding:6px 10px;text-align:right;"
+                    style = "padding:6px 10px;text-align:center;"
                 if not is_base:
                     # Per user instruction: significance NEVER runs on the
                     # aggregate 'All' column, anywhere — only on individual
@@ -645,13 +645,13 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
         body_rows.append(f"<tr style='{bg}'>" + "".join(cells) + "</tr>")
 
     wrapper_style = (
-        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid {BORDER};border-radius:8px;margin-top:0.4rem;"
+        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid #cbd5e1;border-radius:8px;margin-top:0.4rem;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.04);"
         if is_long else
-        f"overflow-x:auto;border:1px solid {BORDER};border-radius:8px;margin-top:0.4rem;"
+        f"overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;margin-top:0.4rem;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.04);"
     )
     html = (
         f"<div style='{wrapper_style}'>"
-        f"<table style='width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;font-family:Segoe UI,Tahoma,sans-serif;'>"
+        f"<table style='width:100%;border-collapse:collapse;table-layout:fixed;font-size:0.82rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;'>"
         f"<thead><tr>{header_cells}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
     )
     if is_long:

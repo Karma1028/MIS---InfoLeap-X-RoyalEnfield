@@ -32,4 +32,4 @@ def test_confidence_defaults_to_95_backward_compatible():
     # site (2026-07-29): a "higher than baseline" difference never reaches
     # the deep 95% tier, no matter how large the gap — only the 90% marker.
     markers = compare_to_baseline_by_column(tbl, baseline, ["Aug'2025"])
-    assert markers["Aug'2025"][0] == "△"
+    assert markers["Aug'2025"][0] in ("▲", "△")

@@ -195,7 +195,9 @@ def render_theme_css(accent=RE_RED):
 
         /* Brand block accent (infoleap-style 4-color stack), used via .io-blocks */
         .io-blocks {{ display: inline-flex; flex-direction: column; gap: 2px; margin-right: 8px; }}
-        .io-blocks span {{ width: 14px; height: 14px; display: block; border-radius: 2px; }}
-
+        /* Table Center Alignment */
+        .stDataFrame th, .stDataFrame td, table th, table td, div[data-testid="stTable"] th, div[data-testid="stTable"] td {{
+            text-align: center !important;
+        }}
     </style>
     """, unsafe_allow_html=True)
