@@ -53,32 +53,32 @@ _master_config_mtime()  # warm cache; result unused but ensures mtime is tracked
 # over 3 segments × 5 demographic sections = 15 table calls; Block D does
 # 14 models × 3 segments = 42 filter_df calls. Without cache: ~600-900ms per
 # rerun. With cache after first run for a given filter: ~50-100ms.
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_filter(segment, platform, model_code, months_tuple):
     _df = engine.filter_df(segment=segment, platform=platform, model_code=model_code)
     return _df[_df['month_label'].isin(set(months_tuple))].copy()
 
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_age(df, base_label="All", numeric=False, extra_groups=None):
     return engine.age_table(df, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_education(df, base_label="All", numeric=False, extra_groups=None):
     return engine.education_table(df, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_occupation(df, base_label="All", numeric=False, extra_groups=None):
     return engine.occupation_table(df, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_income(df, base_label="All", numeric=False, extra_groups=None):
     return engine.household_income_table(df, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 
-@st.cache_data(show_spinner=False, max_entries=600)
+@st.cache_data(show_spinner=False, max_entries=600, ttl=3600)
 def _tbl_type_of_buyer(df, base_label="All", numeric=False, extra_groups=None):
     return engine.type_of_buyer_table(df, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 
-@st.cache_data(show_spinner=False, max_entries=200)
+@st.cache_data(show_spinner=False, max_entries=200, ttl=3600)
 def _tbl_brand_owned(df, by="brand", base_label="All", numeric=False, extra_groups=None):
     return engine.brand_owned_table(df, by=by, base_label=base_label, numeric=numeric, extra_groups=extra_groups)
 

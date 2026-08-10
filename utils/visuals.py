@@ -529,9 +529,11 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     # left margin is a constant (see CATEGORY_COL_WIDTH below), so it can
     # only match a table whose row-label column is ALSO a constant width.
     header_cells = "".join(
-        f"<th style='padding:9px 12px;text-align:center;font-weight:700;font-size:0.8rem;color:#334155;"
-        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#f8fafc'};"
-        f"border-bottom:2px solid #cbd5e1;"
+        f"<th style='padding:10px 14px;text-align:center;font-weight:600;font-size:0.79rem;"
+        f"letter-spacing:0.02em;"
+        f"color:{'#1F3864' if c == highlight_col else '#f8fafc'};"
+        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#1e293b'};"
+        f"border-bottom:none;"
         + (f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;"
            "white-space:normal;word-break:break-word;"
            if c == "Unnamed: 0" else
@@ -635,19 +637,21 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     style += "max-width:90px;"
             cells.append(f"<td style='{style}border-bottom:1px solid {BORDER};'>{txt}</td>")
         if is_base:
-            bg = "background:#FAFAF8;"
+            bg = "background:#f1f5f9;"
         elif is_rollup:
             bg = "background:#FBF8F3;"
         elif is_member and member_n % 2 == 0:
-            bg = "background:#FAFAF9;"
+            bg = "background:#f8fafc;"
+        elif not is_rollup and not is_member and i % 2 == 0:
+            bg = "background:#f8fafc;"
         else:
-            bg = ""
+            bg = "background:#ffffff;"
         body_rows.append(f"<tr style='{bg}'>" + "".join(cells) + "</tr>")
 
     wrapper_style = (
-        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid #cbd5e1;border-radius:8px;margin-top:0.4rem;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.04);"
+        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid #cbd5e1;border-radius:10px;margin-top:0.4rem;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"
         if is_long else
-        f"overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;margin-top:0.4rem;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.04);"
+        f"overflow-x:auto;border:1px solid #cbd5e1;border-radius:10px;margin-top:0.4rem;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"
     )
     html = (
         f"<div style='{wrapper_style}'>"
@@ -659,6 +663,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     st.markdown(html, unsafe_allow_html=True)
 
 
+# DEAD — safe to remove next cleanup (treemap_chart: no call sites in app.py or any utils as of 2026-08-10)
 def treemap_chart(table_df, title):
     """Treemap for many-category ranked lists (brand-wise Brand Considered/
     Brand Owned/Additional+Replaced, 8+ rows after cap_rows) — per repeated
@@ -872,6 +877,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
         _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
 
 
+# DEAD — safe to remove next cleanup (zone_heatmap: no call sites in app.py or any utils as of 2026-08-10)
 def zone_heatmap(zone_matrix, title):
     """Category x Zone heatmap — % of base per category within each zone,
     ignoring the sidebar Zone filter so all 5 zones show side by side.
