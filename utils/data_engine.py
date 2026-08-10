@@ -14,10 +14,39 @@ import re
 import json
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 MASTERFILE_PATH = "data/Enroute_Fourth Wave_Masterfile_Base_4010_AUG-MAY.xlsx"
 DATAMAP_PATH = "data/MIS_datamap.xlsx"
 DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
+DATA_DIR = Path("data")
+MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
+
+
+def load_column_mapping():
+    """Reads column_mapping sheet from RE_MIS_Master.xlsx.
+    Returns {raw_column: internal_name}. Falls back to empty dict
+    (identity mapping — raw names used as-is) if master config missing."""
+    if not MASTER_CONFIG_PATH.exists():
+        return {}
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        return dict(zip(df["raw_column"].dropna(), df["internal_name"].dropna()))
+    except Exception:
+        return {}
+
+
+def get_required_columns():
+    """Returns set of internal_names where required=='YES'."""
+    if not MASTER_CONFIG_PATH.exists():
+        return set()
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        req = df[df["required"].str.upper() == "YES"]["internal_name"]
+        # Exclude dynamic prefix patterns (contain '*') from hard validation
+        return {c for c in req if "*" not in str(c)}
+    except Exception:
+        return set()
 
 # MONTH_ORDER is intentionally NOT a hardcoded literal list. Per user
 # instruction (2026-06-18): "do not hard code anything... month by month
@@ -150,6 +179,22 @@ class DataEngine:
         # header=1: row 0 of the Masterfile is a merged group-header row
         # (e.g. "Segment", "Acceptor / Brand Owned"), real column codes are row 1.
         self.df = pd.read_excel(self.masterfile_path, header=1)
+        # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
+        col_map = load_column_mapping()
+        # Only rename columns that actually exist in the data, skip others
+        rename_map = {k: v for k, v in col_map.items() if k in self.df.columns and k != v and "*" not in k}
+        if rename_map:
+            self.df = self.df.rename(columns=rename_map)
+        # Schema validation: required columns must exist post-rename
+        required = get_required_columns()
+        if required:
+            missing = required - set(self.df.columns)
+            if missing:
+                raise RuntimeError(
+                    f"Missing required columns after mapping: {sorted(missing)}. "
+                    f"Check column_mapping sheet in {MASTER_CONFIG_PATH} — "
+                    f"raw_column names must match actual Masterfile column names."
+                )
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
 

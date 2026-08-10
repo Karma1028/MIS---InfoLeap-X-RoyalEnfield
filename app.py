@@ -30,7 +30,21 @@ def load_engine():
     return engine
 
 
+@st.cache_data(show_spinner=False, ttl=60)
+def _master_config_mtime():
+    """Returns mtime of RE_MIS_Master.xlsx — used to bust cache when the
+    master config is edited. TTL=60s so changes propagate within 1 minute
+    without needing a manual Streamlit restart."""
+    from utils.data_engine import MASTER_CONFIG_PATH
+    import os
+    try:
+        return os.path.getmtime(str(MASTER_CONFIG_PATH))
+    except OSError:
+        return 0
+
+
 engine = load_engine()
+_master_config_mtime()  # warm cache; result unused but ensures mtime is tracked
 
 # Cached wrappers for the most expensive per-rerun operations.
 # @st.cache_data persists across reruns — same filter = cache hit, not a full
