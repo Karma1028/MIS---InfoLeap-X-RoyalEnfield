@@ -8,15 +8,98 @@ import html as _html
 import re
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from utils.data_engine import RE_MODEL_LABELS, month_label_to_fy_quarter
 from utils.visuals import (
     render_chart_with_table, _lighten, _pct_label, MUTED, INFOLEAP_GREEN, RE_RED, INFOLEAP_ORANGE,
-    BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table
+    BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table, PLOTLY_CONFIG
 )
 from utils.stat_engine import calculate_significance, compare_to_baseline_by_column
 from utils.ai_providers import call_llm, get_active_provider
 from utils.ai_summary import render_chart_ai_blurb
 from utils.model_images import model_image_path
+
+# Palette: two distinct, accessible colors for the two models
+_CMP_COLOR_A = "#2E3192"   # deep navy/indigo
+_CMP_COLOR_B = "#C8102E"   # RE red
+
+
+def _comparison_bar_chart(tbl1, tbl2, m1_short, m2_short, title, col="All"):
+    """Grouped horizontal bar chart: Model A vs Model B for every category."""
+    cat_rows1 = tbl1.iloc[1:].copy()
+    cat_rows2 = tbl2.iloc[1:].copy()
+
+    def _pcts(rows, c):
+        out = []
+        for _, r in rows.iterrows():
+            try:
+                out.append(float(str(r[c]).rstrip('%')))
+            except (ValueError, TypeError):
+                out.append(0.0)
+        return out
+
+    cats1 = cat_rows1['Unnamed: 0'].tolist()
+    vals1 = _pcts(cat_rows1, col)
+    vals2_map = {}
+    for _, r in cat_rows2.iterrows():
+        try:
+            vals2_map[r['Unnamed: 0']] = float(str(r[col]).rstrip('%'))
+        except (ValueError, TypeError):
+            vals2_map[r['Unnamed: 0']] = 0.0
+    vals2 = [vals2_map.get(c, 0.0) for c in cats1]
+
+    # Sort by average descending
+    order = sorted(range(len(cats1)), key=lambda i: (vals1[i] + vals2[i]) / 2, reverse=True)
+    cats_sorted  = [cats1[i] for i in order]
+    vals1_sorted = [vals1[i] for i in order]
+    vals2_sorted = [vals2[i] for i in order]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name=m1_short, y=cats_sorted, x=vals1_sorted,
+        orientation='h', marker_color=_CMP_COLOR_A,
+        text=[f"{v:.0f}%" for v in vals1_sorted], textposition='outside',
+        textfont=dict(size=11, color=_CMP_COLOR_A, family="Inter,sans-serif"),
+        hovertemplate=f"<b>{m1_short}</b><br>%{{y}}: %{{x:.1f}}%<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        name=m2_short, y=cats_sorted, x=vals2_sorted,
+        orientation='h', marker_color=_CMP_COLOR_B,
+        text=[f"{v:.0f}%" for v in vals2_sorted], textposition='outside',
+        textfont=dict(size=11, color=_CMP_COLOR_B, family="Inter,sans-serif"),
+        hovertemplate=f"<b>{m2_short}</b><br>%{{y}}: %{{x:.1f}}%<extra></extra>",
+    ))
+    max_val = max(max(vals1_sorted or [0]), max(vals2_sorted or [0]), 1)
+    n_cats = len(cats_sorted)
+    chart_h = max(220, n_cats * 42 + 60)
+    fig.update_layout(
+        barmode='group',
+        height=chart_h,
+        margin=dict(l=0, r=60, t=28, b=10),
+        plot_bgcolor='white', paper_bgcolor='white',
+        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='left', x=0,
+                    font=dict(size=12, family="Inter,sans-serif")),
+        xaxis=dict(range=[0, max_val * 1.25], showgrid=True, gridcolor='#F0EDE8',
+                   ticksuffix='%', tickfont=dict(size=11, family="Inter,sans-serif"),
+                   zeroline=False),
+        yaxis=dict(tickfont=dict(size=11, family="Inter,sans-serif"), autorange='reversed'),
+        font=dict(family="Inter,sans-serif"),
+        title=dict(text=f"<b>{title}</b>", font=dict(size=13, color='#1E293B'), x=0, xanchor='left'),
+    )
+    return fig
+
+
+def _delta_badge_html(val1, val2, label):
+    """Gap badge: Model A vs Model B difference in pp."""
+    diff = val1 - val2
+    if abs(diff) < 1:
+        return ""
+    color = _CMP_COLOR_A if diff > 0 else _CMP_COLOR_B
+    name = label.split()[-1][:10]
+    arrow = "↑" if diff > 0 else "↓"
+    return (f"<span style='font-size:0.7rem;padding:2px 7px;border-radius:4px;"
+            f"background:{color}15;color:{color};font-weight:700;'>"
+            f"{arrow} {abs(diff):.0f}pp</span>")
 
 
 @st.cache_data(show_spinner=False)
@@ -41,13 +124,8 @@ DEMOGRAPHIC_BUILDERS = {
 ACCEPTOR_BUILDERS = {
     "Additional + Replaced — Brand Wise": (lambda engine, df, seg: engine.cap_rows(
         engine.additional_replaced_table(df, by="brand", base_label=seg, numeric=True), max_rows=8), "bar"),
-    "Brand Considered — Brand Wise": (lambda engine, df, seg: engine.cap_rows(
-        engine.brand_considered_table(df, by="brand", base_label=seg, numeric=True), max_rows=8), "bar"),
 }
-REJECTOR_BUILDERS = {
-    "Brand Owned — Brand Wise": (lambda engine, df, seg: engine.cap_rows(
-        engine.brand_owned_table(df, by="brand", base_label=seg, numeric=True), max_rows=8), "bar"),
-}
+REJECTOR_BUILDERS = {}
 
 
 def _metric_builders_for(segment_for_compare):
@@ -67,18 +145,52 @@ def render_comparison_page(engine):
     segment_for_compare = st.sidebar.selectbox("Segment context", ["All", "Acceptor", "Rejector", "Cancelled"], key="cmp_segment")
 
     st.sidebar.markdown("### Time Period")
-    time_mode = st.sidebar.radio("View by", ["All Months", "Month Range", "Quarter (Financial Calendar)"],
-                                  label_visibility="collapsed", key="time_mode")
-    month_order, fy_quarter_order = engine.month_order, engine.fy_quarter_order
-    month_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in month_order]
-    selected_months = month_order
-    if time_mode == "Month Range":
-        lo, hi = st.sidebar.select_slider("Month range", options=month_short, value=(month_short[0], month_short[-1]), key="month_range")
-        lo_i, hi_i = month_short.index(lo), month_short.index(hi)
-        selected_months = month_order[lo_i:hi_i + 1]
-    elif time_mode == "Quarter (Financial Calendar)":
-        quarters = st.sidebar.multiselect("Quarter (Apr-Mar FY)", fy_quarter_order, default=fy_quarter_order, key="quarters")
-        selected_months = [m for m in month_order if month_label_to_fy_quarter(m) in quarters]
+    month_order = engine.month_order
+
+    # Parse month_order entries like "August'2025" → (month_abbr, year)
+    _MN_ABBR = {
+        "January": "Jan", "February": "Feb", "March": "Mar", "April": "Apr",
+        "May": "May", "June": "Jun", "July": "Jul", "August": "Aug",
+        "September": "Sep", "October": "Oct", "November": "Nov", "December": "Dec",
+    }
+    def _parse_mo(m):
+        parts = m.split("'")
+        full_yr = "20" + parts[1] if len(parts[1]) == 2 else parts[1]
+        abbr = _MN_ABBR.get(parts[0], parts[0][:3])
+        return abbr, full_yr
+
+    _mo_parsed = [_parse_mo(m) for m in month_order]
+    _avail_years = sorted(set(yr for _, yr in _mo_parsed))
+    _avail_months = list(dict.fromkeys(mn for mn, _ in _mo_parsed))  # order-preserving unique
+
+    _latest_year = _avail_years[-1] if _avail_years else None
+    _latest_month = _avail_months[-1] if _avail_months else None
+
+    # Initialize session state on first load so default = latest month only
+    if "cmp_years" not in st.session_state:
+        st.session_state["cmp_years"] = [_latest_year] if _latest_year else []
+    if "cmp_months" not in st.session_state:
+        st.session_state["cmp_months"] = [_latest_month] if _latest_month else []
+
+    if st.sidebar.button("Reset to latest month", key="cmp_reset"):
+        st.session_state["cmp_years"] = [_latest_year] if _latest_year else []
+        st.session_state["cmp_months"] = [_latest_month] if _latest_month else []
+        st.rerun()
+
+    selected_years = st.sidebar.multiselect("Year", _avail_years, key="cmp_years")
+    selected_month_names = st.sidebar.multiselect("Month", _avail_months, key="cmp_months")
+
+    _user_cleared = (not selected_years) or (not selected_month_names)
+    selected_months = [
+        m for m, (mn, yr) in zip(month_order, _mo_parsed)
+        if yr in selected_years and mn in selected_month_names
+    ]
+    if not selected_months:
+        selected_months = [month_order[-1]] if month_order else []
+
+    # If user explicitly deselected all years or months, show only the All column
+    # (no current-month column). Otherwise show All + current month.
+    current_month = "" if _user_cleared else (selected_months[-1] if selected_months else "")
 
     with st.container(border=True):
         manufacturers = engine.manufacturers()
@@ -154,7 +266,10 @@ def render_comparison_page(engine):
         st.info("Select 2 models to compare.")
         return
 
-    # Load model DataFrames ONCE
+    # Load model DataFrames ONCE — two versions per model:
+    #   model_dfs_full : unfiltered by month → "All" column always shows all-time totals
+    #   model_dfs      : filtered by selected months → used for open-ended netting counts
+    model_dfs_full = {}
     model_dfs = {}
     short_names = {}
     for model_name in selected_models:
@@ -163,48 +278,103 @@ def render_comparison_page(engine):
             mdf = engine.filter_df(segment=segment_for_compare, model_code=code)
         else:
             mdf = engine.filter_df(segment=segment_for_compare, owned_brand_code=code)
-        mdf = mdf[mdf['month_label'].isin(selected_months)]
-        model_dfs[model_name] = mdf
+        model_dfs_full[model_name] = mdf                                     # all months
+        model_dfs[model_name] = mdf[mdf['month_label'].isin(selected_months)]  # filtered
         short_names[model_name] = model_name.replace("Royal Enfield ", "")
 
     # Segment split bar removed per user instruction for clean benchmark comparison
 
     # Clean 2-Column Model Benchmark Comparison — 5 Core Demographic Metrics
     st.markdown("### Model Benchmark — Core Profile Metrics")
-    st.caption("Side-by-side comparison of 2 selected models comparing Category All vs Last Selected Month.")
+    st.caption(f"All column = full survey period (unfiltered). Current Month = {current_month}.")
 
-    last_selected_month = selected_months[-1] if selected_months else engine.month_order[-1]
     m1_name, m2_name = selected_models[0], selected_models[1]
     m1_short, m2_short = short_names[m1_name], short_names[m2_name]
-    m1_df, m2_df = model_dfs[m1_name], model_dfs[m2_name]
+    # Use FULL (unfiltered) dfs so "All" column always reflects entire survey period
+    m1_df, m2_df = model_dfs_full[m1_name], model_dfs_full[m2_name]
 
-    for metric_name, (builder, _) in DEMOGRAPHIC_BUILDERS.items():
-        st.markdown(f"#### {metric_name}")
+    def _cmp_trim(tbl, cur_month):
+        """Keep 3 cols only: category + All (unfiltered all-time) + current month."""
+        keep = ["Unnamed: 0", "All"] + ([cur_month] if cur_month in tbl.columns else [])
+        return tbl[[c for c in keep if c in tbl.columns]]
+
+    all_builders = _metric_builders_for(segment_for_compare)
+    for metric_name, (builder, chart_type) in all_builders.items():
         tbl1 = builder(engine, m1_df, segment_for_compare)
         tbl2 = builder(engine, m2_df, segment_for_compare)
+        if tbl1.empty and tbl2.empty:
+            continue
+        tbl1_t = _cmp_trim(tbl1, current_month)
+        tbl2_t = _cmp_trim(tbl2, current_month)
 
-        def _format_two_col_table(tbl):
-            if tbl.empty:
-                return tbl
-            keep_cols = ['Unnamed: 0']
-            if 'All' in tbl.columns:
-                keep_cols.append('All')
-            if last_selected_month in tbl.columns and last_selected_month != 'All':
-                keep_cols.append(last_selected_month)
-            return tbl[keep_cols].copy()
+        # Insight: top category per model (from All column)
+        def _top_cat_info(tbl):
+            rows = tbl.iloc[1:]
+            if rows.empty:
+                return None, 0.0
+            try:
+                r = rows.loc[rows['All'].astype(float).idxmax()]
+                return str(r['Unnamed: 0']), float(r['All'])
+            except Exception:
+                return None, 0.0
 
-        f_tbl1 = _format_two_col_table(tbl1)
-        f_tbl2 = _format_two_col_table(tbl2)
+        cat1, pct1 = _top_cat_info(tbl1)
+        cat2, pct2 = _top_cat_info(tbl2)
 
-        from utils.visuals import _render_html_table
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(f"**{m1_short}**")
-            _render_html_table(f_tbl1, accent="#2E3192")
-        with c2:
-            st.markdown(f"**{m2_short}**")
-            _render_html_table(f_tbl2, accent="#1B8A8A")
-        st.markdown("<div style='margin-bottom:1.2rem;'></div>", unsafe_allow_html=True)
+        _is_brand_wise = "Brand Wise" in metric_name
+        with st.container(border=True):
+            st.markdown(f"**{metric_name}**")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(
+                    f"<div style='font-size:0.75rem;font-weight:700;color:{_CMP_COLOR_A};"
+                    f"padding:4px 0 6px;border-bottom:2px solid {_CMP_COLOR_A}33;margin-bottom:8px;'>"
+                    f"◼ {m1_short}</div>",
+                    unsafe_allow_html=True,
+                )
+                if _is_brand_wise:
+                    from utils.visuals import _render_html_table
+                    _render_html_table(tbl1_t, accent=_CMP_COLOR_A)
+                else:
+                    render_chart_with_table(
+                        tbl1_t, f"{m1_short} — {metric_name}",
+                        color=_CMP_COLOR_A,
+                        key=f"cmp_{metric_name}_{m1_short}_chart",
+                        chart_type="stacked_bar",
+                    )
+            with c2:
+                st.markdown(
+                    f"<div style='font-size:0.75rem;font-weight:700;color:{_CMP_COLOR_B};"
+                    f"padding:4px 0 6px;border-bottom:2px solid {_CMP_COLOR_B}33;margin-bottom:8px;'>"
+                    f"◼ {m2_short}</div>",
+                    unsafe_allow_html=True,
+                )
+                if _is_brand_wise:
+                    from utils.visuals import _render_html_table
+                    _render_html_table(tbl2_t, accent=_CMP_COLOR_B)
+                else:
+                    render_chart_with_table(
+                        tbl2_t, f"{m2_short} — {metric_name}",
+                        color=_CMP_COLOR_B,
+                        key=f"cmp_{metric_name}_{m2_short}_chart",
+                        chart_type="stacked_bar",
+                    )
+            # Bottom insight line
+            if cat1 and cat2:
+                if cat1 == cat2:
+                    _ins = (f"Both models share <b>{cat1}</b> as top {metric_name.lower()} — "
+                            f"gap <b>{abs(pct1-pct2):.0f}pp</b> "
+                            f"({'higher for ' + m1_short if pct1 > pct2 else 'higher for ' + m2_short}).")
+                else:
+                    _ins = (f"<b style='color:{_CMP_COLOR_A};'>{m1_short}</b> skews "
+                            f"<b>{cat1}</b> ({pct1:.0f}%) vs "
+                            f"<b style='color:{_CMP_COLOR_B};'>{m2_short}</b> at "
+                            f"<b>{cat2}</b> ({pct2:.0f}%) — distinct buyer profiles.")
+                st.markdown(
+                    f"<div style='font-size:0.72rem;color:#4A5568;padding:6px 8px;border-top:1px solid #F0EDE8;"
+                    f"margin-top:6px;background:#FAFAF9;border-radius:0 0 8px 8px;'>{_ins}</div>",
+                    unsafe_allow_html=True,
+                )
 
     # Open-Ended Netting Comparison Section
     st.markdown("---")
@@ -228,8 +398,11 @@ def render_comparison_page(engine):
             st.markdown(f"#### {_tbl_title}")
             _m_cols = st.columns(len(selected_models))
             for _mi, model_name in enumerate(selected_models):
-                mdf = model_dfs[model_name]
                 _seg_lbl = segment_for_compare
+
+                # Build FULL (all-period) and FILTERED (current month) dfs for this model+segment
+                mdf_full = model_dfs_full[model_name]
+                mdf_cur = model_dfs[model_name]  # already filtered to selected_months → current_month
                 if segment_for_compare in ("All", "Overview"):
                     if "Key Buying Factors" in _tbl_title:
                         _seg_lbl = "Acceptor"
@@ -237,12 +410,19 @@ def render_comparison_page(engine):
                         _seg_lbl = "Rejector"
                     else:
                         _seg_lbl = "Cancelled"
-                    mdf = mdf[mdf['segment'] == _seg_lbl]
+                    mdf_full = mdf_full[mdf_full['segment'] == _seg_lbl]
+                    mdf_cur = mdf_cur[mdf_cur['segment'] == _seg_lbl]
 
                 with _m_cols[_mi]:
-                    st.markdown(f"**{short_names[model_name]}**")
-                    if len(mdf) > 0:
-                        _r_tree = engine.reasons_tree_data(mdf, base_label=_seg_lbl, broad_prefix=_prefix)
+                    _model_color = _CMP_COLOR_A if _mi == 0 else _CMP_COLOR_B
+                    st.markdown(
+                        f"<div style='font-size:0.75rem;font-weight:700;color:{_model_color};"
+                        f"padding:4px 0 6px;border-bottom:2px solid {_model_color}33;margin-bottom:8px;'>"
+                        f"◼ {short_names[model_name]}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if len(mdf_full) > 0:
+                        _r_tree = engine.reasons_tree_data(mdf_full, base_label=_seg_lbl, broad_prefix=_prefix)
                         with st.container(border=True):
                             render_collapsible_reasons_table(
                                 _r_tree,
@@ -251,7 +431,7 @@ def render_comparison_page(engine):
                                 key_suffix=f"cmp_{_prefix}_{_tbl_idx}_{model_name.replace(' ', '_')}_{_mi}"
                             )
                     else:
-                        st.caption(f"No respondents match the current filters for {short_names[model_name]}.")
+                        st.caption("No data.")
 
     # AI Model Positioning Analysis
     st.markdown("---")

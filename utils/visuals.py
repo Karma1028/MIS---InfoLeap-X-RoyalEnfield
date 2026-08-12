@@ -468,7 +468,7 @@ def _month_header(m):
     return f"{name[:3]}'{year[2:]}"
 
 
-def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None):
+def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None, hide_below=None):
     """Renders a compact bordered HTML table matching the live dashboard's
     report-table look, with cells colour-highlighted for significance (deep
     green = 95% confidence, light green = 90% directional; red shades for
@@ -559,14 +559,14 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 txt = str(val)
                 _cat_w = f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;white-space:normal;word-break:break-word;"
                 if is_base:
-                    style = f"padding:7px 10px;font-weight:800;color:{accent};text-align:center;" + _cat_w
+                    style = f"padding:7px 10px;font-weight:800;color:{accent};text-align:left;" + _cat_w
                 elif is_member:
                     txt = f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {txt}"
-                    style = "padding:5px 10px;color:#6A665F;font-size:12px;text-align:center;" + _cat_w
+                    style = "padding:5px 10px;color:#6A665F;font-size:12px;text-align:left;" + _cat_w
                 elif rollup_labels is not None:
-                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};text-align:center;" + _cat_w
+                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};text-align:left;" + _cat_w
                 else:
-                    style = "padding:6px 10px;text-align:center;" + _cat_w
+                    style = "padding:6px 10px;text-align:left;" + _cat_w
             else:
                 try:
                     val = float(val)
@@ -598,6 +598,13 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     style = f"padding:7px 10px;text-align:center;font-weight:700;border-top:2px solid {BORDER};"
                 else:
                     style = "padding:6px 10px;text-align:center;"
+                # Visual-only suppression: hide values below threshold in brand-wise tables
+                if not is_base and hide_below is not None:
+                    try:
+                        if float(row[c]) < hide_below:
+                            txt = "-"
+                    except (ValueError, TypeError):
+                        pass
                 if not is_base:
                     # Per user instruction: significance NEVER runs on the
                     # aggregate 'All' column, anywhere — only on individual
@@ -1283,6 +1290,290 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         st.html(html_code)
     else:
         st.markdown(html_code, unsafe_allow_html=True)
+
+
+def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labels=None,
+                                    col_sig_markers=None, col_sig_gaps=None,
+                                    highlight_col=None, accent=None, key_suffix=""):
+    """Collapsible brand → model table matching the open-end supernet→net UI.
+    Each brand row is a clickable header; its model rows expand/collapse via
+    CSS :has() — same mechanics as render_collapsible_reasons_table.
+    Values < 3% are displayed as '-' (visual only; raw data unchanged)."""
+    import html as _h
+    if table_df is None or len(table_df) < 2:
+        st.info("No data available.")
+        return
+
+    rollup_set = set(rollup_labels) if rollup_labels else set()
+    accent_col = accent or color
+
+    cols_data = [c for c in table_df.columns if c not in ("Unnamed: 0",)]
+    # Keep All first, then rest
+    display_cols = ["All"] + [c for c in cols_data if c != "All"]
+
+    SIG_DEEP_GREEN = "#1A7A3C"
+    SIG_LIGHT_GREEN = "#B7E4C0"
+    SIG_DEEP_RED = "#9B1C1C"
+    SIG_LIGHT_RED = "#FECACA"
+    BRAND_BG = "#EEF2FF"
+    MODEL_BG = "#F8F9FF"
+    BASE_BG = "#f1f5f9"
+    HIGHLIGHT_BG = "#FBE9C6"
+    HIGHLIGHT_HDR_BG = "#F2C14E"
+
+    def _th(c):
+        if c == "Category":
+            return f"<th class='bwt-cat'>Category</th>"
+        lbl = c
+        if "'" in c:
+            parts = c.split("'")
+            lbl = parts[0][:3] + "'" + parts[1][2:] if len(parts) > 1 else c
+        bg = HIGHLIGHT_HDR_BG if c == highlight_col else "#1e293b"
+        fg = "#1F3864" if c == highlight_col else "#f8fafc"
+        return f"<th class='bwt-val' style='background:{bg};color:{fg};'>{_h.escape(lbl)}</th>"
+
+    header_html = _th("Category") + "".join(_th(c) for c in display_cols)
+
+    # Base row
+    base_row = table_df.iloc[0]
+    def _base_td(c):
+        if c == "Category":
+            return f"<td class='bwt-cat' style='font-weight:800;color:{accent_col};text-align:left;'>{_h.escape(str(base_row['Unnamed: 0']))}</td>"
+        val = base_row.get(c, "")
+        try:
+            return f"<td class='bwt-val' style='font-weight:800;color:{accent_col};'>{int(float(val)):,}</td>"
+        except Exception:
+            return f"<td class='bwt-val'>{_h.escape(str(val))}</td>"
+    base_html = "<tr class='bwt-base-row'>" + _base_td("Category") + "".join(_base_td(c) for c in display_cols) + "</tr>"
+
+    # Build brand → [models] structure from sorted_tbl
+    brands = []
+    current_brand = None
+    for i, row in table_df.iloc[1:].iterrows():
+        lbl = str(row["Unnamed: 0"])
+        if lbl in rollup_set:
+            current_brand = {"label": lbl, "row": row, "row_idx": i, "models": []}
+            brands.append(current_brand)
+        elif current_brand is not None:
+            current_brand["models"].append({"label": lbl, "row": row, "row_idx": i})
+
+    # For sig markers: they are indexed by position in table_df.iloc[1:]
+    orig_labels = list(table_df.iloc[1:]["Unnamed: 0"])
+
+    def _get_marker(row_label, col):
+        if not col_sig_markers or col not in col_sig_markers:
+            return ""
+        try:
+            idx = orig_labels.index(row_label)
+            return col_sig_markers[col][idx] if idx < len(col_sig_markers[col]) else ""
+        except (ValueError, IndexError):
+            return ""
+
+    def _row_all_hidden(row):
+        # Never hide model rows — always show all brands and models.
+        return False
+
+    def _val_cell(val_raw, marker, is_model=False, col=None):
+        try:
+            val = float(val_raw)
+        except (ValueError, TypeError):
+            return f"<td class='bwt-val'>-</td>"
+        # Show "-" only if value rounds to 0%
+        if round(val) == 0:
+            display = "-"
+        elif is_model:
+            display = f"{val:.1f}%"
+        else:
+            display = f"{val:.0f}%"
+
+        # Significance styling
+        style = ""
+        suppress = (display == "-" or display == "0%")
+        if not suppress and marker == "▲":
+            style = f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
+            display = f"{display} ▲"
+        elif not suppress and marker == "△":
+            style = f"background:{SIG_LIGHT_GREEN};color:#0F5132;font-weight:600;"
+            display = f"{display} △"
+        elif not suppress and marker == "▼":
+            style = f"background:{SIG_DEEP_RED};color:white;font-weight:700;"
+            display = f"{display} ▼"
+        elif not suppress and marker == "▽":
+            style = f"background:{SIG_LIGHT_RED};color:#1A1A1A;font-weight:600;"
+            display = f"{display} ▽"
+        if col == highlight_col and "background:" not in style:
+            style += f"background:{HIGHLIGHT_BG};"
+        return f"<td class='bwt-val' style='{style}'>{display}</td>"
+
+    tbodies_html = []
+    for b_idx, brand in enumerate(brands):
+        chk_id = f"bwt_chk_{key_suffix}_{b_idx}"
+        b_row = brand["row"]
+        b_lbl = brand["label"]
+
+        brand_cat_cell = (
+            f"<td class='bwt-cat bwt-brand-cat'>"
+            f"<label for='{chk_id}' class='bwt-brand-label'>"
+            f"<input type='checkbox' id='{chk_id}' class='bwt-chk' />"
+            f"<span class='bwt-arrow'></span>"
+            f"<strong>{_h.escape(b_lbl)}</strong>"
+            f"</label></td>"
+        )
+        brand_val_cells = "".join(
+            _val_cell(b_row.get(c, ""), _get_marker(b_lbl, c), is_model=False, col=c)
+            for c in display_cols
+        )
+        brand_row_html = f"<tr class='bwt-brand-row'>{brand_cat_cell}{brand_val_cells}</tr>"
+
+        model_rows_html = ""
+        for m in brand["models"]:
+            m_lbl = m["label"]
+            m_row = m["row"]
+            # Skip row if every data value would display as "-" (all < 3% or zero)
+            if _row_all_hidden(m_row):
+                continue
+            model_cat_cell = (
+                f"<td class='bwt-cat bwt-model-cat'>"
+                f"<span class='bwt-model-arrow'>↳</span>{_h.escape(m_lbl)}"
+                f"</td>"
+            )
+            model_val_cells = "".join(
+                _val_cell(m_row.get(c, ""), _get_marker(m_lbl, c), is_model=True, col=c)
+                for c in display_cols
+            )
+            model_rows_html += f"<tr class='bwt-model-row'>{model_cat_cell}{model_val_cells}</tr>"
+
+        tbodies_html.append(
+            f"<tbody class='bwt-brand-body' id='bwt_body_{key_suffix}_{b_idx}'>"
+            f"{brand_row_html}{model_rows_html}"
+            f"</tbody>"
+        )
+
+    css = f"""
+    <style>
+    .bwt-wrap-{key_suffix} {{
+        overflow-x: auto;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        margin-top: 0.5rem;
+        background: #ffffff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }}
+    .bwt-wrap-{key_suffix} table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }}
+    .bwt-wrap-{key_suffix} th {{
+        background: #1e293b;
+        color: #f8fafc;
+        font-weight: 700;
+        font-size: 0.79rem;
+        padding: 10px 12px;
+        border-bottom: 2px solid #cbd5e1;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }}
+    .bwt-wrap-{key_suffix} th.bwt-cat {{
+        text-align: left;
+        min-width: 220px;
+    }}
+    .bwt-wrap-{key_suffix} th.bwt-val {{
+        text-align: center;
+    }}
+    .bwt-base-row td {{
+        background: {BASE_BG};
+        border-bottom: 2px solid #cbd5e1;
+        padding: 8px 12px;
+    }}
+    .bwt-base-row td.bwt-val {{
+        text-align: center;
+        font-weight: 800;
+    }}
+    .bwt-brand-row td {{
+        background: {BRAND_BG};
+        padding: 8px 12px;
+        border-top: 2px solid #c7d2fe;
+        border-bottom: 1px solid #e0e7ff;
+    }}
+    .bwt-brand-cat {{
+        text-align: left !important;
+    }}
+    .bwt-val {{
+        text-align: center;
+    }}
+    .bwt-model-row td {{
+        background: {MODEL_BG};
+        padding: 6px 12px;
+        border-bottom: 1px solid #e2e8f0;
+    }}
+    .bwt-model-cat {{
+        text-align: left !important;
+        color: #475569;
+        font-size: 0.79rem;
+        padding-left: 28px !important;
+    }}
+    .bwt-model-arrow {{
+        color: #94a3b8;
+        margin-right: 6px;
+        font-weight: bold;
+    }}
+    .bwt-chk {{
+        display: none !important;
+    }}
+    .bwt-brand-label {{
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        user-select: none;
+        color: #312e81;
+        font-weight: 700;
+    }}
+    .bwt-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 14px;
+        font-size: 0.72rem;
+        color: {color};
+        margin-right: 6px;
+        transition: transform 0.15s;
+    }}
+    .bwt-chk:checked + .bwt-arrow::before {{
+        content: '▼';
+    }}
+    .bwt-brand-body .bwt-model-row {{
+        display: none;
+    }}
+    .bwt-brand-body:has(.bwt-chk:checked) .bwt-model-row {{
+        display: table-row !important;
+    }}
+    </style>
+    """
+
+    html_out = f"""
+    {css}
+    <div class="bwt-wrap-{key_suffix}">
+    <table>
+    <thead>
+      <tr>{header_html}</tr>
+      {base_html}
+    </thead>
+    {''.join(tbodies_html)}
+    </table>
+    </div>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;padding-left:2px;">
+    💡 <em>Click any brand row to expand/collapse its models.</em>
+    </div>
+    """
+
+    if hasattr(st, 'html'):
+        st.html(html_out)
+    else:
+        st.markdown(html_out, unsafe_allow_html=True)
 
 
 

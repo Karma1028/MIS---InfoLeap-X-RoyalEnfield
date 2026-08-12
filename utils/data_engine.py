@@ -16,7 +16,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-MASTERFILE_PATH = "data/Enroute_Fourth Wave_Masterfile_Base_4010_AUG-MAY.xlsx"
+MASTERFILE_PATH = "data/RE_MIS_Master.xlsx"
+RAW_DATA_SHEET = "raw_data"
 DATAMAP_PATH = "data/MIS_datamap.xlsx"
 DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
 DATA_DIR = Path("data")
@@ -102,7 +103,9 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
 # acc/rej/can/aq3_po/seg-derived RE model codes 1-14, and their CC platform.
-RE_MODEL_LABELS = {
+# Hardcoded fallback — overridden at module load time by load_model_config()
+# which reads model_config sheet from RE_MIS_Master.xlsx when present.
+_RE_MODEL_LABELS_DEFAULT = {
     1: "Royal Enfield Bullet 350", 2: "Royal Enfield Classic 350",
     3: "Royal Enfield Hunter 350", 4: "Royal Enfield Meteor 350",
     5: "Royal Enfield Goan Classic 350", 6: "Royal Enfield Scram 440",
@@ -111,11 +114,42 @@ RE_MODEL_LABELS = {
     11: "Royal Enfield Super Meteor 650", 12: "Royal Enfield Bear 650",
     13: "Royal Enfield Shotgun 650", 14: "Royal Enfield Classic 650",
 }
-RE_MODEL_PLATFORM = {
+_RE_MODEL_PLATFORM_DEFAULT = {
     1: "350CC", 2: "350CC", 3: "350CC", 4: "350CC", 5: "350CC",
     6: "450CC", 7: "450CC", 8: "450CC",
     9: "650CC", 10: "650CC", 11: "650CC", 12: "650CC", 13: "650CC", 14: "650CC",
 }
+
+
+def load_model_config():
+    """Read model_code, model_name, platform_cc from model_config sheet in
+    RE_MIS_Master.xlsx. Returns (labels_dict, platform_dict) where keys are
+    integer model codes. Falls back to hardcoded defaults on any error."""
+    if not MASTER_CONFIG_PATH.exists():
+        return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
+        labels, platform = {}, {}
+        for _, row in df.iterrows():
+            try:
+                code = int(row["model_code"])
+                name = str(row["model_name"]).strip()
+                plat = str(row["platform_cc"]).strip()
+                active = str(row.get("active", "YES")).strip().upper()
+                if active == "NO":
+                    continue
+                labels[code] = name
+                platform[code] = plat
+            except (ValueError, TypeError, KeyError):
+                continue
+        if labels:
+            return labels, platform
+    except Exception:
+        pass
+    return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
+
+
+RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
 
 # Display-bucket groupings matching the live dashboard's collapsed categories
 # (docs/DATA_FIELD_MAPPING.md Addendum 3 — raw per-code %s are correct, but the
@@ -178,7 +212,7 @@ class DataEngine:
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
         # header=1: row 0 of the Masterfile is a merged group-header row
         # (e.g. "Segment", "Acceptor / Brand Owned"), real column codes are row 1.
-        self.df = pd.read_excel(self.masterfile_path, header=1)
+        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0)
         # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
         col_map = load_column_mapping()
         # Only rename columns that actually exist in the data, skip others
@@ -279,7 +313,7 @@ class DataEngine:
         duplicates only exist among rows load_data() drops as incomplete)."""
         src_cols = list(self.REASONS_CODE_COLUMNS.values())
         try:
-            raw = pd.read_excel(self.masterfile_path, header=1,
+            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0,
                                  usecols=['SubmissionDate'] + src_cols,
                                  dtype={c: str for c in src_cols})
         except Exception:
@@ -289,6 +323,11 @@ class DataEngine:
                 self.df[dest_col] = ""
             return
         raw = raw.rename(columns={v: k for k, v in self.REASONS_CODE_COLUMNS.items()})
+        # Drop any existing dest_col columns (load_data column_mapping may have
+        # already renamed them) to avoid _x/_y suffix collision on merge.
+        drop_existing = [c for c in self.REASONS_CODE_COLUMNS if c in self.df.columns]
+        if drop_existing:
+            self.df = self.df.drop(columns=drop_existing)
         self.df = self.df.merge(raw, on='SubmissionDate', how='left')
         for dest_col in self.REASONS_CODE_COLUMNS:
             self.df[dest_col] = self.df[dest_col].fillna("")
