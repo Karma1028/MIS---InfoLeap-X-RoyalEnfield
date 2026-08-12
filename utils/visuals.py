@@ -468,7 +468,7 @@ def _month_header(m):
     return f"{name[:3]}'{year[2:]}"
 
 
-def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None, hide_below=None):
+def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None, hide_below=None, allow_all_sig=False):
     """Renders a compact bordered HTML table matching the live dashboard's
     report-table look, with cells colour-highlighted for significance (deep
     green = 95% confidence, light green = 90% directional; red shades for
@@ -605,7 +605,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # month columns. col_sig_markers only ever carries month
                     # keys now (see compare_to_baseline_by_column call sites).
                     marker = None
-                    if col_sig_markers and c in col_sig_markers and c != "All":
+                    if col_sig_markers and c in col_sig_markers and (c != "All" or allow_all_sig):
                         col_markers = col_sig_markers[c]
                         marker = col_markers[i - 1] if i - 1 < len(col_markers) else ''
                     # Per user request ("if one section is significant how
@@ -806,7 +806,7 @@ def segment_comparison_bar(seg_tables, title, current_seg="Overview"):
     return fig
 
 
-def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None, highlight_col=None, table_in_expander=False, col_sig_gaps=None):
+def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key=None, chart_type="bar", col_sig_markers=None, table_df_html=None, rollup_labels=None, highlight_col=None, table_in_expander=False, col_sig_gaps=None, allow_all_sig=False):
     """Renders the chart, then the underlying data table right below it
     (per user requirement: tabular data must accompany every chart, not
     just the chart alone, and match the live site's table layout).
@@ -834,7 +834,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     all_zero = table_df.iloc[1:]['All'].astype(float).sum() == 0
     if base_n == 0 or all_zero:
         st.info(f"{title}: base n=0 for the current selection — this table doesn't apply here (e.g. Acceptors have no 'brand owned instead of RE'). Table shown below for completeness.")
-        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps, allow_all_sig=allow_all_sig)
         return
     # Per user request: significance legend lives ONLY in the sidebar now,
     # not repeated as a per-chart popover.
@@ -865,17 +865,17 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             if table_in_expander:
                 with st.expander("📋 Data Table", expanded=False):
-                    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+                    _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps, allow_all_sig=allow_all_sig)
             else:
-                _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+                _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps, allow_all_sig=allow_all_sig)
         return
     else:
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
     if table_in_expander:
         with st.expander("📋 Data Table", expanded=False):
-            _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+            _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps, allow_all_sig=allow_all_sig)
     else:
-        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
+        _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps, allow_all_sig=allow_all_sig)
 
 
 # DEAD — safe to remove next cleanup (zone_heatmap: no call sites in app.py or any utils as of 2026-08-10)

@@ -394,6 +394,7 @@ def render_comparison_page(engine):
                         key=f"cmp_{metric_name}_{m1_short}_chart",
                         chart_type="stacked_bar",
                         col_sig_markers=_sig_a,
+                        allow_all_sig=True,
                     )
             with c2:
                 st.markdown(
@@ -412,6 +413,7 @@ def render_comparison_page(engine):
                         key=f"cmp_{metric_name}_{m2_short}_chart",
                         chart_type="stacked_bar",
                         col_sig_markers=_sig_b,
+                        allow_all_sig=True,
                     )
             # Bottom insight line
             if cat1 and cat2:
