@@ -4,6 +4,7 @@ Combines pristine stacked-bar charts, full data tables, significance testing,
 and 4-level open-ended netting taxonomy trees.
 """
 import base64
+import copy
 import html as _html
 import re
 import streamlit as st
@@ -178,6 +179,111 @@ def _model_vs_model_sig_markers(tbl_a, tbl_b):
                 col_markers.append("")
         markers[col] = col_markers
     return markers
+
+
+def _prune_tree_cols(tree, keep_cols):
+    """Remove time columns not in keep_cols from every item in the tree."""
+    keep_set = set(keep_cols)
+    tree['columns'] = [c for c in tree.get('columns', []) if c in keep_set]
+    if 'col_bases' in tree:
+        tree['col_bases'] = {k: v for k, v in tree['col_bases'].items() if k in keep_set}
+
+    def _prune(item):
+        for field in ('pcts', 'numeric_pcts', 'sig_markers'):
+            if field in item:
+                item[field] = {k: v for k, v in item[field].items() if k in keep_set}
+        for child_key in ('nets', 'subnets', 'items'):
+            for child in item.get(child_key, []):
+                _prune(child)
+
+    for s in tree.get('supernets', []):
+        _prune(s)
+
+
+def _align_tree_order(ref_tree, other_tree):
+    """Reorder other_tree's supernets/nets/subnets to match ref_tree's order.
+    Items present in other but not in ref are appended at end."""
+    def _reorder(ref_list, other_list, key='name'):
+        ref_order = [item[key] for item in ref_list]
+        other_map = {item[key]: item for item in other_list}
+        ordered = [other_map[k] for k in ref_order if k in other_map]
+        extra = [item for item in other_list if item[key] not in set(ref_order)]
+        return ordered + extra
+
+    ref_supers = ref_tree.get('supernets', [])
+    other_supers = other_tree.get('supernets', [])
+    other_super_map = {s['name']: s for s in other_supers}
+
+    new_supers = []
+    for rs in ref_supers:
+        os = other_super_map.get(rs['name'])
+        if os:
+            ref_nets = rs.get('nets', [])
+            other_nets = os.get('nets', [])
+            other_net_map = {n['name']: n for n in other_nets}
+            new_nets = []
+            for rn in ref_nets:
+                on = other_net_map.get(rn['name'])
+                if on:
+                    ref_subs = rn.get('subnets', [])
+                    on['subnets'] = _reorder(ref_subs, on.get('subnets', []))
+                    new_nets.append(on)
+            extra_nets = [n for n in other_nets if n['name'] not in {rn['name'] for rn in ref_nets}]
+            os['nets'] = new_nets + extra_nets
+            new_supers.append(os)
+    extra_supers = [s for s in other_supers if s['name'] not in {rs['name'] for rs in ref_supers}]
+    other_tree['supernets'] = new_supers + extra_supers
+
+
+def _inject_cross_model_reasons_sig(tree_a, tree_b, n_a, n_b):
+    """Inject cross-model sig into 'All' column of each tree item. Higher direction only."""
+    from utils.stat_engine import Z_95, Z_HIGHER_LIGHT
+
+    def _markers(pct_a, pct_b):
+        if n_a < 30 or n_b < 30:
+            return "", ""
+        try:
+            res = calculate_significance(pct_a / 100, n_a, pct_b / 100, n_b)
+            z = res["z_score"]
+            if z >= Z_95:
+                return "▲", ""
+            elif z >= Z_HIGHER_LIGHT:
+                return "△", ""
+            elif z <= -Z_95:
+                return "", "▲"
+            elif z <= -Z_HIGHER_LIGHT:
+                return "", "△"
+        except Exception:
+            pass
+        return "", ""
+
+    def _patch(item_a, item_b):
+        pa = item_a.get('numeric_pcts', {}).get('All', 0)
+        pb = item_b.get('numeric_pcts', {}).get('All', 0)
+        ma, mb = _markers(pa, pb)
+        for item, m in ((item_a, ma), (item_b, mb)):
+            item['sig_markers']['All'] = m
+            base_str = f"{item['numeric_pcts'].get('All', 0):.0f}%"
+            item['pcts']['All'] = f"{base_str} {m}".strip() if m else base_str
+
+    sb_map = {s['name']: s for s in tree_b.get('supernets', [])}
+    for sa in tree_a.get('supernets', []):
+        sb = sb_map.get(sa['name'])
+        if not sb:
+            continue
+        _patch(sa, sb)
+        nb_map = {n['name']: n for n in sb.get('nets', [])}
+        for na in sa.get('nets', []):
+            nb = nb_map.get(na['name'])
+            if not nb:
+                continue
+            _patch(na, nb)
+            subb_map = {sub['name']: sub for sub in nb.get('subnets', [])}
+            for sub_a in na.get('subnets', []):
+                sub_b = subb_map.get(sub_a['name'])
+                if not sub_b:
+                    continue
+                _patch(sub_a, sub_b)
 
 
 def render_comparison_page(engine):
@@ -453,12 +559,17 @@ def render_comparison_page(engine):
         with st.expander(f"💬 {_tbl_title}", expanded=True):
             st.markdown(f"#### {_tbl_title}")
             _m_cols = st.columns(len(selected_models))
+
+            # Build all trees first so we can compute cross-model sig before rendering.
+            # Use full (all-time) df so "All" column = complete base n.
+            # After building, prune to "All" + selected_months so display matches
+            # chart/table sections (only selected months shown as time columns).
+            _keep_cols = {"All"} | set(selected_months)
+            _trees = {}
+            _tree_base_ns = {}
             for _mi, model_name in enumerate(selected_models):
                 _seg_lbl = segment_for_compare
-
-                # Build FULL (all-period) and FILTERED (current month) dfs for this model+segment
-                mdf_full = model_dfs_full[model_name]
-                mdf_cur = model_dfs[model_name]  # already filtered to selected_months → current_month
+                mdf = model_dfs_full[model_name]
                 if segment_for_compare in ("All", "Overview"):
                     if "Key Buying Factors" in _tbl_title:
                         _seg_lbl = "Acceptor"
@@ -466,9 +577,28 @@ def render_comparison_page(engine):
                         _seg_lbl = "Rejector"
                     else:
                         _seg_lbl = "Cancelled"
-                    mdf_full = mdf_full[mdf_full['segment'] == _seg_lbl]
-                    mdf_cur = mdf_cur[mdf_cur['segment'] == _seg_lbl]
+                    mdf = mdf[mdf['segment'] == _seg_lbl]
+                if len(mdf) > 0:
+                    _r_tree = copy.deepcopy(engine.reasons_tree_data(mdf, base_label=_seg_lbl, broad_prefix=_prefix))
+                    _prune_tree_cols(_r_tree, _keep_cols)
+                    _trees[model_name] = (_r_tree, _seg_lbl)
+                    _tree_base_ns[model_name] = _r_tree.get('col_bases', {}).get('All', 0)
 
+            # Align all trees to model[0] order; inject cross-model sig for 2-model pairs
+            _ref_model = selected_models[0]
+            if _ref_model in _trees:
+                for _other in selected_models[1:]:
+                    if _other in _trees:
+                        _align_tree_order(_trees[_ref_model][0], _trees[_other][0])
+            if len(selected_models) == 2:
+                _mn_a, _mn_b = selected_models[0], selected_models[1]
+                if _mn_a in _trees and _mn_b in _trees:
+                    _inject_cross_model_reasons_sig(
+                        _trees[_mn_a][0], _trees[_mn_b][0],
+                        _tree_base_ns[_mn_a], _tree_base_ns[_mn_b]
+                    )
+
+            for _mi, model_name in enumerate(selected_models):
                 with _m_cols[_mi]:
                     _model_color = _CMP_COLOR_A if _mi == 0 else _CMP_COLOR_B
                     st.markdown(
@@ -477,8 +607,8 @@ def render_comparison_page(engine):
                         f"◼ {short_names[model_name]}</div>",
                         unsafe_allow_html=True,
                     )
-                    if len(mdf_full) > 0:
-                        _r_tree = engine.reasons_tree_data(mdf_full, base_label=_seg_lbl, broad_prefix=_prefix)
+                    if model_name in _trees:
+                        _r_tree, _seg_lbl = _trees[model_name]
                         with st.container(border=True):
                             render_collapsible_reasons_table(
                                 _r_tree,

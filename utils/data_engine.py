@@ -1304,11 +1304,12 @@ class DataEngine:
                             marker = "△"
 
                 sig_markers[col] = marker
-                str_val = f"{val:.0f}%" if not numeric else val
-                if marker:
-                    str_pcts[col] = f"{str_val} {marker}"
+                if not numeric:
+                    rounded = round(val)
+                    str_val = "-" if rounded == 0 else f"{rounded}%"
+                    str_pcts[col] = f"{str_val} {marker}".strip() if (marker and str_val != "-") else str_val
                 else:
-                    str_pcts[col] = str_val
+                    str_pcts[col] = val
 
             return str_pcts, num_pcts, sig_markers
 
