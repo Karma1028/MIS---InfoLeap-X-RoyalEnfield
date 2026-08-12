@@ -1382,7 +1382,7 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
         if round(val) == 0:
             display = "-"
         elif is_model:
-            display = f"{val:.1f}%"
+            display = f"{val:.0f}%"
         else:
             display = f"{val:.0f}%"
 
