@@ -574,18 +574,12 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # glance, easy to mistake for missing/broken data — a
                     # dash makes "genuinely zero" visually distinct from a
                     # small-but-real percentage.
-                    # Member rows in brand-wise tables get 1 decimal place —
-                    # per user feedback, many small competitor models round
-                    # to the same "0%"/"1%" at 0 decimals, which makes a
-                    # correctly-descending-sorted list LOOK unsorted (ties
-                    # that aren't really ties). Base/rollup/plain rows stay
-                    # whole-number, matching the live site's own style.
                     if is_base:
                         txt = f"{val:,.0f}"
                     elif val == 0:
                         txt = "-"
                     elif is_member:
-                        txt = f"{val:.1f}%"
+                        txt = f"{val:.0f}%"
                     else:
                         txt = f"{val:.0f}%"
                 except (ValueError, TypeError):
