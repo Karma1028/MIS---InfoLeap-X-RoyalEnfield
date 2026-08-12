@@ -1650,12 +1650,19 @@ class DataEngine:
         return self.sort_by_value(tbl) if numeric else tbl
 
     def _aq5a_cc_netting(self):
-        """Loads the real CC-bucket scheme for aq5a's 1-124 codes from the
-        'Neeting for AQ3a_AQ5' sheet (no numeric code column there — codes
-        are inferred from row order, confirmed to match acc/rej/can)."""
+        """Loads CC-bucket scheme for aq5a codes 1-124 from netting_aq3a_aq5 sheet.
+        Cached on instance after first read."""
+        if hasattr(self, '_aq5a_cc_netting_cache'):
+            return self._aq5a_cc_netting_cache
+        if not MASTER_CONFIG_PATH.exists():
+            raise FileNotFoundError(
+                f"RE_MIS_Master.xlsx not found at {MASTER_CONFIG_PATH}. "
+                "Set DRIVE_FILE_ID in Streamlit Cloud secrets and reload."
+            )
         net = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="netting_aq3a_aq5", header=None)
         net = net.iloc[3:127].reset_index(drop=True)
-        return {i + 1: str(net.iloc[i, 5]).strip() for i in range(len(net))}
+        self._aq5a_cc_netting_cache = {i + 1: str(net.iloc[i, 5]).strip() for i in range(len(net))}
+        return self._aq5a_cc_netting_cache
 
 
 if __name__ == "__main__":
