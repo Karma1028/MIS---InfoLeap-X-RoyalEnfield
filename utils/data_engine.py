@@ -18,7 +18,7 @@ from pathlib import Path
 
 MASTERFILE_PATH = "data/RE_MIS_Master.xlsx"
 RAW_DATA_SHEET = "raw_data"
-DATAMAP_PATH = "data/excel_files/MIS_datamap.xlsx"
+DATAMAP_PATH = "data/RE_MIS_Master.xlsx"  # datamap sheets now embedded in master file
 DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
 DATA_DIR = Path("data")
 MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
@@ -259,10 +259,11 @@ class DataEngine:
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
 
-        dm = pd.read_excel(self.datamap_path, skiprows=2)
+        dm = pd.read_excel(self.datamap_path, sheet_name='datamap_labels', header=None,
+                           skiprows=2, names=['Variable', 'Label', 'col3', 'col4'])
         self.labels = dict(zip(dm['Variable'], dm['Label']))
 
-        dm2 = pd.read_excel(self.datamap_path, sheet_name='Sheet2')
+        dm2 = pd.read_excel(self.datamap_path, sheet_name='datamap_value_labels')
         self._parse_value_labels(dm2)
 
         # age_grp has no Sheet2 value-map block (derived/recoded variable,
@@ -1652,7 +1653,7 @@ class DataEngine:
         """Loads the real CC-bucket scheme for aq5a's 1-124 codes from the
         'Neeting for AQ3a_AQ5' sheet (no numeric code column there — codes
         are inferred from row order, confirmed to match acc/rej/can)."""
-        net = pd.read_excel("data/excel_files/Enroute_AP_V2_netting.xlsx", sheet_name="Neeting for AQ3a_AQ5", header=None)
+        net = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="netting_aq3a_aq5", header=None)
         net = net.iloc[3:127].reset_index(drop=True)
         return {i + 1: str(net.iloc[i, 5]).strip() for i in range(len(net))}
 
