@@ -28,13 +28,41 @@ from scipy.stats import norm
 # rather than a formula we haven't found, since their site loads from
 # separately-exported per-model static files, not a live query.
 #
-# Confidence tiers (unchanged, confirmed against the reference sheet):
+# Confidence tiers:
 #   0.95 confidence -> Z >= 1.95   (rounded 1.96)
 #   0.90 confidence -> Z in [1.64, 1.94]  (directional/lower-tier flag)
+#
+# DIRECTION ASYMMETRY:
+# The live MIS site shows light green for ALL higher values (no dark tier for
+# rises), and dark green for drops at z<=-1.95 only. Our app intentionally
+# departs from that: per user requirement (2026-08-04) both tiers apply to
+# HIGHER values too, so the full mapping is:
+#   - value HIGHER than baseline:
+#       z >= 1.95 → dark green (95%, ▲)
+#       z in [1.64, 1.95) → light green (90%, △)
+#   - value LOWER than baseline:
+#       z <= -1.95 → dark green (95%, ▼)
+#       z in (-1.95, -1.64] → nothing (no light tier for drops)
+# Net: dark green = strongly significant in either direction; light green =
+# directionally higher at 90% only.
 
 Z_95 = 1.95
 Z_90_LOW = 1.64
 Z_90_HIGH = 1.94
+# CORRECTED (2026-07-30): originally set to 1.2816 (one-tailed 90%) from a
+# ~28-cell sample that never actually tested the 1.28-1.64 gap -- largest
+# confirmed unflagged sample was Z=0.42, smallest confirmed flagged sample
+# was Z=2.44, leaving that whole band unverified. Re-derived against exact
+# (non-rounded) underlying proportions for Royal Enfield Classic 350's
+# Education table: two cells sit inside that gap and are FALSELY flagged
+# at 1.2816 but are plain/unhighlighted on the live site --
+#   SSC/HSC Aug'25 (18% vs ALL 12.19%, n=60): Z=1.371
+#   ProfGrad/PG Jan'26 (21% vs ALL 14.95%, n=66): Z=1.343
+# All previously-confirmed true positives clear 1.64 with room to spare
+# (Sept'25 ProfGrad Z=2.44, Feb'26 SSC/HSC Z=2.61, Apr'26 College-non-grad
+# Z=2.49) -- so the light tier is two-tailed 90% (Z_90_LOW), same value
+# already used for the old symmetric tiering, not a separate one-tailed cut.
+Z_HIGHER_LIGHT = Z_90_LOW
 
 
 def calculate_significance(p1, n1, p2, n2, confidence=0.95):
@@ -58,14 +86,19 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
         return {"is_significant": False, "z_score": 0.0, "tier": None}
 
     z_score = (pct1 - pct2) / sdiff
-    abs_z = abs(z_score)
 
-    if confidence >= 0.95:
-        tier = "95" if abs_z >= Z_95 else ("90" if Z_90_LOW <= abs_z <= Z_90_HIGH else None)
-        is_significant = abs_z >= Z_95
+    # Asymmetric by direction -- see module docstring above.
+    # Higher direction: dark (95%) at z>=1.95, light (90%) at z in [1.64, 1.95).
+    # Lower direction: dark (95%) only at z<=-1.95, no light tier for drops.
+    if z_score >= Z_95:
+        tier = "95"
+    elif z_score >= Z_HIGHER_LIGHT:
+        tier = "90"
+    elif z_score <= -Z_95:
+        tier = "95"
     else:
-        tier = "90" if abs_z >= Z_90_LOW else None
-        is_significant = abs_z >= Z_90_LOW
+        tier = None
+    is_significant = tier is not None
 
     return {
         "is_significant": is_significant,
@@ -91,7 +124,7 @@ def compare_to_baseline(table_df, baseline_df):
         label = table_df.iloc[i]['Unnamed: 0']
         p1 = float(table_df.iloc[i]['All']) / 100
         match = baseline_df[baseline_df['Unnamed: 0'] == label]
-        if len(match) == 0 or base_n == baseline_n:
+        if len(match) == 0 or table_df is baseline_df:
             markers.append('')
             continue
         p2 = float(match.iloc[0]['All']) / 100

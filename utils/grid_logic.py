@@ -1,3 +1,4 @@
+# DEAD MODULE — safe to remove next cleanup (no imports found outside this file as of 2026-08-10)
 import pandas as pd
 
 class GridMapper:

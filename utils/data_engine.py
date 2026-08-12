@@ -14,10 +14,58 @@ import re
 import json
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
-MASTERFILE_PATH = "data/Enroute_Fourth Wave_Masterfile_Base_4010_AUG-MAY.xlsx"
+MASTERFILE_PATH = "data/RE_MIS_Master.xlsx"
+RAW_DATA_SHEET = "raw_data"
 DATAMAP_PATH = "data/MIS_datamap.xlsx"
 DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
+DATA_DIR = Path("data")
+MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
+
+# Optional Google Drive sync (Option A — gdown).
+# Set DRIVE_FILE_ID env var to the file ID from the shareable Drive link.
+# Format: https://drive.google.com/file/d/<FILE_ID>/view
+# The file is downloaded fresh to MASTERFILE_PATH on every engine load.
+DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "")
+
+
+def _sync_from_drive():
+    """Download RE_MIS_Master.xlsx from Google Drive if DRIVE_FILE_ID is set."""
+    if not DRIVE_FILE_ID:
+        return
+    try:
+        import gdown
+        url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download"
+        gdown.download(url, MASTERFILE_PATH, quiet=False)
+    except Exception as e:
+        print(f"[drive-sync] WARNING: could not download from Drive: {e}. Using local file.")
+
+
+def load_column_mapping():
+    """Reads column_mapping sheet from RE_MIS_Master.xlsx.
+    Returns {raw_column: internal_name}. Falls back to empty dict
+    (identity mapping — raw names used as-is) if master config missing."""
+    if not MASTER_CONFIG_PATH.exists():
+        return {}
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        return dict(zip(df["raw_column"].dropna(), df["internal_name"].dropna()))
+    except Exception:
+        return {}
+
+
+def get_required_columns():
+    """Returns set of internal_names where required=='YES'."""
+    if not MASTER_CONFIG_PATH.exists():
+        return set()
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        req = df[df["required"].str.upper() == "YES"]["internal_name"]
+        # Exclude dynamic prefix patterns (contain '*') from hard validation
+        return {c for c in req if "*" not in str(c)}
+    except Exception:
+        return set()
 
 # MONTH_ORDER is intentionally NOT a hardcoded literal list. Per user
 # instruction (2026-06-18): "do not hard code anything... month by month
@@ -73,7 +121,9 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
 # acc/rej/can/aq3_po/seg-derived RE model codes 1-14, and their CC platform.
-RE_MODEL_LABELS = {
+# Hardcoded fallback — overridden at module load time by load_model_config()
+# which reads model_config sheet from RE_MIS_Master.xlsx when present.
+_RE_MODEL_LABELS_DEFAULT = {
     1: "Royal Enfield Bullet 350", 2: "Royal Enfield Classic 350",
     3: "Royal Enfield Hunter 350", 4: "Royal Enfield Meteor 350",
     5: "Royal Enfield Goan Classic 350", 6: "Royal Enfield Scram 440",
@@ -82,11 +132,42 @@ RE_MODEL_LABELS = {
     11: "Royal Enfield Super Meteor 650", 12: "Royal Enfield Bear 650",
     13: "Royal Enfield Shotgun 650", 14: "Royal Enfield Classic 650",
 }
-RE_MODEL_PLATFORM = {
+_RE_MODEL_PLATFORM_DEFAULT = {
     1: "350CC", 2: "350CC", 3: "350CC", 4: "350CC", 5: "350CC",
     6: "450CC", 7: "450CC", 8: "450CC",
     9: "650CC", 10: "650CC", 11: "650CC", 12: "650CC", 13: "650CC", 14: "650CC",
 }
+
+
+def load_model_config():
+    """Read model_code, model_name, platform_cc from model_config sheet in
+    RE_MIS_Master.xlsx. Returns (labels_dict, platform_dict) where keys are
+    integer model codes. Falls back to hardcoded defaults on any error."""
+    if not MASTER_CONFIG_PATH.exists():
+        return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
+        labels, platform = {}, {}
+        for _, row in df.iterrows():
+            try:
+                code = int(row["model_code"])
+                name = str(row["model_name"]).strip()
+                plat = str(row["platform_cc"]).strip()
+                active = str(row.get("active", "YES")).strip().upper()
+                if active == "NO":
+                    continue
+                labels[code] = name
+                platform[code] = plat
+            except (ValueError, TypeError, KeyError):
+                continue
+        if labels:
+            return labels, platform
+    except Exception:
+        pass
+    return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
+
+
+RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
 
 # Display-bucket groupings matching the live dashboard's collapsed categories
 # (docs/DATA_FIELD_MAPPING.md Addendum 3 — raw per-code %s are correct, but the
@@ -99,13 +180,28 @@ EDUCATION_DISPLAY_GROUPS = {
     7.0: "Professional Graduate/PG",
 }
 OCCUPATION_DISPLAY_GROUPS = {
+    # FIXED (2026-08-06): live shows dq4 categories nearly 1:1 per-code, not
+    # bucketed into one broad "Other" -- confirmed via a live per-model scrape
+    # (Bullet 350 "All" shows Full time worker/Businessman/Student/
+    # Agriculture/Self-employed/Other as 6 separate rows; Rejector segment
+    # shows a standalone "Art, music, sport etc." row; Booked-but-Cancelled
+    # shows a standalone "Housewife" row). Live only merges codes 1+2 into
+    # "Full time worker" and 5+6+7 into "Businessman"; everything else gets
+    # its own row, appearing/disappearing per segment depending on whether
+    # that code has any respondents there. Previous version folded
+    # 3/4/9/10/13/14/15 into one "Other" bucket, which inflated that bucket
+    # vs live and lost the Housewife/Retired/Part-time/Art-music-sport rows
+    # entirely.
     1.0: "Full time worker", 2.0: "Full time worker",
-    3.0: "Other", 4.0: "Other",
-    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman", 8.0: "Businessman",
-    9.0: "Other", 10.0: "Other",
+    3.0: "Part time worker", 4.0: "Part time worker",
+    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman",
+    8.0: "Self-employed",
+    9.0: "Art, music, sport etc.", 10.0: "Art, music, sport etc.",
     11.0: "Agriculture",
     12.0: "Student",
-    13.0: "Other", 14.0: "Other", 15.0: "Other",
+    13.0: "Housewife",
+    14.0: "Retired",
+    15.0: "Other",
 }
 
 
@@ -131,10 +227,25 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
+        _sync_from_drive()
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
-        # header=1: row 0 of the Masterfile is a merged group-header row
-        # (e.g. "Segment", "Acceptor / Brand Owned"), real column codes are row 1.
-        self.df = pd.read_excel(self.masterfile_path, header=1)
+        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0)
+        # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
+        col_map = load_column_mapping()
+        # Only rename columns that actually exist in the data, skip others
+        rename_map = {k: v for k, v in col_map.items() if k in self.df.columns and k != v and "*" not in k}
+        if rename_map:
+            self.df = self.df.rename(columns=rename_map)
+        # Schema validation: required columns must exist post-rename
+        required = get_required_columns()
+        if required:
+            missing = required - set(self.df.columns)
+            if missing:
+                raise RuntimeError(
+                    f"Missing required columns after mapping: {sorted(missing)}. "
+                    f"Check column_mapping sheet in {MASTER_CONFIG_PATH} — "
+                    f"raw_column names must match actual Masterfile column names."
+                )
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
 
@@ -219,7 +330,7 @@ class DataEngine:
         duplicates only exist among rows load_data() drops as incomplete)."""
         src_cols = list(self.REASONS_CODE_COLUMNS.values())
         try:
-            raw = pd.read_excel(self.masterfile_path, header=1,
+            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0,
                                  usecols=['SubmissionDate'] + src_cols,
                                  dtype={c: str for c in src_cols})
         except Exception:
@@ -229,6 +340,11 @@ class DataEngine:
                 self.df[dest_col] = ""
             return
         raw = raw.rename(columns={v: k for k, v in self.REASONS_CODE_COLUMNS.items()})
+        # Drop any existing dest_col columns (load_data column_mapping may have
+        # already renamed them) to avoid _x/_y suffix collision on merge.
+        drop_existing = [c for c in self.REASONS_CODE_COLUMNS if c in self.df.columns]
+        if drop_existing:
+            self.df = self.df.drop(columns=drop_existing)
         self.df = self.df.merge(raw, on='SubmissionDate', how='left')
         for dest_col in self.REASONS_CODE_COLUMNS:
             self.df[dest_col] = self.df[dest_col].fillna("")
@@ -293,7 +409,7 @@ class DataEngine:
         (their `acc` is null since they were never asked that question),
         `rej`/`can` for Rejector/Cancelled as before.
         """
-        df = self.df
+        df = self.df.copy()
         acceptor_mask = df['aq3_po'].between(1, 14)
         df['segment'] = None
         df.loc[acceptor_mask, 'segment'] = 'Acceptor'
@@ -301,11 +417,6 @@ class DataEngine:
         df.loc[(df['grida'] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
 
         acc_or_aq3po = df['acc'].fillna(df['aq3_po'])
-        # Rejector/Cancelled model code sourced from `seg` (offset-decoded),
-        # not `rej`/`can` directly -- see _segment_slice()'s Rejector/
-        # Cancelled branches for why (seg-14/seg-28 confirmed exact against
-        # a fresh live-site scrape across all 14 RE models; rej/can were
-        # off by 0-3 respondents per model).
         df['re_model_code'] = np.select(
             [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
             [acc_or_aq3po, df['seg'] - 14, df['seg'] - 28],
@@ -314,53 +425,51 @@ class DataEngine:
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
         df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
 
-        # Unified "what model does this respondent actually own" across
-        # RE AND every competitor brand (1-124 scheme), per user request to
-        # filter/segregate by brand+model beyond just RE's 14 models.
-        # Acceptors: acc (their RE purchase). Rejector/Cancelled: aq3 (what
-        # they actually bought instead — RE codes 1-14 here would mean a
-        # Rejector/Cancelled who still ended up owning an RE model; codes
-        # 15-123 are competitor purchases; NaN = no resolvable purchase,
-        # e.g. a Cancelled respondent who never confirmed buying anything).
         df['owned_brand_code'] = acc_or_aq3po.where(df['segment'] == 'Acceptor', df['aq3'])
         acc_map = self.value_maps.get('acc', {})
         df['owned_brand_name'] = df['owned_brand_code'].map(acc_map)
-
         df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
+        self.df = df.copy()
 
     def _derive_month(self):
-        # The raw `month`/`year` text columns are dirty (typos, garbage years).
-        # SubmissionDate is a clean datetime — derive month labels from it.
-        dt = pd.to_datetime(self.df['SubmissionDate'], errors='coerce')
+        # The raw lowercase `month`/`year` text columns are dirty (typos,
+        # garbage years) -- unusable. SubmissionDate looked like a clean
+        # fallback but drifts near month-end (a respondent surveyed in the
+        # last days of March can submit in April), which silently moved a
+        # handful of rows into the wrong month bucket -- e.g. our old
+        # SubmissionDate-derived counts were Mar=316/Apr=369 vs the live
+        # site's Mar=324/Apr=361 (2026-07-29 finding). The capitalized
+        # `Month`/`Year` numeric columns are the actual clean fielding-period
+        # tags: grouping by them reproduces the live site's base counts for
+        # every one of the 10 months exactly (366/678/413/468/238/375/396/
+        # 324/361/391), so they're the source of truth, not SubmissionDate.
+        month_num = pd.to_numeric(self.df['Month'], errors='coerce')
+        year_num = pd.to_numeric(self.df['Year'], errors='coerce')
+        dt = pd.to_datetime(
+            dict(year=year_num, month=month_num, day=1), errors='coerce'
+        )
         self.df['month_label'] = dt.dt.strftime("%B'%Y")
+        self.df = self.df.copy()
 
-    def quarter_combined_groups(self, extra_groups=None):
-        """{display_label: [month_labels]} for the live site's always-shown
-        quarter-combined columns (e.g. 'JAS\\'25') — see QUARTER_INITIALS.
-        The trailing (most recent, still-filling) quarter is excluded, same
-        as live: confirmed it shows JAS'25/OND'25/JFM'26 but NOT the current
-        Apr-Jun quarter even though Apr/May already have rows.
-
-        extra_groups: optional {label: [month_labels]} merged in on top —
-        used for the user-defined custom Year+Month combined comparison
-        column (app.py's sidebar picker). Passed in PER CALL rather than
-        stored on `self`, since `engine` is a @st.cache_resource singleton
-        shared across every concurrent session — mutating instance state
-        from one user's filter selection would leak into everyone else's
-        tables."""
+    def quarter_combined_groups(self, extra_groups=None, include_quarters=False):
+        """{display_label: [month_labels]} for quarter-combined columns.
+        include_quarters defaults to False so tables remain clean with monthly columns
+        and do not append trailing JAS'25 / OND'25 / JFM'26 columns across sections.
+        """
         groups = {}
-        for m in self.month_order:
-            q = month_label_to_fy_quarter(m)
-            groups.setdefault(q, []).append(m)
-        quarters_to_show = self.fy_quarter_order[:-1] if len(self.fy_quarter_order) > 1 else []
         out = {}
-        for q in quarters_to_show:
-            months = groups.get(q)
-            if not months:
-                continue
-            qnum = int(q.split()[0][1:])
-            year_suffix = months[0].split("'")[1][2:]
-            out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
+        if include_quarters:
+            for m in self.month_order:
+                q = month_label_to_fy_quarter(m)
+                groups.setdefault(q, []).append(m)
+            quarters_to_show = self.fy_quarter_order[:-1] if len(self.fy_quarter_order) > 1 else []
+            for q in quarters_to_show:
+                months = groups.get(q)
+                if not months:
+                    continue
+                qnum = int(q.split()[0][1:])
+                year_suffix = months[0].split("'")[1][2:]
+                out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
         if extra_groups:
             out.update(extra_groups)
         return out
@@ -443,10 +552,10 @@ class DataEngine:
         def _apply_filters(d):
             if platform and platform != "All":
                 d = d[d['re_platform'] == platform]
-            if model_code:
-                d = d[d['re_model_code'] == model_code]
-            if owned_brand_code:
-                d = d[d['owned_brand_code'] == owned_brand_code]
+            if model_code is not None:
+                d = d[pd.to_numeric(d['re_model_code'], errors='coerce') == float(model_code)]
+            if owned_brand_code is not None:
+                d = d[pd.to_numeric(d['owned_brand_code'], errors='coerce') == float(owned_brand_code)]
             return d
 
         if segment in ("Acceptor", "Rejector", "Cancelled"):
@@ -500,7 +609,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, code_col].notna().sum()
 
@@ -518,7 +627,7 @@ class DataEngine:
             mask_all = df[code_col].isin(codes)
             pct_all = mask_all.sum() / base_n * 100 if base_n else 0
             row = {"Unnamed: 0": label, "All": pct_all if numeric else f"{pct_all:.0f}%"}
-            for col in MONTH_ORDER + extra_cols:
+            for col in self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 col_base = len(idx)
                 pct = (df.loc[idx, code_col].isin(codes)).sum() / col_base * 100 if col_base else 0
@@ -635,43 +744,52 @@ class DataEngine:
         return self.distribution_table(df, 'dq6', base_label, numeric=numeric, extra_groups=extra_groups)
 
     # ------------------------------------------------------------------
-    # Type of Buyer — dq1a (prior 2W usage) x dq1b (additional vs replaced).
-    # dq1a==3/4 match the scrape almost exactly as standalone buckets. The
-    # Additional/Replaced split is trickier: dq1b was only answered by 878 of
-    # the 2137 respondents with dq1a in {1,2} (skip-logic gap in the raw
-    # data). We extrapolate dq1b's answered ratio across the full {1,2}
-    # group rather than reporting only the 878 who answered — validated
-    # against scrape: 47.6%/5.7% computed vs 49%/5% scraped (close, within
-    # the same ~10% overall base gap documented elsewhere in this file).
-    # See docs/DATA_FIELD_MAPPING.md Addendum 5.
+    # Type of Buyer — dq1a (prior 2W usage) x Additional/Replaced split.
+    # dq1a==3/4 match the scrape almost exactly as standalone buckets.
+    # Additional/Replaced FIXED (2026-08-06) per questionnaire skip logic:
+    # dq1b is only a routing flag (asked once, gates DQ2a vs DQ2b) and goes
+    # fully blank Nov'25 onward (skip-logic gap) — do NOT use it to compute
+    # the split. Per questionnaire, DQ2a (multi-select, "other 2W owned") is
+    # asked only if coded 1 in dq1a AND dq1b, DQ2b (single-select, "2W
+    # replaced") only if coded 2 in both — same gating columns already used
+    # by the Additional+Replaced brand-wise section below. So a respondent's
+    # actual answer lives in whichever of dq2a_*/dq2b they answered; use
+    # that directly instead of re-deriving from dq1b. This also keeps both
+    # sections (Type of Buyer here, and the brand-wise table) internally
+    # consistent on the same source columns.
     # ------------------------------------------------------------------
     def type_of_buyer_table(self, df, base_label="All", numeric=False, extra_groups=None):
         base_n = df['dq1a'].notna().sum()
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, 'dq1a'].notna().sum()
 
-        prior_user_mask = df['dq1a'].isin([1, 2])
-        answered_mask = prior_user_mask & df['dq1b'].notna()
-        additional_ratio = (df.loc[answered_mask, 'dq1b'] == 1).sum() / answered_mask.sum() if answered_mask.sum() else 0
-        replaced_ratio = 1 - additional_ratio
+        dq2a_cols = [c for c in df.columns if str(c).startswith('dq2a_') and c != 'dq2a_oth']
+
+        def _split_ratios(sub):
+            prior = sub['dq1a'].isin([1, 2])
+            added = prior & sub[dq2a_cols].notna().any(axis=1)
+            replaced = prior & sub['dq2b'].notna() & ~added
+            ans = added | replaced
+            add_r = added.sum() / ans.sum() if ans.sum() else 0
+            return add_r, 1 - add_r
 
         def pct_row(label, mask_fn):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 sub = df.loc[self._col_index(df, col, quarter_groups)]
                 sub_base = len(sub)
                 val = mask_fn(sub) / sub_base * 100 if sub_base else 0
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("This is my Additional 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * additional_ratio))
+        rows.append(pct_row("This is my Additional 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[0]))
         rows.append(pct_row("First Time Buyer of 2W (No one owns a 2W)", lambda d: (d['dq1a'] == 4).sum()))
         rows.append(pct_row("First Time Buyer of 2W (Family owns a 2W and not a primary user)", lambda d: (d['dq1a'] == 3).sum()))
-        rows.append(pct_row("This is my Replaced 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * replaced_ratio))
+        rows.append(pct_row("This is my Replaced 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[1]))
         tbl = pd.DataFrame(rows)
         return self.sort_by_value(tbl) if numeric else tbl
 
@@ -739,7 +857,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -813,8 +931,11 @@ class DataEngine:
         cc_netting, which is the exact bucket scheme the live site
         displays ('200-249 CC', '250-350 CC', etc. — confirmed by
         comparing live's 7-row CC Wise table label-for-label)."""
-        with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
-            codebook = {int(k): v for k, v in json.load(f).items()}
+        try:
+            with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
+                codebook = {int(k): v for k, v in json.load(f).items()}
+        except (FileNotFoundError, json.JSONDecodeError):
+            codebook = {}
 
         # Base FIXED (2026-06-23): dq1b.notna() gave 878 vs live's fresh
         # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
@@ -825,7 +946,7 @@ class DataEngine:
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -838,8 +959,15 @@ class DataEngine:
             return row
 
         def model_mask(code):
+            # BUG FIX (2026-07-29): this table is titled "Additional +
+            # Replaced" but only ever checked dq2a (the multi-select
+            # "Additional" answer) -- dq2b (single-select "Replaced"
+            # answer) was silently dropped, undercounting every model.
+            # Confirmed against live: Classic 350 was 10.8% (dq2a only) vs
+            # live's 14%; adding dq2b == code lands at 14.1%, matching.
             col = f"dq2a_{code}"
-            return (sub[col] == 1) if col in sub.columns else pd.Series(False, index=sub.index)
+            add_mask = (sub[col] == 1) if col in sub.columns else pd.Series(False, index=sub.index)
+            return add_mask | (sub['dq2b'] == code)
 
         if by == "brand":
             brands_in_order = []
@@ -867,7 +995,8 @@ class DataEngine:
             for bucket in cc_buckets:
                 codes = [c for c, v in codebook.items() if v.get('cc_netting') == bucket]
                 cols = [f"dq2a_{c}" for c in codes if f"dq2a_{c}" in sub.columns]
-                mask = sub[cols].eq(1).any(axis=1) if cols else pd.Series(False, index=sub.index)
+                add_mask = sub[cols].eq(1).any(axis=1) if cols else pd.Series(False, index=sub.index)
+                mask = add_mask | sub['dq2b'].isin(codes)
                 label = f"{bucket} CC" if bucket[0].isdigit() else bucket
                 rows.append(pct_row(label, mask))
         return pd.DataFrame(rows)
@@ -962,7 +1091,7 @@ class DataEngine:
             for c in chunks:
                 hit = code_map.get(c)
                 if hit:
-                    supernet, net = hit
+                    supernet, net = hit[0], hit[1]
                     supernet = aliases.get(supernet, supernet)
                     cats.add(supernet if by == "supernet" else f"{supernet} > {net}")
             return frozenset(cats)
@@ -973,7 +1102,7 @@ class DataEngine:
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -992,6 +1121,246 @@ class DataEngine:
             rows.append(pct_row(cat, mask))
         return pd.DataFrame(rows)
 
+    def reasons_tree_data(self, df, base_label="All", numeric=False, extra_groups=None, broad_prefix=None):
+        """Computes a hierarchical Supernet -> Net structure for open-ended netting taxonomy responses.
+        Returns a dictionary with columns, base counts, and sorted supernets with child nets.
+        """
+        from utils.netting_taxonomy import load_code_map, sheet_for
+
+        if len(df) == 0:
+            return {"columns": ["All"], "col_bases": {"All": 0}, "supernets": []}
+
+        segments_present = set(df['segment'].dropna().unique())
+        _VALID = ("Acceptor", "Rejector", "Cancelled")
+        if not segments_present or not segments_present <= set(_VALID):
+            return {"columns": ["All"], "col_bases": {"All": 0}, "supernets": []}
+
+        from utils.stat_engine import calculate_significance
+
+        _seg_conf = {}
+        for seg in segments_present:
+            _prefix = broad_prefix or ("mq2a" if seg == "Acceptor" else "mq3a")
+            sheet_name = sheet_for(seg, _prefix)
+            code_col = {v: k for k, v in self.REASONS_CODE_COLUMNS.items()}[sheet_name]
+            _seg_conf[seg] = (
+                code_col,
+                load_code_map(self.masterfile_path, sheet_name),
+                self.REASONS_SUPERNET_ALIASES.get(sheet_name, {}),
+            )
+
+        def decode_hierarchical(row):
+            code_col, code_map, aliases = _seg_conf[row['segment']]
+            code_str = row[code_col]
+            code_str = code_str if isinstance(code_str, str) else ""
+            if not code_str:
+                return (frozenset(), frozenset(), frozenset(), frozenset())
+            chunks = [code_str[i:i + 3] for i in range(0, len(code_str), 3)]
+            supernets = set()
+            supernet_nets = set()
+            supernet_net_subnets = set()
+            supernet_net_subnet_items = set()
+            for c in chunks:
+                hit = code_map.get(c)
+                if hit:
+                    if len(hit) >= 4:
+                        supernet, net, subnet, item = hit[0], hit[1], hit[2], hit[3]
+                    elif len(hit) == 3:
+                        supernet, net, subnet = hit[0], hit[1], hit[2]
+                        item = subnet
+                    elif len(hit) == 2:
+                        supernet, net = hit[0], hit[1]
+                        subnet = net
+                        item = net
+                    else:
+                        supernet = hit[0]
+                        net = supernet
+                        subnet = supernet
+                        item = supernet
+
+                    supernet = aliases.get(supernet, supernet)
+                    supernets.add(supernet)
+                    supernet_nets.add((supernet, net))
+                    supernet_net_subnets.add((supernet, net, subnet))
+                    supernet_net_subnet_items.add((supernet, net, subnet, item))
+            return (frozenset(supernets), frozenset(supernet_nets), frozenset(supernet_net_subnets), frozenset(supernet_net_subnet_items))
+
+        decoded = df.apply(decode_hierarchical, axis=1)
+
+        # Per user request: exclude combined quarter months (JAS'25, OND'25, JFM'26) from open-ended netting table
+        present = set(df['month_label'].dropna().unique())
+        all_time_cols = ["All"] + [c for c in self.month_order if c in present]
+
+        quarter_groups = self.quarter_combined_groups(extra_groups)
+        col_indices = {}
+        col_bases = {}
+        for col in all_time_cols:
+            if col == "All":
+                idx = df.index
+            else:
+                idx = self._col_index(df, col, quarter_groups)
+            col_indices[col] = idx
+            col_bases[col] = len(idx)
+
+        # Filter out time columns with 0 base size unless it's All
+        all_time_cols = [c for c in all_time_cols if c == "All" or col_bases[c] > 0]
+
+        all_supernets = set()
+        all_nets_map = {}
+        all_subnets_map = {}
+        all_items_map = {}
+        for tup in decoded:
+            super_set = tup[0] if len(tup) >= 1 else set()
+            net_set = tup[1] if len(tup) >= 2 else set()
+            subnet_set = tup[2] if len(tup) >= 3 else set()
+            item_set = tup[3] if len(tup) >= 4 else set()
+
+            for s in super_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+            for s, n in net_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+            for s, n, sub in subnet_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+                all_subnets_map[(s, n)].add(sub)
+                if (s, n, sub) not in all_items_map:
+                    all_items_map[(s, n, sub)] = set()
+            for s, n, sub, itm in item_set:
+                all_supernets.add(s)
+                if s not in all_nets_map:
+                    all_nets_map[s] = set()
+                all_nets_map[s].add(n)
+                if (s, n) not in all_subnets_map:
+                    all_subnets_map[(s, n)] = set()
+                all_subnets_map[(s, n)].add(sub)
+                if (s, n, sub) not in all_items_map:
+                    all_items_map[(s, n, sub)] = set()
+                all_items_map[(s, n, sub)].add(itm)
+
+        def _calc_pcts_and_sig(mask):
+            num_pcts = {}
+            str_pcts = {}
+            sig_markers = {}
+
+            all_n = col_bases.get("All", 0)
+            all_mask = mask & (df.index.isin(col_indices["All"]))
+            all_k = all_mask.sum()
+            all_pct = (all_k / all_n * 100.0) if all_n > 0 else 0.0
+            p2 = all_pct / 100.0
+            all_b = all_n
+
+            for col in all_time_cols:
+                idx = col_indices[col]
+                b = col_bases[col]
+                if b == 0:
+                    str_pcts[col] = "-"
+                    num_pcts[col] = 0.0
+                    sig_markers[col] = ""
+                    continue
+
+                col_m = mask & (df.index.isin(idx))
+                k = col_m.sum()
+                val = (k / b * 100.0) if b > 0 else 0.0
+                num_pcts[col] = val
+                p1 = val / 100.0
+
+                marker = ""
+                if col != "All" and b > 0 and all_b > 0:
+                    res = calculate_significance(p1, b, p2, all_b)
+                    if res["z_score"] > 0:
+                        if res["tier"] == "95":
+                            marker = "▲"
+                        elif res["tier"] == "90":
+                            marker = "△"
+
+                sig_markers[col] = marker
+                str_val = f"{val:.0f}%" if not numeric else val
+                if marker:
+                    str_pcts[col] = f"{str_val} {marker}"
+                else:
+                    str_pcts[col] = str_val
+
+            return str_pcts, num_pcts, sig_markers
+
+        supernet_list = []
+        for s in all_supernets:
+            s_mask = decoded.apply(lambda tup, _s=s: _s in tup[0])
+            s_str_pcts, s_num_pcts, s_sig = _calc_pcts_and_sig(s_mask)
+
+            nets_list = []
+            for n in all_nets_map.get(s, []):
+                sn_mask = decoded.apply(lambda tup, _s=s, _n=n: (_s, _n) in tup[1])
+                n_str_pcts, n_num_pcts, n_sig = _calc_pcts_and_sig(sn_mask)
+
+                subnets_list = []
+                for sub in all_subnets_map.get((s, n), []):
+                    sns_mask = decoded.apply(lambda tup, _s=s, _n=n, _sub=sub: len(tup) >= 3 and (_s, _n, _sub) in tup[2])
+                    sub_str_pcts, sub_num_pcts, sub_sig = _calc_pcts_and_sig(sns_mask)
+
+                    items_list = []
+                    for itm in all_items_map.get((s, n, sub), []):
+                        if itm and str(itm).strip() and str(itm).strip() != str(sub).strip():
+                            itms_mask = decoded.apply(lambda tup, _s=s, _n=n, _sub=sub, _itm=itm: len(tup) >= 4 and (_s, _n, _sub, _itm) in tup[3])
+                            itm_str_pcts, itm_num_pcts, itm_sig = _calc_pcts_and_sig(itms_mask)
+                            items_list.append({
+                                'name': itm,
+                                'pcts': itm_str_pcts,
+                                'numeric_pcts': itm_num_pcts,
+                                'sig_markers': itm_sig,
+                                'all_pct': itm_num_pcts['All']
+                            })
+
+                    items_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+                    subnets_list.append({
+                        'name': sub,
+                        'pcts': sub_str_pcts,
+                        'numeric_pcts': sub_num_pcts,
+                        'sig_markers': sub_sig,
+                        'all_pct': sub_num_pcts['All'],
+                        'items': items_list
+                    })
+
+                subnets_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+                nets_list.append({
+                    'name': n,
+                    'pcts': n_str_pcts,
+                    'numeric_pcts': n_num_pcts,
+                    'sig_markers': n_sig,
+                    'all_pct': n_num_pcts['All'],
+                    'subnets': subnets_list
+                })
+
+            nets_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+            supernet_list.append({
+                'name': s,
+                'pcts': s_str_pcts,
+                'numeric_pcts': s_num_pcts,
+                'sig_markers': s_sig,
+                'all_pct': s_num_pcts['All'],
+                'nets': nets_list
+            })
+
+        supernet_list.sort(key=lambda x: x['all_pct'], reverse=True)
+
+        return {
+            'columns': all_time_cols,
+            'col_bases': col_bases,
+            'base_label': f"Base : Total_{base_label}",
+            'supernets': supernet_list,
+        }
     # ------------------------------------------------------------------
     # Brand Considered — multi-select aq5a_1..aq5a_124 (1=selected), same
     # code order as acc/rej/can (confirmed via Enroute_AP_V2_netting.xlsx
@@ -1025,7 +1394,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def considered_mask(codes):
@@ -1098,7 +1467,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(sub, col, quarter_groups))
 
         def pct_row(label, mask):
@@ -1153,7 +1522,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, code):
@@ -1194,7 +1563,7 @@ class DataEngine:
         extra_cols = list(quarter_groups.keys())
 
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
-        for col in MONTH_ORDER + extra_cols:
+        for col in self.month_order + extra_cols:
             rows[0][col] = len(self._col_index(df, col, quarter_groups))
 
         def pct_row(label, code):

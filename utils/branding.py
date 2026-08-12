@@ -26,26 +26,28 @@ def _b64(path):
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def brand_header_html(logo_height_px=38, re_logo_height_px=42):
+def brand_header_html(logo_height_px=30, re_logo_height_px=34):
     """INFOLEAP x ROYAL ENFIELD lockup using the real logo images — used
-    by the login page, landing page, and sidebar (auth.py / app.py)."""
+    by the login page, landing page, and sidebar (auth.py / app.py).
+    Font sizes kept moderate (1.35/1.2rem) so the row fits inside the
+    ~430px login card without overflowing."""
     infoleap_img = (
-        f"<img src='data:image/png;base64,{_b64(INFOLEAP_LOGO_PATH)}' style='height:{logo_height_px}px;width:auto;'/>"
+        f"<img src='data:image/png;base64,{_b64(INFOLEAP_LOGO_PATH)}' style='height:{logo_height_px}px;width:auto;flex-shrink:0;'/>"
         if os.path.exists(INFOLEAP_LOGO_PATH) else ""
     )
     re_img = (
-        f"<img src='data:image/png;base64,{_b64(RE_LOGO_PATH)}' style='height:{re_logo_height_px}px;width:auto;'/>"
+        f"<img src='data:image/png;base64,{_b64(RE_LOGO_PATH)}' style='height:{re_logo_height_px}px;width:auto;flex-shrink:0;'/>"
         if os.path.exists(RE_LOGO_PATH) else ""
     )
     return f"""
-    <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:0.5rem;">
+    <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:0.5rem; overflow:hidden; flex-wrap:wrap;">
         {infoleap_img}
-        <span style="font-size:1.9rem; font-weight:800; letter-spacing:0.02em; color:#1A1A1A; font-family:'Segoe UI',sans-serif; white-space:nowrap;">
+        <span style="font-size:1.35rem; font-weight:800; letter-spacing:0.02em; color:#1A1A1A; font-family:'Segoe UI',sans-serif; white-space:nowrap;">
             INFOLEAP
         </span>
-        <span style="color:#662D91; font-size:1.4rem;">&times;</span>
+        <span style="color:#662D91; font-size:1.15rem;">&times;</span>
         {re_img}
-        <span style="font-size:1.7rem; font-weight:800; color:#C8102E; font-family:Georgia, serif; letter-spacing:0.03em; white-space:nowrap;">
+        <span style="font-size:1.2rem; font-weight:800; color:#C8102E; font-family:Georgia, serif; letter-spacing:0.03em; white-space:nowrap;">
             ROYAL ENFIELD
         </span>
     </div>

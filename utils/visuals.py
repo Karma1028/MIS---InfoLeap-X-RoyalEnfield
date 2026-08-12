@@ -8,6 +8,11 @@ import streamlit as st
 from styles.theme import RE_RED, CHART_SEQUENCE, BORDER, MUTED, INFOLEAP_GREEN, INFOLEAP_ORANGE, INFOLEAP_BLUE
 from utils.stat_engine import calculate_significance
 
+BRAND_CONSIDERED_COLOR = "#1B8A8A"
+REASONS_COLOR = "#D6742D"
+ADD_REPL_COLOR = "#2E3192"
+BRAND_OWNED_COLOR = "#662D91"
+
 PLOTLY_CONFIG = {"displayModeBar": False, "staticPlot": False}
 
 # Fixed width (px) of every data table's leftmost "Category" row-label
@@ -116,8 +121,7 @@ def _pct_label(v, marker="", gap=None):
     base = "-" if v == 0 else f"{v:.0f}%"
     if not marker:
         return base
-    gap_str = f" +{gap:.0f}pp" if gap is not None and gap == gap else ""  # gap==gap filters NaN
-    return f"{base} {marker}{gap_str}".strip()
+    return f"{base} {marker}".strip()
 
 
 def _sig_border(marker):
@@ -263,7 +267,10 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             # / month-lightening for the FILL too, not just the border.
             _sig_fc = _sig_fill(marker)
             if _sig_fc:
-                fill_colors.append(_sig_fc)
+                # Blend significance tint with category color (60/40) so the
+                # category is still identifiable while significance is visible.
+                # Full override made all significant segments look the same green.
+                fill_colors.append(_blend(base_color, _sig_fc, 0.45))
             elif highlight_col and c == highlight_col:
                 fill_colors.append(_blend(base_color, HIGHLIGHT_COL_TINT, 0.55))
             elif is_all:
@@ -290,12 +297,22 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
             insidetextanchor='middle',
             hovertemplate=f"<b>{label}</b><br>%{{x}}: %{{y:.1f}}%<extra></extra>",
         ))
+    # Columns aren't guaranteed to sum to 100% — multi-select questions
+    # (e.g. "what CC did you own before" when a respondent can report more
+    # than one prior bike) legitimately total over 100%. A hardcoded
+    # y-axis range of ~105 clipped those columns' top slices clean off
+    # (bug report: "some of them showing uneven column heights" —
+    # Additional+Replaced onward, where multi-select totals run >100%).
+    # Range now tracks the tallest actual stack instead of assuming 100%.
+    col_totals = [sum(float(row[c]) for _, row in cat_rows.iterrows()) for c in cols] if len(cat_rows) else [0]
+    max_total = max(col_totals) if col_totals else 100
     # Significance column-level annotations — visible flags ABOVE each month column
     # that has at least one significant category. Much clearer than tiny in-bar symbols.
     # Positive-only (per user request): markers are already filtered to
     # High/▲/△ only before reaching here (filter_sig_markers, app.py), so
     # only the "higher" branches are ever reachable.
     sig_annotations = []
+    ann_y = max_total + 6
     for c in cols:
         if c == 'All' or not col_sig_markers:
             continue
@@ -309,7 +326,7 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
         else:
             sym, col_c = '~High', SIG_LIGHT_GREEN
         sig_annotations.append(dict(
-            x=c, y=106, text=sym,
+            x=c, y=ann_y, text=sym,
             showarrow=False, xref='x', yref='y',
             font=dict(size=12, color=col_c, family="Inter, sans-serif"),
             bgcolor='rgba(255,255,255,0.75)', borderpad=2,
@@ -353,7 +370,7 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
         margin=dict(l=CATEGORY_COL_WIDTH, r=10, t=44, b=30),
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
         yaxis=dict(title=None, showgrid=False, zeroline=False, ticksuffix="%",
-                   range=[0, 112 if sig_annotations else 105],
+                   range=[0, max(ann_y + 6, max_total + 5, 112 if sig_annotations else 105)],
                    tickfont=dict(size=11, color=MUTED)),
         xaxis=dict(showgrid=False, tickfont=dict(size=11, color="#2B2B2B", family="Inter, Segoe UI, sans-serif"),
                    tickangle=-35,
@@ -443,13 +460,15 @@ def _month_header(m):
     combined columns (e.g. "JAS'25") are already short — pass through
     unchanged rather than mangling them (year[2:] on a 2-digit year is empty,
     which would silently truncate the label)."""
-    name, year = m.split("'")
+    if "'" not in m:
+        return m  # quarter label like "Q2 FY25-26" — pass through unchanged
+    name, year = m.split("'", 1)
     if name not in _FULL_MONTH_NAMES:
         return m
     return f"{name[:3]}'{year[2:]}"
 
 
-def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None):
+def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_markers=None, rollup_labels=None, highlight_col=None, col_sig_gaps=None, hide_below=None):
     """Renders a compact bordered HTML table matching the live dashboard's
     report-table look, with cells colour-highlighted for significance (deep
     green = 95% confidence, light green = 90% directional; red shades for
@@ -510,14 +529,16 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     # left margin is a constant (see CATEGORY_COL_WIDTH below), so it can
     # only match a table whose row-label column is ALSO a constant width.
     header_cells = "".join(
-        f"<th style='padding:7px 10px;text-align:left;"
-        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#F3F1ED'};"
-        f"border-bottom:2px solid {BORDER};"
+        f"<th style='padding:10px 14px;text-align:center;font-weight:600;font-size:0.79rem;"
+        f"letter-spacing:0.02em;"
+        f"color:{'#1F3864' if c == highlight_col else '#f8fafc'};"
+        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#1e293b'};"
+        f"border-bottom:none;"
         + (f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;"
            "white-space:normal;word-break:break-word;"
            if c == "Unnamed: 0" else
            ("max-width:90px;white-space:nowrap;" if c == highlight_col else "white-space:nowrap;"))
-        + "position:sticky;top:0;z-index:1;'>"
+        + "position:sticky;top:0;z-index:2;'>"
         f"{_header_html(c)}</th>"
         for c in cols
     )
@@ -538,14 +559,14 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 txt = str(val)
                 _cat_w = f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;white-space:normal;word-break:break-word;"
                 if is_base:
-                    style = f"padding:7px 10px;font-weight:800;color:{accent};" + _cat_w
+                    style = f"padding:7px 10px;font-weight:800;color:{accent};text-align:left;" + _cat_w
                 elif is_member:
                     txt = f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {txt}"
-                    style = "padding:5px 10px;color:#6A665F;font-size:12px;" + _cat_w
+                    style = "padding:5px 10px;color:#6A665F;font-size:12px;text-align:left;" + _cat_w
                 elif rollup_labels is not None:
-                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};" + _cat_w
+                    style = f"padding:7px 10px;font-weight:700;border-top:2px solid {BORDER};text-align:left;" + _cat_w
                 else:
-                    style = "padding:6px 10px;" + _cat_w
+                    style = "padding:6px 10px;text-align:left;" + _cat_w
             else:
                 try:
                     val = float(val)
@@ -570,13 +591,20 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 except (ValueError, TypeError):
                     txt = str(val)
                 if is_base:
-                    style = f"padding:7px 10px;text-align:right;font-weight:800;color:{accent};"
+                    style = f"padding:7px 10px;text-align:center;font-weight:800;color:{accent};"
                 elif is_member:
-                    style = "padding:5px 10px;text-align:right;font-size:12px;color:#6A665F;"
+                    style = "padding:5px 10px;text-align:center;font-size:12px;color:#6A665F;"
                 elif rollup_labels is not None:
-                    style = f"padding:7px 10px;text-align:right;font-weight:700;border-top:2px solid {BORDER};"
+                    style = f"padding:7px 10px;text-align:center;font-weight:700;border-top:2px solid {BORDER};"
                 else:
-                    style = "padding:6px 10px;text-align:right;"
+                    style = "padding:6px 10px;text-align:center;"
+                # Visual-only suppression: hide values below threshold in brand-wise tables
+                if not is_base and hide_below is not None:
+                    try:
+                        if float(row[c]) < hide_below:
+                            txt = "-"
+                    except (ValueError, TypeError):
+                        pass
                 if not is_base:
                     # Per user instruction: significance NEVER runs on the
                     # aggregate 'All' column, anywhere — only on individual
@@ -593,20 +621,18 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     # had a bare marker glyph, no magnitude either). Now
                     # appends "▲ +Xpp" to the cell text itself, not just a
                     # background tint, so it reads without relying on color.
-                    if marker in ('▲', '△', '▼', '▽'):
-                        _gap = None
-                        if col_sig_gaps and c in col_sig_gaps:
-                            _col_gaps = col_sig_gaps[c]
-                            _gap = _col_gaps[i - 1] if i - 1 < len(_col_gaps) else None
-                        _gap_str = f" +{_gap:.0f}pp" if _gap is not None and _gap == _gap else ""
-                        txt = f"{txt} {marker}{_gap_str}"
-                    if marker == '▲':
+                    # Suppress marker display when value rounds to "0%" — underlying
+                    # proportion is <0.5% and showing "0% ▲" is visually misleading.
+                    _suppress = (txt == "0%")
+                    if not _suppress and marker in ('▲', '△', '▼', '▽'):
+                        txt = f"{txt} {marker}"
+                    if not _suppress and marker == '▲':
                         style += f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
-                    elif marker == '△':
+                    elif not _suppress and marker == '△':
                         style += f"background:{SIG_LIGHT_GREEN};color:#1A1A1A;font-weight:600;"
-                    elif marker == '▼':
+                    elif not _suppress and marker == '▼':
                         style += f"background:{SIG_DEEP_RED};color:white;font-weight:700;"
-                    elif marker == '▽':
+                    elif not _suppress and marker == '▽':
                         style += f"background:{SIG_LIGHT_RED};color:#1A1A1A;font-weight:600;"
                 # Custom combined column tint — only when significance
                 # didn't already color this cell (sig stays the priority
@@ -618,23 +644,25 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     style += "max-width:90px;"
             cells.append(f"<td style='{style}border-bottom:1px solid {BORDER};'>{txt}</td>")
         if is_base:
-            bg = "background:#FAFAF8;"
+            bg = "background:#f1f5f9;"
         elif is_rollup:
             bg = "background:#FBF8F3;"
         elif is_member and member_n % 2 == 0:
-            bg = "background:#FAFAF9;"
+            bg = "background:#f8fafc;"
+        elif not is_rollup and not is_member and i % 2 == 0:
+            bg = "background:#f8fafc;"
         else:
-            bg = ""
+            bg = "background:#ffffff;"
         body_rows.append(f"<tr style='{bg}'>" + "".join(cells) + "</tr>")
 
     wrapper_style = (
-        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid {BORDER};border-radius:8px;margin-top:0.4rem;"
+        f"overflow-x:auto;overflow-y:auto;max-height:460px;border:1px solid #cbd5e1;border-radius:10px;margin-top:0.4rem;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"
         if is_long else
-        f"overflow-x:auto;border:1px solid {BORDER};border-radius:8px;margin-top:0.4rem;"
+        f"overflow-x:auto;border:1px solid #cbd5e1;border-radius:10px;margin-top:0.4rem;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.06);"
     )
     html = (
         f"<div style='{wrapper_style}'>"
-        f"<table style='width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;font-family:Segoe UI,Tahoma,sans-serif;'>"
+        f"<table style='width:100%;border-collapse:collapse;table-layout:fixed;font-size:0.82rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;'>"
         f"<thead><tr>{header_cells}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
     )
     if is_long:
@@ -642,6 +670,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     st.markdown(html, unsafe_allow_html=True)
 
 
+# DEAD — safe to remove next cleanup (treemap_chart: no call sites in app.py or any utils as of 2026-08-10)
 def treemap_chart(table_df, title):
     """Treemap for many-category ranked lists (brand-wise Brand Considered/
     Brand Owned/Additional+Replaced, 8+ rows after cap_rows) — per repeated
@@ -855,6 +884,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
         _render_html_table(html_table, accent=color, col_sig_markers=col_sig_markers, rollup_labels=rollup_labels, highlight_col=highlight_col, col_sig_gaps=col_sig_gaps)
 
 
+# DEAD — safe to remove next cleanup (zone_heatmap: no call sites in app.py or any utils as of 2026-08-10)
 def zone_heatmap(zone_matrix, title):
     """Category x Zone heatmap — % of base per category within each zone,
     ignoring the sidebar Zone filter so all 5 zones show side by side.
@@ -955,3 +985,598 @@ def month_trend_chart(table_df, month_cols, category_filter=None):
         tooltip=['Category:N', 'Month:N', 'Value:Q'],
     ).properties(height=260).configure_view(strokeWidth=0).configure_axis(grid=True, gridColor=BORDER)
     return chart
+
+
+import textwrap
+
+
+def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suffix=""):
+    """Renders a 3-level hierarchical, collapsible Supernet -> Net -> Subnet table for open-ended netting taxonomy questions.
+    Row backgrounds are color-coded by level per user request:
+    - Level 1 (Supernet): Orange tint (#FFEDD5)
+    - Level 2 (Net): Yellow tint (#FEF9C3)
+    - Level 3 (Subnet): Light Blue tint (#E0F2FE)
+    Significance highlights:
+    - 95% confidence (▲): Dark Green (#1A7A3C, white text)
+    - 90% confidence (△): Light Green (#B7E4C0, dark green text)
+    - NO red highlights (positive increases only).
+    """
+    if not tree_data or not tree_data.get('supernets'):
+        st.info("No data available for this question / selection.")
+        return
+
+    cols = tree_data['columns']
+    col_bases = tree_data['col_bases']
+    base_label = tree_data['base_label']
+    supernets = tree_data['supernets']
+
+    expand_all = st.checkbox("Expand All Categories", value=False, key=f"expand_all_{key_suffix}")
+
+    def _th_cell(c):
+        if c == 'Category':
+            return "<th class='col-cat'>Category / Netting Factor</th>"
+        label = c.split("'")[0][:3] + "'" + c.split("'")[1][2:] if "'" in c else c
+        return f"<th class='col-val'>{label}</th>"
+
+    header_html = "".join([_th_cell('Category')] + [_th_cell(c) for c in cols])
+
+    def _base_cell(c):
+        if c == 'Category':
+            return f"<td class='col-cat'><strong>{_html.escape(base_label)}</strong></td>"
+        n_val = col_bases.get(c, 0)
+        return f"<td class='col-val'><strong>n={n_val:,}</strong></td>"
+
+    base_row_html = "".join([_base_cell('Category')] + [_base_cell(c) for c in cols])
+
+    def _val_cells(item, row_bg, is_bold=False):
+        cells = []
+        pcts = item.get('pcts', {})
+        markers = item.get('sig_markers', {})
+        for c in cols:
+            txt = str(pcts.get(c, '-'))
+            marker = markers.get(c, '')
+            style = f"padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid #cbd5e1; background: {row_bg};"
+            if is_bold:
+                style += " font-weight: 700;"
+            # Suppress significance highlight when display value rounds to "0%" —
+            # underlying proportion is <0.5% but z-test can still fire on near-zero
+            # values, producing a confusing "0% ▲" cell.
+            if txt != "0%" and marker == '▲':
+                style += f" background: {SIG_DEEP_GREEN} !important; color: white !important; font-weight: 700;"
+            elif txt != "0%" and marker == '△':
+                style += f" background: {SIG_LIGHT_GREEN} !important; color: #0F5132 !important; font-weight: 600;"
+            cells.append(f"<td style='{style}'>{txt}</td>")
+        return "".join(cells)
+
+    tbodies = []
+    dynamic_css_rules = []
+
+    # Row background tints per user instructions:
+    # Level 1 (Supernet): Orange tint (#FFEDD5, text #7C2D12)
+    # Level 2 (Net): Yellow tint (#FEF9C3, text #713F12)
+    # Level 3 (Subnet): Light Blue tint (#E0F2FE, text #0C4A6E)
+    SNET_BG = "#FFEDD5"
+    NET_BG = "#FEF9C3"
+    SUBNET_BG = "#E0F2FE"
+
+    for s_idx, snet in enumerate(supernets):
+        chk_s_id = f"chk_s_{key_suffix}_{s_idx}"
+        checked_attr = "checked" if expand_all else ""
+
+        s_cat_cell = (
+            f"<td class='col-cat' style='background:{SNET_BG}; color:#7C2D12; border-bottom:1px solid #cbd5e1;'>"
+            f"<label for='{chk_s_id}' class='snet-label'>"
+            f"<input type='checkbox' id='{chk_s_id}' class='snet-chk' {checked_attr} />"
+            f"<span class='snet-arrow'></span>"
+            f"<strong>{_html.escape(snet['name'])}</strong>"
+            f"</label>"
+            f"</td>"
+        )
+        snet_row = f"<tr class='snet-row'>{s_cat_cell}{_val_cells(snet, row_bg=SNET_BG, is_bold=True)}</tr>"
+
+        level2_3_rows = []
+        for n_idx, net in enumerate(snet.get('nets', [])):
+            chk_n_id = f"chk_n_{key_suffix}_{s_idx}_{n_idx}"
+            subnets = net.get('subnets', [])
+            has_subnets = len(subnets) > 0
+
+            if has_subnets:
+                n_cat_cell = (
+                    f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1;'>"
+                    f"<label for='{chk_n_id}' class='net-label'>"
+                    f"<input type='checkbox' id='{chk_n_id}' class='net-chk' {checked_attr} />"
+                    f"<span class='net-arrow'></span>"
+                    f"<strong>[{_html.escape(net['name'])}]</strong>"
+                    f"</label>"
+                    f"</td>"
+                )
+                dynamic_css_rules.append(
+                    f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked) tr.sub-{key_suffix}-{s_idx}-{n_idx} {{ display: table-row !important; }}"
+                )
+            else:
+                n_cat_cell = f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1;'><span class='net-prefix'>↳</span>[{_html.escape(net['name'])}]</td>"
+
+            net_row = f"<tr class='net-row'>{n_cat_cell}{_val_cells(net, row_bg=NET_BG, is_bold=has_subnets)}</tr>"
+            level2_3_rows.append(net_row)
+
+            for sub_idx, sub in enumerate(subnets):
+                chk_sub_id = f"chk_sub_{key_suffix}_{s_idx}_{n_idx}_{sub_idx}"
+                items = sub.get('items', [])
+                has_items = len(items) > 0
+
+                if has_items:
+                    sub_cat_cell = (
+                        f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1;'>"
+                        f"<label for='{chk_sub_id}' class='sub-label'>"
+                        f"<input type='checkbox' id='{chk_sub_id}' class='sub-chk' {checked_attr} />"
+                        f"<span class='sub-arrow'></span>"
+                        f"<strong>[{_html.escape(sub['name'])}]</strong>"
+                        f"</label>"
+                        f"</td>"
+                    )
+                    dynamic_css_rules.append(
+                        f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked):has(#{chk_sub_id}:checked) tr.itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx} {{ display: table-row !important; }}"
+                    )
+                else:
+                    sub_cat_cell = f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1;'><span class='sub-prefix'>↳↳</span>[{_html.escape(sub['name'])}]</td>"
+
+                sub_row = f"<tr class='subnet-row sub-{key_suffix}-{s_idx}-{n_idx}'>{sub_cat_cell}{_val_cells(sub, row_bg=SUBNET_BG, is_bold=has_items)}</tr>"
+                level2_3_rows.append(sub_row)
+
+                for itm in items:
+                    itm_cat_cell = f"<td class='col-cat indent-item' style='background:#FAFAF9; color:#334155; border-bottom:1px solid #cbd5e1; padding-left: 36px;'><span class='item-prefix'>↳↳↳</span>{_html.escape(itm['name'])}</td>"
+                    itm_row = f"<tr class='item-row itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx}'>{itm_cat_cell}{_val_cells(itm, row_bg='#FAFAF9', is_bold=False)}</tr>"
+                    level2_3_rows.append(itm_row)
+
+        tbody_html = f"<tbody class='supernet-body'>{snet_row}{''.join(level2_3_rows)}</tbody>"
+        tbodies.append(tbody_html)
+
+    extra_css = "\n".join(dynamic_css_rules)
+    css_styles = f"""
+    <style>
+    .netting-table-card {{
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        margin: 6px 0 16px 0;
+    }}
+    .netting-table-title {{
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 8px;
+    }}
+    .netting-scroll-wrap {{
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        overflow-x: auto;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }}
+    .netting-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+    }}
+    .netting-table th {{
+        background: #f8fafc;
+        color: #334155;
+        font-weight: 700;
+        font-size: 0.8rem;
+        padding: 9px 12px;
+        border-bottom: 2px solid #cbd5e1;
+        text-align: right;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }}
+    .netting-table th.col-cat {{
+        text-align: left;
+        min-width: 260px;
+    }}
+    .netting-table td.col-cat {{
+        text-align: left;
+    }}
+    .base-row td {{
+        background: #f1f5f9;
+        color: #1e293b;
+        font-weight: 700;
+        border-bottom: 2px solid #cbd5e1;
+    }}
+    .supernet-body {{
+        border-bottom: 2px solid #cbd5e1;
+    }}
+    .snet-row {{
+        font-weight: 700;
+        color: #7C2D12;
+    }}
+    .snet-chk, .net-chk, .sub-chk {{
+        display: none !important;
+    }}
+    .snet-label, .net-label, .sub-label {{
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        user-select: none;
+    }}
+    .snet-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 14px;
+        font-size: 0.72rem;
+        color: #C2410C;
+        margin-right: 6px;
+    }}
+    .snet-chk:checked + .snet-arrow::before {{
+        content: '▼';
+    }}
+    .net-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 12px;
+        font-size: 0.68rem;
+        color: #854D0E;
+        margin-right: 6px;
+    }}
+    .net-chk:checked + .net-arrow::before {{
+        content: '▼';
+    }}
+    .supernet-body tr.net-row,
+    .supernet-body tr.subnet-row,
+    .supernet-body tr.item-row {{
+        display: none;
+    }}
+    .supernet-body:has(.snet-chk:checked) tr.net-row {{
+        display: table-row !important;
+    }}
+    {extra_css}
+    .net-row {{
+        color: #713F12;
+        font-size: 0.81rem;
+    }}
+    .subnet-row {{
+        color: #0C4A6E;
+        font-size: 0.78rem;
+    }}
+    .indent-net {{
+        padding-left: 24px !important;
+    }}
+    .indent-subnet {{
+        padding-left: 44px !important;
+    }}
+    .sub-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 10px;
+        font-size: 0.62rem;
+        color: #0369A1;
+        margin-right: 6px;
+    }}
+    .sub-chk:checked + .sub-arrow::before {{
+        content: '▼';
+    }}
+    .net-prefix, .sub-prefix {{
+        color: #64748b;
+        margin-right: 6px;
+        font-weight: bold;
+    }}
+    .item-prefix {{
+        color: #94a3b8;
+        margin-right: 6px;
+    }}
+    </style>
+    """
+
+    html_code = f"""
+    {css_styles}
+    <div class="netting-table-card">
+    <div class="netting-table-title">{_html.escape(title)}</div>
+    <div class="netting-scroll-wrap">
+    <table class="netting-table">
+    <thead>
+    <tr class="header-row">{header_html}</tr>
+    <tr class="base-row">{base_row_html}</tr>
+    </thead>
+    {''.join(tbodies)}
+    </table>
+    </div>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;padding-left:2px;">
+    💡 <em>Click any Supernet or Net row to expand/collapse underlying factors.</em>
+    </div>
+    </div>
+    """
+
+    if hasattr(st, 'html'):
+        st.html(html_code)
+    else:
+        st.markdown(html_code, unsafe_allow_html=True)
+
+
+def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labels=None,
+                                    col_sig_markers=None, col_sig_gaps=None,
+                                    highlight_col=None, accent=None, key_suffix=""):
+    """Collapsible brand → model table matching the open-end supernet→net UI.
+    Each brand row is a clickable header; its model rows expand/collapse via
+    CSS :has() — same mechanics as render_collapsible_reasons_table.
+    Values < 3% are displayed as '-' (visual only; raw data unchanged)."""
+    import html as _h
+    if table_df is None or len(table_df) < 2:
+        st.info("No data available.")
+        return
+
+    rollup_set = set(rollup_labels) if rollup_labels else set()
+    accent_col = accent or color
+
+    cols_data = [c for c in table_df.columns if c not in ("Unnamed: 0",)]
+    # Keep All first, then rest
+    display_cols = ["All"] + [c for c in cols_data if c != "All"]
+
+    SIG_DEEP_GREEN = "#1A7A3C"
+    SIG_LIGHT_GREEN = "#B7E4C0"
+    SIG_DEEP_RED = "#9B1C1C"
+    SIG_LIGHT_RED = "#FECACA"
+    BRAND_BG = "#EEF2FF"
+    MODEL_BG = "#F8F9FF"
+    BASE_BG = "#f1f5f9"
+    HIGHLIGHT_BG = "#FBE9C6"
+    HIGHLIGHT_HDR_BG = "#F2C14E"
+
+    def _th(c):
+        if c == "Category":
+            return f"<th class='bwt-cat'>Category</th>"
+        lbl = c
+        if "'" in c:
+            parts = c.split("'")
+            lbl = parts[0][:3] + "'" + parts[1][2:] if len(parts) > 1 else c
+        bg = HIGHLIGHT_HDR_BG if c == highlight_col else "#1e293b"
+        fg = "#1F3864" if c == highlight_col else "#f8fafc"
+        return f"<th class='bwt-val' style='background:{bg};color:{fg};'>{_h.escape(lbl)}</th>"
+
+    header_html = _th("Category") + "".join(_th(c) for c in display_cols)
+
+    # Base row
+    base_row = table_df.iloc[0]
+    def _base_td(c):
+        if c == "Category":
+            return f"<td class='bwt-cat' style='font-weight:800;color:{accent_col};text-align:left;'>{_h.escape(str(base_row['Unnamed: 0']))}</td>"
+        val = base_row.get(c, "")
+        try:
+            return f"<td class='bwt-val' style='font-weight:800;color:{accent_col};'>{int(float(val)):,}</td>"
+        except Exception:
+            return f"<td class='bwt-val'>{_h.escape(str(val))}</td>"
+    base_html = "<tr class='bwt-base-row'>" + _base_td("Category") + "".join(_base_td(c) for c in display_cols) + "</tr>"
+
+    # Build brand → [models] structure from sorted_tbl
+    brands = []
+    current_brand = None
+    for i, row in table_df.iloc[1:].iterrows():
+        lbl = str(row["Unnamed: 0"])
+        if lbl in rollup_set:
+            current_brand = {"label": lbl, "row": row, "row_idx": i, "models": []}
+            brands.append(current_brand)
+        elif current_brand is not None:
+            current_brand["models"].append({"label": lbl, "row": row, "row_idx": i})
+
+    # For sig markers: they are indexed by position in table_df.iloc[1:]
+    orig_labels = list(table_df.iloc[1:]["Unnamed: 0"])
+
+    def _get_marker(row_label, col):
+        if not col_sig_markers or col not in col_sig_markers:
+            return ""
+        try:
+            idx = orig_labels.index(row_label)
+            return col_sig_markers[col][idx] if idx < len(col_sig_markers[col]) else ""
+        except (ValueError, IndexError):
+            return ""
+
+    def _row_all_hidden(row):
+        # Never hide model rows — always show all brands and models.
+        return False
+
+    def _val_cell(val_raw, marker, is_model=False, col=None):
+        try:
+            val = float(val_raw)
+        except (ValueError, TypeError):
+            return f"<td class='bwt-val'>-</td>"
+        # Show "-" only if value rounds to 0%
+        if round(val) == 0:
+            display = "-"
+        elif is_model:
+            display = f"{val:.1f}%"
+        else:
+            display = f"{val:.0f}%"
+
+        # Significance styling
+        style = ""
+        suppress = (display == "-" or display == "0%")
+        if not suppress and marker == "▲":
+            style = f"background:{SIG_DEEP_GREEN};color:white;font-weight:700;"
+            display = f"{display} ▲"
+        elif not suppress and marker == "△":
+            style = f"background:{SIG_LIGHT_GREEN};color:#0F5132;font-weight:600;"
+            display = f"{display} △"
+        elif not suppress and marker == "▼":
+            style = f"background:{SIG_DEEP_RED};color:white;font-weight:700;"
+            display = f"{display} ▼"
+        elif not suppress and marker == "▽":
+            style = f"background:{SIG_LIGHT_RED};color:#1A1A1A;font-weight:600;"
+            display = f"{display} ▽"
+        if col == highlight_col and "background:" not in style:
+            style += f"background:{HIGHLIGHT_BG};"
+        return f"<td class='bwt-val' style='{style}'>{display}</td>"
+
+    tbodies_html = []
+    for b_idx, brand in enumerate(brands):
+        chk_id = f"bwt_chk_{key_suffix}_{b_idx}"
+        b_row = brand["row"]
+        b_lbl = brand["label"]
+
+        brand_cat_cell = (
+            f"<td class='bwt-cat bwt-brand-cat'>"
+            f"<label for='{chk_id}' class='bwt-brand-label'>"
+            f"<input type='checkbox' id='{chk_id}' class='bwt-chk' />"
+            f"<span class='bwt-arrow'></span>"
+            f"<strong>{_h.escape(b_lbl)}</strong>"
+            f"</label></td>"
+        )
+        brand_val_cells = "".join(
+            _val_cell(b_row.get(c, ""), _get_marker(b_lbl, c), is_model=False, col=c)
+            for c in display_cols
+        )
+        brand_row_html = f"<tr class='bwt-brand-row'>{brand_cat_cell}{brand_val_cells}</tr>"
+
+        model_rows_html = ""
+        for m in brand["models"]:
+            m_lbl = m["label"]
+            m_row = m["row"]
+            # Skip row if every data value would display as "-" (all < 3% or zero)
+            if _row_all_hidden(m_row):
+                continue
+            model_cat_cell = (
+                f"<td class='bwt-cat bwt-model-cat'>"
+                f"<span class='bwt-model-arrow'>↳</span>{_h.escape(m_lbl)}"
+                f"</td>"
+            )
+            model_val_cells = "".join(
+                _val_cell(m_row.get(c, ""), _get_marker(m_lbl, c), is_model=True, col=c)
+                for c in display_cols
+            )
+            model_rows_html += f"<tr class='bwt-model-row'>{model_cat_cell}{model_val_cells}</tr>"
+
+        tbodies_html.append(
+            f"<tbody class='bwt-brand-body' id='bwt_body_{key_suffix}_{b_idx}'>"
+            f"{brand_row_html}{model_rows_html}"
+            f"</tbody>"
+        )
+
+    css = f"""
+    <style>
+    .bwt-wrap-{key_suffix} {{
+        overflow-x: auto;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        margin-top: 0.5rem;
+        background: #ffffff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }}
+    .bwt-wrap-{key_suffix} table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }}
+    .bwt-wrap-{key_suffix} th {{
+        background: #1e293b;
+        color: #f8fafc;
+        font-weight: 700;
+        font-size: 0.79rem;
+        padding: 10px 12px;
+        border-bottom: 2px solid #cbd5e1;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }}
+    .bwt-wrap-{key_suffix} th.bwt-cat {{
+        text-align: left;
+        min-width: 220px;
+    }}
+    .bwt-wrap-{key_suffix} th.bwt-val {{
+        text-align: center;
+    }}
+    .bwt-base-row td {{
+        background: {BASE_BG};
+        border-bottom: 2px solid #cbd5e1;
+        padding: 8px 12px;
+    }}
+    .bwt-base-row td.bwt-val {{
+        text-align: center;
+        font-weight: 800;
+    }}
+    .bwt-brand-row td {{
+        background: {BRAND_BG};
+        padding: 8px 12px;
+        border-top: 2px solid #c7d2fe;
+        border-bottom: 1px solid #e0e7ff;
+    }}
+    .bwt-brand-cat {{
+        text-align: left !important;
+    }}
+    .bwt-val {{
+        text-align: center;
+    }}
+    .bwt-model-row td {{
+        background: {MODEL_BG};
+        padding: 6px 12px;
+        border-bottom: 1px solid #e2e8f0;
+    }}
+    .bwt-model-cat {{
+        text-align: left !important;
+        color: #475569;
+        font-size: 0.79rem;
+        padding-left: 28px !important;
+    }}
+    .bwt-model-arrow {{
+        color: #94a3b8;
+        margin-right: 6px;
+        font-weight: bold;
+    }}
+    .bwt-chk {{
+        display: none !important;
+    }}
+    .bwt-brand-label {{
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        user-select: none;
+        color: #312e81;
+        font-weight: 700;
+    }}
+    .bwt-arrow::before {{
+        content: '▶';
+        display: inline-block;
+        width: 14px;
+        font-size: 0.72rem;
+        color: {color};
+        margin-right: 6px;
+        transition: transform 0.15s;
+    }}
+    .bwt-chk:checked + .bwt-arrow::before {{
+        content: '▼';
+    }}
+    .bwt-brand-body .bwt-model-row {{
+        display: none;
+    }}
+    .bwt-brand-body:has(.bwt-chk:checked) .bwt-model-row {{
+        display: table-row !important;
+    }}
+    </style>
+    """
+
+    html_out = f"""
+    {css}
+    <div class="bwt-wrap-{key_suffix}">
+    <table>
+    <thead>
+      <tr>{header_html}</tr>
+      {base_html}
+    </thead>
+    {''.join(tbodies_html)}
+    </table>
+    </div>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;padding-left:2px;">
+    💡 <em>Click any brand row to expand/collapse its models.</em>
+    </div>
+    """
+
+    if hasattr(st, 'html'):
+        st.html(html_out)
+    else:
+        st.markdown(html_out, unsafe_allow_html=True)
+
+
+
+
+
+

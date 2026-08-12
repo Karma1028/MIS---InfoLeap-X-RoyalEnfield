@@ -32,7 +32,12 @@ def render_theme_css(accent=RE_RED):
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap');
 
-        html, body, [class*="css"] {{ font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif; }}
+        html, body, [class*="css"] {{
+            font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }}
 
         :root {{
             --bg: {BG}; --card: {CARD}; --border: {BORDER};
@@ -195,7 +200,78 @@ def render_theme_css(accent=RE_RED):
 
         /* Brand block accent (infoleap-style 4-color stack), used via .io-blocks */
         .io-blocks {{ display: inline-flex; flex-direction: column; gap: 2px; margin-right: 8px; }}
-        .io-blocks span {{ width: 14px; height: 14px; display: block; border-radius: 2px; }}
 
+        /* Table Center Alignment */
+        .stDataFrame th, .stDataFrame td, table th, table td, div[data-testid="stTable"] th, div[data-testid="stTable"] td {{
+            text-align: center !important;
+        }}
+
+        /* Shared card component — use via class="re-card" in st.markdown HTML */
+        .re-card {{
+            background: var(--card);
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }}
+
+        /* Section divider chips — segment label pills above each section */
+        .re-section-chip {{
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            background: var(--accent);
+            color: white;
+            opacity: 0.85;
+        }}
+
+        /* Metric section sub-header with left accent bar */
+        .re-metric-header {{
+            border-left: 4px solid var(--accent);
+            padding-left: 12px;
+            margin: 1.2rem 0 0.5rem 0;
+            font-family: 'Oswald', 'Segoe UI', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1e293b;
+            letter-spacing: 0.01em;
+        }}
+
+        /* Data table card wrapper — consistent shadow/border on all tables */
+        .re-table-wrap {{
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }}
+        .re-table-wrap table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        .re-table-wrap th {{
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            padding: 10px 14px !important;
+            text-align: center !important;
+            border-bottom: none !important;
+        }}
+        .re-table-wrap td {{
+            padding: 8px 14px !important;
+            border-bottom: 1px solid #f1f5f9 !important;
+            text-align: center !important;
+        }}
+        .re-table-wrap tr:nth-child(even) td {{
+            background: #f8fafc;
+        }}
     </style>
     """, unsafe_allow_html=True)
