@@ -239,7 +239,10 @@ class DataEngine:
         import datetime
         _sync_from_drive()
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
-        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=1)
+        # Auto-detect header row: if row 0 has 'Unnamed' columns, real headers are in row 1
+        _probe = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
+        _header_row = 1 if all(str(c).startswith("Unnamed") for c in _probe.columns[:5]) else 0
+        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=_header_row)
         # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
         col_map = load_column_mapping()
         # Only rename columns that actually exist in the data, skip others
@@ -341,7 +344,9 @@ class DataEngine:
         duplicates only exist among rows load_data() drops as incomplete)."""
         src_cols = list(self.REASONS_CODE_COLUMNS.values())
         try:
-            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=1,
+            _probe2 = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
+            _hrow2 = 1 if all(str(c).startswith("Unnamed") for c in _probe2.columns[:5]) else 0
+            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=_hrow2,
                                  usecols=['SubmissionDate'] + src_cols,
                                  dtype={c: str for c in src_cols})
         except Exception:
