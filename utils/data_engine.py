@@ -239,7 +239,7 @@ class DataEngine:
         import datetime
         _sync_from_drive()
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
-        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0)
+        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=1)
         # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
         col_map = load_column_mapping()
         # Only rename columns that actually exist in the data, skip others
@@ -341,7 +341,7 @@ class DataEngine:
         duplicates only exist among rows load_data() drops as incomplete)."""
         src_cols = list(self.REASONS_CODE_COLUMNS.values())
         try:
-            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0,
+            raw = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=1,
                                  usecols=['SubmissionDate'] + src_cols,
                                  dtype={c: str for c in src_cols})
         except Exception:
