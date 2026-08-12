@@ -23,6 +23,24 @@ DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
 DATA_DIR = Path("data")
 MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
 
+# Optional Google Drive sync (Option A — gdown).
+# Set DRIVE_FILE_ID env var to the file ID from the shareable Drive link.
+# Format: https://drive.google.com/file/d/<FILE_ID>/view
+# The file is downloaded fresh to MASTERFILE_PATH on every engine load.
+DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "")
+
+
+def _sync_from_drive():
+    """Download RE_MIS_Master.xlsx from Google Drive if DRIVE_FILE_ID is set."""
+    if not DRIVE_FILE_ID:
+        return
+    try:
+        import gdown
+        url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download"
+        gdown.download(url, MASTERFILE_PATH, quiet=False)
+    except Exception as e:
+        print(f"[drive-sync] WARNING: could not download from Drive: {e}. Using local file.")
+
 
 def load_column_mapping():
     """Reads column_mapping sheet from RE_MIS_Master.xlsx.
@@ -209,9 +227,8 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
+        _sync_from_drive()
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
-        # header=1: row 0 of the Masterfile is a merged group-header row
-        # (e.g. "Segment", "Acceptor / Brand Owned"), real column codes are row 1.
         self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=0)
         # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
         col_map = load_column_mapping()

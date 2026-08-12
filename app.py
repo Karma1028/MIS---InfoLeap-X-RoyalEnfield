@@ -1,3 +1,17 @@
+import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed — read .env manually
+    _env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(_env_path):
+        for _line in open(_env_path):
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 import streamlit as st
 import streamlit.components.v1 as _components
 from auth import render_login, render_landing
@@ -209,18 +223,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_reset_col, _reload_col, _reset_lbl = st.sidebar.columns([1, 1, 2])
-_reset_lbl.markdown("### Report Filters")
-if _reset_col.button("↺ Reset", key="reset_filters", help="Clear all filters to defaults"):
+st.sidebar.markdown("### Report Filters")
+_reset_col, _reload_col = st.sidebar.columns(2)
+if _reset_col.button("↺ Reset Filters", key="reset_filters", help="Clear all filters to defaults", use_container_width=True):
     for _k in ["platform_filter", "model_filter", "time_mode", "month_range", "quarters",
                "custom_years", "custom_months", "custom_col_label"]:
         st.session_state.pop(_k, None)
-    # Clear table cache so next render recomputes with fresh filters
     for _k in list(st.session_state.keys()):
         if _k.startswith("_tbl_"):
             del st.session_state[_k]
     st.rerun()
-if _reload_col.button("⟳ Data", key="reload_data", help="Reload Excel data — use after updating the master file"):
+if _reload_col.button("⟳ Reload Data", key="reload_data", help="Re-download & reload master file (fetches latest from Drive if configured)", use_container_width=True):
     load_engine.clear()
     st.cache_data.clear()
     st.session_state.pop("_engine_mtime", None)
