@@ -286,7 +286,8 @@ def render_comparison_page(engine):
 
     # Clean 2-Column Model Benchmark Comparison — 5 Core Demographic Metrics
     st.markdown("### Model Benchmark — Core Profile Metrics")
-    st.caption(f"All column = full survey period (unfiltered). Current Month = {current_month}.")
+    _sel_lbl = ", ".join(selected_months) if selected_months else "none"
+    st.caption(f"All column = full survey period (unfiltered). Selected months: {_sel_lbl}.")
 
     m1_name, m2_name = selected_models[0], selected_models[1]
     m1_short, m2_short = short_names[m1_name], short_names[m2_name]
@@ -294,8 +295,8 @@ def render_comparison_page(engine):
     m1_df, m2_df = model_dfs_full[m1_name], model_dfs_full[m2_name]
 
     def _cmp_trim(tbl, cur_month):
-        """Keep 3 cols only: category + All (unfiltered all-time) + current month."""
-        keep = ["Unnamed: 0", "All"] + ([cur_month] if cur_month in tbl.columns else [])
+        """Keep category + All (unfiltered all-time) + all selected months."""
+        keep = ["Unnamed: 0", "All"] + [m for m in selected_months if m in tbl.columns]
         return tbl[[c for c in keep if c in tbl.columns]]
 
     all_builders = _metric_builders_for(segment_for_compare)
