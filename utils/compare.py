@@ -137,6 +137,49 @@ def _metric_builders_for(segment_for_compare):
     return builders
 
 
+def _model_vs_model_sig_markers(tbl_a, tbl_b):
+    """For each value column, for each category row: 2-prop Z-test Model A vs Model B.
+    Returns dict {col: [marker_per_data_row, ...]} for tbl_a (▲ = A higher, ▼ = A lower).
+    Base n is tbl.iloc[0][col]. Skips cols missing from either table."""
+    data_cols = [c for c in tbl_a.columns if c not in ("Unnamed: 0",)]
+    base_a = tbl_a.iloc[0]
+    base_b = tbl_b.iloc[0]
+    rows_a = tbl_a.iloc[1:].reset_index(drop=True)
+    rows_b = tbl_b.iloc[1:].reset_index(drop=True)
+    markers = {}
+    for col in data_cols:
+        if col not in tbl_b.columns:
+            continue
+        try:
+            n_a = int(float(base_a[col]))
+            n_b = int(float(base_b[col]))
+        except (ValueError, TypeError):
+            continue
+        col_markers = []
+        for i in range(len(rows_a)):
+            try:
+                p_a = float(rows_a.iloc[i][col]) / 100
+                if i < len(rows_b):
+                    p_b = float(rows_b.iloc[i][col]) / 100
+                else:
+                    p_b = 0.0
+                res = calculate_significance(p_a, n_a, p_b, n_b)
+                z = res["z_score"]
+                from utils.stat_engine import Z_95, Z_HIGHER_LIGHT
+                if z >= Z_95:
+                    col_markers.append("▲")
+                elif z >= Z_HIGHER_LIGHT:
+                    col_markers.append("△")
+                elif z <= -Z_95:
+                    col_markers.append("▼")
+                else:
+                    col_markers.append("")
+            except Exception:
+                col_markers.append("")
+        markers[col] = col_markers
+    return markers
+
+
 def render_comparison_page(engine):
     st.markdown("<h1>Model Comparison</h1>", unsafe_allow_html=True)
     st.caption("Compare exactly 2 models side by side, within the same or across CC platforms — same filters and metrics as the segment pages.")
@@ -308,6 +351,14 @@ def render_comparison_page(engine):
         tbl1_t = _cmp_trim(tbl1, current_month)
         tbl2_t = _cmp_trim(tbl2, current_month)
 
+        # Sig markers: Model A vs Model B, column by column — higher only, no lower
+        _sig_a = _model_vs_model_sig_markers(tbl1_t, tbl2_t)  # ▲/△ = A higher than B
+        # B markers: flip — where A was higher, B shows nothing; where A was lower, B shows higher
+        _sig_b_raw = _model_vs_model_sig_markers(tbl2_t, tbl1_t)
+        # Strip ▼ from both (only show higher direction per user request)
+        _sig_a = {col: [m if m in ("▲", "△") else "" for m in markers] for col, markers in _sig_a.items()}
+        _sig_b = {col: [m if m in ("▲", "△") else "" for m in markers] for col, markers in _sig_b_raw.items()}
+
         # Insight: top category per model (from All column)
         def _top_cat_info(tbl):
             rows = tbl.iloc[1:]
@@ -342,6 +393,7 @@ def render_comparison_page(engine):
                         color=_CMP_COLOR_A,
                         key=f"cmp_{metric_name}_{m1_short}_chart",
                         chart_type="stacked_bar",
+                        col_sig_markers=_sig_a,
                     )
             with c2:
                 st.markdown(
@@ -359,6 +411,7 @@ def render_comparison_page(engine):
                         color=_CMP_COLOR_B,
                         key=f"cmp_{metric_name}_{m2_short}_chart",
                         chart_type="stacked_bar",
+                        col_sig_markers=_sig_b,
                     )
             # Bottom insight line
             if cat1 and cat2:
