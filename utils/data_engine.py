@@ -32,7 +32,11 @@ def _sync_from_drive(force: bool = False):
     Runs when DRIVE_FILE_ID env var is set, or raises if file missing with no ID.
     Reads env var at call time so Streamlit secrets loaded after import still work.
     """
-    drive_file_id = os.environ.get("DRIVE_FILE_ID", "")
+    try:
+        from config import DRIVE_FILE_ID as _cfg_id
+    except ImportError:
+        _cfg_id = ""
+    drive_file_id = os.environ.get("DRIVE_FILE_ID", _cfg_id)
     file_missing = not Path(MASTERFILE_PATH).exists()
     if not drive_file_id:
         if file_missing:

@@ -546,7 +546,7 @@ _SEGMENT_FRAME = {
 _frame_text = _SEGMENT_FRAME.get(segment_nav, "")
 
 if _overview_is_comparison:
-    render_overview_intro()
+    render_overview_intro(engine=engine)
     st.stop()
 
 else:

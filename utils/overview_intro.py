@@ -22,14 +22,31 @@ def _logo_b64():
     with open(RE_LOGO_PATH, "rb") as f:
         return base64.b64encode(f.read()).decode("ascii")
 
-# Reporting-lag reference table (slide 4, "Table 7") — a small legitimate
-# reference table, kept intact (unlike the per-model grid).
-DATA_LAG_TABLE = [
-    ("July", "June"), ("August", "July"), ("September", "August"),
-    ("October", "September"), ("November", "October"), ("December", "November"),
-    ("January", "December"), ("February", "January"), ("March", "February"),
-    ("April", "March"), ("May", "April"),
-]
+_MONTH_NUM_TO_NAME = {
+    1: "January", 2: "February", 3: "March", 4: "April",
+    5: "May", 6: "June", 7: "July", 8: "August",
+    9: "September", 10: "October", 11: "November", 12: "December",
+}
+_MONTH_ABBR_TO_NUM = {v[:3]: k for k, v in _MONTH_NUM_TO_NAME.items()}
+
+
+def _build_cadence_table(month_order):
+    """Build (reported_month_name, db_used_name) pairs from engine.month_order.
+    Each month reports using the prior month's database."""
+    result = []
+    for label in month_order:
+        # label format: "Aug'25", "Jan'26", etc.
+        try:
+            abbr = label[:3]
+            yr = int("20" + label[-2:])
+            mn = _MONTH_ABBR_TO_NUM.get(abbr)
+            if mn is None:
+                continue
+            prior_mn = 12 if mn == 1 else mn - 1
+            result.append((_MONTH_NUM_TO_NAME[mn], _MONTH_NUM_TO_NAME[prior_mn]))
+        except Exception:
+            continue
+    return result
 
 SEGMENT_DEFINITIONS = [
     ("Acceptors", "Individuals who have successfully purchased a motorcycle."),
@@ -45,9 +62,9 @@ def _card(inner, accent="#C8102E", extra=""):
     )
 
 
-def render_overview_intro():
-    """Renders the full static Overview narrative (slides 1-4). No chart
-    data, no engine/df dependency — pure content."""
+def render_overview_intro(engine=None):
+    """Renders the full static Overview narrative (slides 1-4).
+    Pass engine to get dynamic reporting cadence from live data."""
 
     # ── Slide 1: title + logo ────────────────────────────────────────────
     # Rendered as one flex block (not st.columns) so the logo and title
@@ -160,22 +177,35 @@ def render_overview_intro():
         "<h3>Reporting Cadence</h3>",
         unsafe_allow_html=True,
     )
+    _cadence = _build_cadence_table(engine.month_order) if (engine and engine.month_order) else []
+    if not _cadence:
+        _cadence = [
+            ("August", "July"), ("September", "August"), ("October", "September"),
+            ("November", "October"), ("December", "November"), ("January", "December"),
+            ("February", "January"), ("March", "February"), ("April", "March"), ("May", "April"),
+        ]
+    _live_reported = _cadence[-1][0]
+    _live_used = _cadence[-2][0] if len(_cadence) > 1 else _cadence[-1][1]
+    _fw_start = _cadence[0][0]
+    _fw_end = _cadence[-1][0]
+    _db_start = _cadence[0][1]
+    _db_end = _cadence[-1][1]
     st.markdown(
         "<div style='font-size:0.82rem;color:#4A4644;line-height:1.8;margin-bottom:0.9rem;'>"
-        "<b>FW Dates:</b> 11th Aug to 12th Apr &nbsp;&middot;&nbsp; "
-        "<b>Database used:</b> June to February<br>"
+        f"<b>FW Dates:</b> {_fw_start} to {_fw_end} &nbsp;&middot;&nbsp; "
+        f"<b>Database used:</b> {_db_start} to {_db_end}<br>"
         "Each month's data is completed using the prior month database."
         "</div>",
         unsafe_allow_html=True,
     )
 
-    _latest_reported, _latest_used = DATA_LAG_TABLE[-1]
+    _latest_reported, _latest_used = _cadence[-1]
     _chip_css = (
         "flex-shrink:0;background:#fff;border:1px solid #ECE9E4;border-radius:10px;"
         "padding:8px 14px;text-align:center;min-width:76px;"
     )
     _chips = []
-    for _reported, _used in DATA_LAG_TABLE:
+    for _reported, _used in _cadence:
         _is_latest = (_reported, _used) == (_latest_reported, _latest_used)
         if _is_latest:
             _chips.append(
