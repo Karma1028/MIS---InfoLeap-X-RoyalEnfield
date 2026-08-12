@@ -204,7 +204,7 @@ def distribution_bar(table_df, title, color=RE_RED, sig_markers=None):
 HIGHLIGHT_COL_TINT = "#F2C14E"  # warm gold wash for the custom combined column
 
 
-def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None):
+def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, highlight_col=None, allow_all_sig=False):
     """Stacked column chart for Demographics — one stacked column per
     period (All + each selected month), segments = the category rows
     (Age bands, Education levels, etc). Replaces the old single-period
@@ -314,7 +314,7 @@ def stacked_bar_chart(table_df, title, color_seq=None, col_sig_markers=None, hig
     sig_annotations = []
     ann_y = max_total + 6
     for c in cols:
-        if c == 'All' or not col_sig_markers:
+        if (c == 'All' and not allow_all_sig) or not col_sig_markers:
             continue
         markers_this_col = col_sig_markers.get(c, [])
         has_95_up = '▲' in markers_this_col
@@ -845,7 +845,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
     # kept as a standalone function — Verbatim Intelligence's netting-
     # classification feature calls it directly, unrelated to this dispatch.
     if chart_type == "stacked_bar":
-        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col)
+        fig = stacked_bar_chart(table_df, title, col_sig_markers=col_sig_markers, highlight_col=highlight_col, allow_all_sig=allow_all_sig)
     else:
         fig = distribution_bar(table_df, title, color=color)
     if chart_type == "stacked_bar":
