@@ -1100,7 +1100,7 @@ if _overview_is_comparison:
                             y=_bom_data['Unnamed: 0'].tolist(),
                             orientation='h',
                             marker_color='#8C1A2E',
-                            text=[f"{v:.1f}%" for v in _bom_data['_pct']],
+                            text=[f"{v:.0f}%" for v in _bom_data['_pct']],
                             textposition='outside', cliponaxis=False,
                         ))
                         _bom_fig.update_layout(

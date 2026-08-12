@@ -1490,7 +1490,7 @@ class DataEngine:
                     row[col] = 0.0
                     continue
                 cnt = mask.loc[idx].sum() if not idx.empty else 0
-                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+                row[col] = round(cnt / n_col * 100) if numeric else f"{cnt / n_col * 100:.0f}%"
             return row
 
         re_codes = set(RE_MODEL_LABELS.keys())
@@ -1545,7 +1545,7 @@ class DataEngine:
                     row[col] = 0.0 if numeric else "0%"
                     continue
                 cnt = (df.loc[idx, 'aq5b'] == float(code)).sum()
-                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+                row[col] = round(cnt / n_col * 100) if numeric else f"{cnt / n_col * 100:.0f}%"
             return row
 
         data_rows = []
@@ -1589,7 +1589,7 @@ class DataEngine:
                     row[col] = 0.0 if numeric else "0%"
                     continue
                 cnt = (df.loc[idx, col_name] == 1).sum()
-                row[col] = round(cnt / n_col * 100, 1) if numeric else f"{cnt / n_col * 100:.1f}%"
+                row[col] = round(cnt / n_col * 100) if numeric else f"{cnt / n_col * 100:.0f}%"
             return row
 
         data_rows = []
