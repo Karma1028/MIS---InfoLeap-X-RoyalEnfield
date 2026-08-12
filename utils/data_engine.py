@@ -30,16 +30,27 @@ MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
 DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "")
 
 
-def _sync_from_drive():
-    """Download RE_MIS_Master.xlsx from Google Drive if DRIVE_FILE_ID is set."""
+def _sync_from_drive(force: bool = False):
+    """Download RE_MIS_Master.xlsx from Google Drive.
+    Runs when DRIVE_FILE_ID is set, or when force=True (file missing — fatal if no ID).
+    """
+    file_missing = not Path(MASTERFILE_PATH).exists()
     if not DRIVE_FILE_ID:
+        if file_missing:
+            raise RuntimeError(
+                "RE_MIS_Master.xlsx not found and DRIVE_FILE_ID env var is not set. "
+                "Set DRIVE_FILE_ID in Streamlit Cloud secrets (Settings → Secrets) "
+                "or place the file in data/RE_MIS_Master.xlsx."
+            )
         return
     try:
         import gdown
         url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download"
         gdown.download(url, MASTERFILE_PATH, quiet=False)
     except Exception as e:
-        print(f"[drive-sync] WARNING: could not download from Drive: {e}. Using local file.")
+        if file_missing:
+            raise RuntimeError(f"[drive-sync] Drive download failed and no local file exists: {e}") from e
+        print(f"[drive-sync] WARNING: Drive download failed, using existing local file. Error: {e}")
 
 
 def load_column_mapping():

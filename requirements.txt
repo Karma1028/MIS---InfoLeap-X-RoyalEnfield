@@ -12,3 +12,4 @@ numpy==2.4.6
 playwright
 beautifulsoup4
 pytest
+gdown
