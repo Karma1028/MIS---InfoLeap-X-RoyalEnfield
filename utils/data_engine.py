@@ -18,7 +18,7 @@ from pathlib import Path
 
 MASTERFILE_PATH = "data/RE_MIS_Master.xlsx"
 RAW_DATA_SHEET = "raw_data"
-DATAMAP_PATH = "data/MIS_datamap.xlsx"
+DATAMAP_PATH = "data/excel_files/MIS_datamap.xlsx"
 DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
 DATA_DIR = Path("data")
 MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
@@ -27,15 +27,14 @@ MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
 # Set DRIVE_FILE_ID env var to the file ID from the shareable Drive link.
 # Format: https://drive.google.com/file/d/<FILE_ID>/view
 # The file is downloaded fresh to MASTERFILE_PATH on every engine load.
-DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "")
-
-
 def _sync_from_drive(force: bool = False):
     """Download RE_MIS_Master.xlsx from Google Drive.
-    Runs when DRIVE_FILE_ID is set, or when force=True (file missing — fatal if no ID).
+    Runs when DRIVE_FILE_ID env var is set, or raises if file missing with no ID.
+    Reads env var at call time so Streamlit secrets loaded after import still work.
     """
+    drive_file_id = os.environ.get("DRIVE_FILE_ID", "")
     file_missing = not Path(MASTERFILE_PATH).exists()
-    if not DRIVE_FILE_ID:
+    if not drive_file_id:
         if file_missing:
             raise RuntimeError(
                 "RE_MIS_Master.xlsx not found and DRIVE_FILE_ID env var is not set. "
@@ -45,7 +44,7 @@ def _sync_from_drive(force: bool = False):
         return
     try:
         import gdown
-        url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}&export=download"
+        url = f"https://drive.google.com/uc?id={drive_file_id}&export=download"
         gdown.download(url, MASTERFILE_PATH, quiet=False)
     except Exception as e:
         if file_missing:
@@ -1653,7 +1652,7 @@ class DataEngine:
         """Loads the real CC-bucket scheme for aq5a's 1-124 codes from the
         'Neeting for AQ3a_AQ5' sheet (no numeric code column there — codes
         are inferred from row order, confirmed to match acc/rej/can)."""
-        net = pd.read_excel("data/Enroute_AP_V2_netting.xlsx", sheet_name="Neeting for AQ3a_AQ5", header=None)
+        net = pd.read_excel("data/excel_files/Enroute_AP_V2_netting.xlsx", sheet_name="Neeting for AQ3a_AQ5", header=None)
         net = net.iloc[3:127].reset_index(drop=True)
         return {i + 1: str(net.iloc[i, 5]).strip() for i in range(len(net))}
 
