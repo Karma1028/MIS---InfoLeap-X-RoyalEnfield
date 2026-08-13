@@ -635,7 +635,7 @@ class DataEngine:
 
         if display_groups:
             labels_in_order = []
-            for code in sorted(value_map):
+            for code in sorted(display_groups.keys()):
                 lbl = display_groups.get(code)
                 if lbl and lbl not in labels_in_order:
                     labels_in_order.append(lbl)
