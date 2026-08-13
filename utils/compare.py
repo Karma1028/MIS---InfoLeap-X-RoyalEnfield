@@ -16,7 +16,6 @@ from utils.visuals import (
     BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table, PLOTLY_CONFIG
 )
 from utils.stat_engine import calculate_significance, compare_to_baseline_by_column
-from utils.ai_providers import call_llm, get_active_provider
 from utils.ai_summary import render_chart_ai_blurb
 from utils.model_images import model_image_path
 
@@ -619,34 +618,3 @@ def render_comparison_page(engine):
                     else:
                         st.caption("No data.")
 
-    # AI Model Positioning Analysis
-    st.markdown("---")
-    st.markdown("### 🤖 AI Model Positioning Analysis")
-    _ai_key = f"cmp_ai_{'_'.join(short_names[m] for m in selected_models)}"
-    if st.button("Generate AI Positioning Analysis", key=_ai_key, type="secondary"):
-        with st.spinner("Analyzing model profiles..."):
-            _fact_lines = []
-            for _sn, _facts in _ai_facts.items():
-                if _facts:
-                    _fact_lines.append(f"**{_sn}**: " + " | ".join(f"{k}: {v}" for k, v in _facts.items()))
-            if _fact_lines:
-                _prompt = (
-                    f"You are an expert market research analyst for Royal Enfield India. "
-                    f"Below are top-category profiles for {len(selected_models)} motorcycle models "
-                    f"based on survey respondents in the '{segment_for_compare}' segment.\n\n"
-                    + "\n".join(_fact_lines) +
-                    "\n\nIn 3–5 concise bullet points, explain how these models differ in their buyer "
-                    "profiles and what that implies for Royal Enfield's positioning strategy. "
-                    "Be specific, data-driven, and actionable. No filler."
-                )
-                try:
-                    provider = get_active_provider()
-                    model_id = st.session_state.get("or_model_choice") if provider == "openrouter" else None
-                    _response = call_llm(provider, model_id,
-                                         "You are a concise market research analyst. Return bullet points only.",
-                                         _prompt, max_tokens=400, temperature=0.3)
-                    st.markdown(_response)
-                except Exception as _e:
-                    st.warning(f"AI analysis unavailable: {_e}")
-            else:
-                st.caption("No metric data available to analyze.")
