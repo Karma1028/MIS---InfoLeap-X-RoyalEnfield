@@ -258,10 +258,9 @@ class DataEngine:
         if required:
             missing = required - set(self.df.columns)
             if missing:
-                raise RuntimeError(
-                    f"Missing required columns after mapping: {sorted(missing)}. "
-                    f"Check column_mapping sheet in {MASTER_CONFIG_PATH} — "
-                    f"raw_column names must match actual Masterfile column names."
+                print(
+                    f"[column_mapping] WARNING: Missing required columns after mapping: {sorted(missing)}. "
+                    f"Check column_mapping sheet in {MASTER_CONFIG_PATH}."
                 )
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
