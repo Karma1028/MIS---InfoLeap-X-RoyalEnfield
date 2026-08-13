@@ -786,16 +786,6 @@ class DataEngine:
             idx = self._col_index(df, col, quarter_groups)
             rows[0][col] = df.loc[idx, 'dq1a'].notna().sum()
 
-        dq2a_cols = [c for c in df.columns if str(c).startswith('dq2a_') and c != 'dq2a_oth']
-
-        def _split_ratios(sub):
-            prior = sub['dq1a'].isin([1, 2])
-            added = prior & sub[dq2a_cols].notna().any(axis=1)
-            replaced = prior & sub['dq2b'].notna() & ~added
-            ans = added | replaced
-            add_r = added.sum() / ans.sum() if ans.sum() else 0
-            return add_r, 1 - add_r
-
         def pct_row(label, mask_fn):
             row = {"Unnamed: 0": label}
             for col in ["All"] + self.month_order + extra_cols:
@@ -805,10 +795,10 @@ class DataEngine:
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("This is my Additional 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[0]))
+        rows.append(pct_row("This is my Additional 2W", lambda d: (d['dq1a'] == 1).sum()))
         rows.append(pct_row("First Time Buyer of 2W (No one owns a 2W)", lambda d: (d['dq1a'] == 4).sum()))
         rows.append(pct_row("First Time Buyer of 2W (Family owns a 2W and not a primary user)", lambda d: (d['dq1a'] == 3).sum()))
-        rows.append(pct_row("This is my Replaced 2W", lambda d: d['dq1a'].isin([1, 2]).sum() * _split_ratios(d)[1]))
+        rows.append(pct_row("This is my Replaced 2W", lambda d: (d['dq1a'] == 2).sum()))
         tbl = pd.DataFrame(rows)
         return self.sort_by_value(tbl) if numeric else tbl
 
