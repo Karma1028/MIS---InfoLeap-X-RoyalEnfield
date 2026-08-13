@@ -187,7 +187,8 @@ RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
 # (docs/DATA_FIELD_MAPPING.md Addendum 3 — raw per-code %s are correct, but the
 # live site shows fewer, merged rows). None = drop from the chart (negligible).
 EDUCATION_DISPLAY_GROUPS = {
-    1.0: None, 2.0: None, 3.0: None,  # Illiterate / School<=4 / School5-9 (~1% combined)
+    1.0: None, 2.0: None,  # Illiterate / School<=4 (negligible, dropped)
+    3.0: "School up to 9 years",
     4.0: "SSC / HSC",
     5.0: "College but non-grad (Diploma)",
     6.0: "General Graduate/PG",
