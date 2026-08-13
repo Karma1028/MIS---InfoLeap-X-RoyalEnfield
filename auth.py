@@ -146,17 +146,35 @@ def _render_brand_header():
 
 _MAX_ATTEMPTS = 5
 _LOCKOUT_SECONDS = 60
-_SESSION_TTL = 8 * 3600  # 8 hours
+_SESSION_TTL = 8 * 3600   # 8 hours absolute max
+_INACTIVITY_TTL = 12 * 60  # 12 minutes of inactivity → auto-logout
+
+
+def _touch_activity():
+    """Call on every authenticated page load to reset the inactivity clock."""
+    st.session_state["_last_activity"] = time.time()
 
 
 def render_login() -> bool:
-    # Session expiry — re-authenticate after 8 hours
+    # Session expiry — re-authenticate after 8 hours absolute, or 12 min inactivity
     if st.session_state.get("authenticated"):
-        if time.time() - st.session_state.get("auth_time", 0) < _SESSION_TTL:
-            return True
-        st.session_state.pop("authenticated", None)
-        st.session_state.pop("auth_time", None)
-        st.warning("Session expired. Please sign in again.")
+        now = time.time()
+        if now - st.session_state.get("auth_time", 0) < _SESSION_TTL:
+            # Inactivity check
+            last_active = st.session_state.get("_last_activity", now)
+            if now - last_active < _INACTIVITY_TTL:
+                _touch_activity()
+                return True
+            # Inactive too long
+            st.session_state.pop("authenticated", None)
+            st.session_state.pop("auth_time", None)
+            st.session_state.pop("_last_activity", None)
+            st.warning("Session expired due to inactivity. Please sign in again.")
+        else:
+            st.session_state.pop("authenticated", None)
+            st.session_state.pop("auth_time", None)
+            st.session_state.pop("_last_activity", None)
+            st.warning("Session expired. Please sign in again.")
 
     st.markdown("""
     <style>

@@ -1018,7 +1018,7 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         if c == 'Category':
             return f"<td class='col-cat'><strong>{_html.escape(base_label)}</strong></td>"
         n_val = col_bases.get(c, 0)
-        return f"<td class='col-val'><strong>n={n_val:,}</strong></td>"
+        return f"<td class='col-val'><strong>{n_val:,}</strong></td>"
 
     base_row_html = "".join([_base_cell('Category')] + [_base_cell(c) for c in cols])
 

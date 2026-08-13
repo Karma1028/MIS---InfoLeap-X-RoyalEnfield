@@ -445,52 +445,46 @@ total_n = len(engine.df)
 _last_selected_month = selected_months[-1] if selected_months else engine.month_order[-1]
 
 # Calculate metrics for last selected month
-age_table_full = engine.age_table(df, base_label=segment_value, numeric=True)
-top_age_row, age_is_sig, _age_z = _sig_best_row(age_table_full, _last_selected_month)
-top_age_val = float(top_age_row[_last_selected_month if _last_selected_month in age_table_full.columns else 'All'])
+# Card 1: Average Age (midpoint mean of age_grp brackets)
+_AGE_MIDPOINTS = {1.0: 21.5, 2.0: 30.5, 3.0: 40.5, 4.0: 50.0}
+avg_age = df['age_grp'].map(_AGE_MIDPOINTS).mean()
+avg_age = float(avg_age) if not (avg_age != avg_age) else 0.0  # NaN guard
 
+# Card 2: Household Income (top bracket by selected month)
 income_table_full = engine.household_income_table(df, base_label=segment_value, numeric=True)
 top_income_row, income_is_sig, _inc_z = _sig_best_row(income_table_full, _last_selected_month)
 top_income_val = float(top_income_row[_last_selected_month if _last_selected_month in income_table_full.columns else 'All'])
 
-tob_table_full = engine.type_of_buyer_table(df, base_label=segment_value, numeric=True)
-top_tob_row, tob_is_sig, _tob_z = _sig_best_row(tob_table_full, _last_selected_month)
-top_tob_val = float(top_tob_row[_last_selected_month if _last_selected_month in tob_table_full.columns else 'All'])
+# Card 3: First-Time Buyer count and %
+_ftb_mask = df['dq1a'].isin([3.0, 4.0])
+ftb_count = int(_ftb_mask.sum())
+ftb_pct = ftb_count / base_n * 100 if base_n else 0.0
 
-_TOB_SHORT = {
-    "This is my Additional 2W": "Additional 2W",
-    "This is my Replaced 2W": "Replaced 2W",
-    "First Time Buyer of 2W(No one owns a 2W)": "First-Time Buyer",
-    "First Time Buyer of 2W(Family owns a 2W and not a primary user)": "First-Time Buyer",
-    "First Time Buyer of 2W (No one owns a 2W)": "First-Time Buyer",
-    "First Time Buyer of 2W (Family owns a 2W and not a primary user)": "First-Time Buyer",
-}
-tob_display = _TOB_SHORT.get(top_tob_row['Unnamed: 0'], top_tob_row['Unnamed: 0'])
+# Card 4: Education — modal bracket by selected month
+edu_table_full = engine.education_table(df, base_label=segment_value, numeric=True)
+top_edu_row, edu_is_sig, _edu_z = _sig_best_row(edu_table_full, _last_selected_month)
+top_edu_val = float(top_edu_row[_last_selected_month if _last_selected_month in edu_table_full.columns else 'All'])
 
-# KBF / Reasons card — segment-aware label and netting prefix
-_kbf_seg_val = df['segment'].iloc[0] if len(df) else "Acceptor"
-if _kbf_seg_val == "Acceptor":
-    kbf_card_label = "Key Buying Factor"
-elif _kbf_seg_val == "Rejector":
-    kbf_card_label = "Top Rejection Reason"
-else:
-    kbf_card_label = "Top Cancellation Reason"
+# Keep age_table_full for section rendering below
+age_table_full = engine.age_table(df, base_label=segment_value, numeric=True)
 
-kbf_display = "Design & Style"
-kbf_val = 35.0
-kbf_is_sig = False
-kbf_table_full = None
-top_kbf_row = None
-try:
-    # broad_prefix=None → auto-selects mq2a for Acceptors, mq3a for Rejectors/Cancelled
-    kbf_table_full = engine.reasons_table(df, broad_prefix=None)
-    if len(kbf_table_full) > 1:
-        top_kbf_row, kbf_is_sig, _kbf_z = _sig_best_row(kbf_table_full, _last_selected_month)
-        _target_col = _last_selected_month if _last_selected_month in kbf_table_full.columns else 'All'
-        kbf_display = str(top_kbf_row['Unnamed: 0'])  # full supernet name, no truncation
-        kbf_val = float(top_kbf_row[_target_col])
-except Exception:
-    pass
+# Per-month series for avg age sparkline
+_avg_age_monthly = []
+for _m in engine.month_order:
+    _mdf = df[df['month_label'] == _m]
+    if len(_mdf) > 0:
+        _ma = _mdf['age_grp'].map(_AGE_MIDPOINTS).mean()
+        if _ma == _ma:  # not NaN
+            _avg_age_monthly.append((_m, float(_ma)))
+
+# Per-month series for FTB % sparkline
+_ftb_monthly = []
+for _m in engine.month_order:
+    _mdf = df[df['month_label'] == _m]
+    _mn = len(_mdf)
+    if _mn > 0:
+        _mftb = _mdf['dq1a'].isin([3.0, 4.0]).sum() / _mn * 100
+        _ftb_monthly.append((_m, float(_mftb)))
 
 seg_pct = base_n / total_n * 100
 
@@ -498,10 +492,9 @@ _chip_deltas = {}
 _overall_df_chip = _seg_dfs.get("Overview")
 if _overall_df_chip is not None and segment_value not in ("All",):
     try:
-        _ov_age = engine.age_table(_overall_df_chip, base_label="All", numeric=True)
-        _ov_age_row = _ov_age[_ov_age['Unnamed: 0'] == top_age_row['Unnamed: 0']]
-        if len(_ov_age_row):
-            _chip_deltas['age'] = top_age_val - float(_ov_age_row.iloc[0]['All'])
+        _ov_age_avg = _overall_df_chip['age_grp'].map(_AGE_MIDPOINTS).mean()
+        if _ov_age_avg == _ov_age_avg:  # not NaN
+            _chip_deltas['age'] = avg_age - float(_ov_age_avg)
     except Exception:
         pass
     try:
@@ -512,10 +505,17 @@ if _overall_df_chip is not None and segment_value not in ("All",):
     except Exception:
         pass
     try:
-        _ov_tob = engine.type_of_buyer_table(_overall_df_chip, base_label="All", numeric=True)
-        _ov_tob_row = _ov_tob[_ov_tob['Unnamed: 0'] == top_tob_row['Unnamed: 0']]
-        if len(_ov_tob_row):
-            _chip_deltas['tob'] = top_tob_val - float(_ov_tob_row.iloc[0]['All'])
+        _ov_ftb_count = _overall_df_chip['dq1a'].isin([3.0, 4.0]).sum()
+        _ov_base = len(_overall_df_chip)
+        if _ov_base:
+            _chip_deltas['ftb'] = ftb_pct - (_ov_ftb_count / _ov_base * 100)
+    except Exception:
+        pass
+    try:
+        _ov_edu = engine.education_table(_overall_df_chip, base_label="All", numeric=True)
+        _ov_edu_row = _ov_edu[_ov_edu['Unnamed: 0'] == top_edu_row['Unnamed: 0']]
+        if len(_ov_edu_row):
+            _chip_deltas['edu'] = top_edu_val - float(_ov_edu_row.iloc[0]['All'])
     except Exception:
         pass
 
@@ -583,7 +583,7 @@ else:
         f"</div>"
     )
 
-    def _sparkline_svg(month_vals, current_month, color):
+    def _sparkline_svg(month_vals, current_month, color, unit="%"):
         """Inline SVG sparkline: line + dots, highlight current month + sig-high months."""
         if not month_vals or len(month_vals) < 2:
             return ""
@@ -595,6 +595,7 @@ else:
         W, H, PAD = 200, 44, 6
         def xp(i): return PAD + i * (W - 2 * PAD) / max(len(vals) - 1, 1)
         def yp(v): return H - PAD - (v - mn) / rng * (H - 2 * PAD)
+        _fmt = lambda v: f"{v:.1f}{unit}" if unit != "%" else f"{v:.0f}%"
         pts = " ".join(f"{xp(i):.1f},{yp(v):.1f}" for i, v in enumerate(vals))
         circles = ""
         for i, (m, v) in enumerate(month_vals):
@@ -604,7 +605,7 @@ else:
             if is_current:
                 circles += (f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='5' fill='{color}' stroke='#fff' stroke-width='1.5'/>"
                             f"<text x='{cx:.1f}' y='{cy - 8:.1f}' text-anchor='middle' "
-                            f"font-size='8' font-weight='700' fill='{color}'>{v:.0f}%</text>")
+                            f"font-size='8' font-weight='700' fill='{color}'>{_fmt(v)}</text>")
             elif is_high:
                 circles += f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='3' fill='#1B8A3F' opacity='0.85'/>"
             else:
@@ -682,10 +683,13 @@ else:
                 pass
         return result
 
-    def _stat_card(label, value_label, pct, delta_key, n_approx, full_table=None, row_label_val=None, is_sig_high=False):
-        month_vals = _build_month_series(full_table, row_label_val) if full_table is not None and row_label_val is not None else []
+    def _stat_card(label, value_label, pct, delta_key, n_approx, full_table=None, row_label_val=None, is_sig_high=False, unit="%", month_vals_override=None):
+        if month_vals_override is not None:
+            month_vals = month_vals_override
+        else:
+            month_vals = _build_month_series(full_table, row_label_val) if full_table is not None and row_label_val is not None else []
         delta = _chip_deltas.get(delta_key)
-        spark = _sparkline_svg(month_vals, _last_selected_month, accent)
+        spark = _sparkline_svg(month_vals, _last_selected_month, accent, unit=unit)
         headline = _ai_headline(label, value_label, month_vals, _last_selected_month, delta, is_sig_high=is_sig_high)
 
         # Left-border accent: green if sig-high selected, red if sig-low delta, else segment accent
@@ -729,7 +733,7 @@ else:
             f"<div style='font-size:0.9rem;font-weight:700;color:#1E293B;line-height:1.3;margin-bottom:3px;'>{value_label}</div>"
             f"<div style='display:flex;align-items:baseline;gap:4px;'>"
             f"<span style='font-size:2rem;font-weight:800;color:{accent};line-height:1;"
-            f"font-family:Oswald,sans-serif;letter-spacing:-0.01em;'>{pct:.0f}%</span>"
+            f"font-family:Oswald,sans-serif;letter-spacing:-0.01em;'>{f'{pct:.1f}' if unit != '%' else f'{pct:.0f}'}{unit}</span>"
             f"{_delta_badge(delta)}{sig_note}</div>"
             f"{spark}"
             f"{headline}"
@@ -739,18 +743,16 @@ else:
             f"</div>"
         )
 
-    _kbf_row_label = str(top_kbf_row['Unnamed: 0']) if top_kbf_row is not None else None
-
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100),
-                     full_table=age_table_full, row_label_val=top_age_row['Unnamed: 0'], is_sig_high=age_is_sig)
+        + _stat_card("Average Age", "Mean Age", avg_age, 'age', base_n,
+                     is_sig_high=False, unit=" yrs", month_vals_override=_avg_age_monthly)
         + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
                      full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'], is_sig_high=income_is_sig)
-        + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100),
-                     full_table=tob_table_full, row_label_val=top_tob_row['Unnamed: 0'], is_sig_high=tob_is_sig)
-        + _stat_card(kbf_card_label, kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100),
-                     full_table=kbf_table_full, row_label_val=_kbf_row_label, is_sig_high=kbf_is_sig)
+        + _stat_card("First-Time Buyers", f"{ftb_count:,} respondents", ftb_pct, 'ftb', ftb_count,
+                     is_sig_high=False, month_vals_override=_ftb_monthly)
+        + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(base_n*top_edu_val/100),
+                     full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'], is_sig_high=edu_is_sig)
         + f"</div>"
     )
 
@@ -767,14 +769,14 @@ else:
         st.markdown(
             f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Age", top_age_row['Unnamed: 0'], top_age_val, 'age', round(base_n*top_age_val/100),
-                         full_table=age_table_full, row_label_val=top_age_row['Unnamed: 0'], is_sig_high=age_is_sig)
+            + _stat_card("Average Age", "Mean Age", avg_age, 'age', base_n,
+                         is_sig_high=False, unit=" yrs", month_vals_override=_avg_age_monthly)
             + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
                          full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'], is_sig_high=income_is_sig)
-            + _stat_card("Type of Buyer", tob_display, top_tob_val, 'tob', round(base_n*top_tob_val/100),
-                         full_table=tob_table_full, row_label_val=top_tob_row['Unnamed: 0'], is_sig_high=tob_is_sig)
-            + _stat_card(kbf_card_label, kbf_display, kbf_val, 'kbf', round(base_n*kbf_val/100),
-                         full_table=kbf_table_full, row_label_val=_kbf_row_label, is_sig_high=kbf_is_sig)
+            + _stat_card("First-Time Buyers", f"{ftb_count:,} respondents", ftb_pct, 'ftb', ftb_count,
+                         is_sig_high=False, month_vals_override=_ftb_monthly)
+            + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(base_n*top_edu_val/100),
+                         full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'], is_sig_high=edu_is_sig)
             + f"</div>",
             unsafe_allow_html=True,
         )

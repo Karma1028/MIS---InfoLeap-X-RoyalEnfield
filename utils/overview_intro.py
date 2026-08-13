@@ -209,10 +209,8 @@ def render_overview_intro(engine=None):
         _is_latest = (_reported, _used) == (_latest_reported, _latest_used)
         if _is_latest:
             _chips.append(
-                f"<div style='{_chip_css}border-color:#C8102E;border-width:2px;position:relative;"
-                f"box-shadow:0 2px 8px rgba(200,16,46,0.15);'>"
-                f"<span class='live-pulse-dot'></span>"
-                f"<div style='font-size:0.7rem;font-weight:800;color:#C8102E;letter-spacing:0.04em;'>LIVE</div>"
+                f"<div style='{_chip_css}border-color:#C8102E;border-width:2px;'>"
+                f"<div style='font-size:0.7rem;font-weight:800;color:#C8102E;letter-spacing:0.04em;'>Latest</div>"
                 f"<div style='font-size:0.92rem;font-weight:800;color:#1A1A1A;margin-top:2px;'>{_reported}</div>"
                 f"<div style='font-size:0.65rem;color:#9A958D;margin-top:1px;'>uses {_used}</div>"
                 f"</div>"
@@ -229,18 +227,7 @@ def render_overview_intro(engine=None):
     )
     _timeline_html = _arrow.join(_chips)
     st.markdown(
-        "<style>"
-        "@keyframes live-pulse {"
-        "  0% { box-shadow: 0 0 0 0 rgba(200,16,46,0.55); }"
-        "  70% { box-shadow: 0 0 0 7px rgba(200,16,46,0); }"
-        "  100% { box-shadow: 0 0 0 0 rgba(200,16,46,0); }"
-        "}"
-        ".live-pulse-dot {"
-        "  position:absolute; top:7px; right:7px; width:7px; height:7px;"
-        "  border-radius:50%; background:#C8102E;"
-        "  animation: live-pulse 1.6s ease-out infinite;"
-        "}"
-        "</style>"
+        "<style></style>"
         "<div style='font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;"
         "color:#9A958D;font-weight:700;margin-bottom:8px;'>Data Reported &#8594; Database Used</div>"
         f"<div style='display:flex;align-items:center;gap:8px;overflow-x:auto;padding:4px 4px 10px;'>"
