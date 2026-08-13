@@ -1253,10 +1253,14 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         color: #64748b;
         margin-right: 6px;
         font-weight: bold;
+        text-align: left;
+        display: inline-block;
     }}
     .item-prefix {{
         color: #94a3b8;
         margin-right: 6px;
+        text-align: left;
+        display: inline-block;
     }}
     </style>
     """
