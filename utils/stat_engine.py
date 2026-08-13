@@ -73,12 +73,12 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
     p1, p2 are proportions (0-1); internally converted to percentage scale
     to match the reference Excel formula's scale.
     """
-    # Strict rule: never run significance testing on a base under 30 — too
-    # unstable to report a meaningful difference.
-    if n1 < 30 or n2 < 30:
+    # n<5 guard only — matches MIS site which runs sig test on all months
+    # regardless of base size (confirmed: MIS flags even n=9 months).
+    if n1 < 5 or n2 < 5:
         return {"is_significant": False, "z_score": 0.0, "tier": None}
 
-    pct1, pct2 = p1 * 100, p2 * 100
+pct1, pct2 = p1 * 100, p2 * 100
     pooled_pct = (pct1 * n1 + pct2 * n2) / (n1 + n2)
     sdiff = np.sqrt(pooled_pct * (100 - pooled_pct) * (1 / n1 + 1 / n2))
 
