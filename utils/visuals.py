@@ -1088,7 +1088,7 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
                     f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked) tr.sub-{key_suffix}-{s_idx}-{n_idx} {{ display: table-row !important; }}"
                 )
             else:
-                n_cat_cell = f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1;'><span class='net-prefix'>-</span>[{_html.escape(net['name'])}]</td>"
+                n_cat_cell = f"<td class='col-cat indent-net' style='background:{NET_BG}; color:#713F12; border-bottom:1px solid #cbd5e1; text-align: left !important;'><span class='net-prefix'>-</span>[{_html.escape(net['name'])}]</td>"
 
             net_row = f"<tr class='net-row'>{n_cat_cell}{_val_cells(net, row_bg=NET_BG, is_bold=has_subnets)}</tr>"
             level2_3_rows.append(net_row)
@@ -1112,13 +1112,13 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
                         f".supernet-body:has(#{chk_s_id}:checked):has(#{chk_n_id}:checked):has(#{chk_sub_id}:checked) tr.itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx} {{ display: table-row !important; }}"
                     )
                 else:
-                    sub_cat_cell = f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1;'><span class='sub-prefix'>-</span>[{_html.escape(sub['name'])}]</td>"
+                    sub_cat_cell = f"<td class='col-cat indent-subnet' style='background:{SUBNET_BG}; color:#0C4A6E; border-bottom:1px solid #cbd5e1; text-align: left !important;'><span class='sub-prefix'>-</span>[{_html.escape(sub['name'])}]</td>"
 
                 sub_row = f"<tr class='subnet-row sub-{key_suffix}-{s_idx}-{n_idx}'>{sub_cat_cell}{_val_cells(sub, row_bg=SUBNET_BG, is_bold=has_items)}</tr>"
                 level2_3_rows.append(sub_row)
 
                 for itm in items:
-                    itm_cat_cell = f"<td class='col-cat indent-item' style='background:#FAFAF9; color:#334155; border-bottom:1px solid #cbd5e1; padding-left: 64px;'><span class='item-prefix'>-</span>{_html.escape(itm['name'])}</td>"
+                    itm_cat_cell = f"<td class='col-cat indent-item' style='background:#FAFAF9; color:#334155; border-bottom:1px solid #cbd5e1; padding-left: 64px; text-align: left !important;'><span class='item-prefix'>-</span>{_html.escape(itm['name'])}</td>"
                     itm_row = f"<tr class='item-row itm-{key_suffix}-{s_idx}-{n_idx}-{sub_idx}'>{itm_cat_cell}{_val_cells(itm, row_bg='#FAFAF9', is_bold=False)}</tr>"
                     level2_3_rows.append(itm_row)
 
@@ -1168,7 +1168,7 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         min-width: 260px;
     }}
     .netting-table td.col-cat {{
-        text-align: left;
+        text-align: left !important;
     }}
     .base-row td {{
         background: #f1f5f9;
