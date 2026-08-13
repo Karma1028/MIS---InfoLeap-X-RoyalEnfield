@@ -78,7 +78,7 @@ def calculate_significance(p1, n1, p2, n2, confidence=0.95):
     if n1 < 30 or n2 < 30:
         return {"is_significant": False, "z_score": 0.0, "tier": None}
 
-pct1, pct2 = p1 * 100, p2 * 100
+    pct1, pct2 = p1 * 100, p2 * 100
     pooled_pct = (pct1 * n1 + pct2 * n2) / (n1 + n2)
     sdiff = np.sqrt(pooled_pct * (100 - pooled_pct) * (1 / n1 + 1 / n2))
 
