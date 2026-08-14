@@ -479,6 +479,7 @@ def render_comparison_page(engine):
         cat2, pct2 = _top_cat_info(tbl2)
 
         _is_brand_wise = "Brand Wise" in metric_name
+        _bw_rollups = set(engine.manufacturers()) if _is_brand_wise else None
         with st.container(border=True):
             st.markdown(f"**{metric_name}**")
             c1, c2 = st.columns(2)
@@ -489,19 +490,15 @@ def render_comparison_page(engine):
                     f"◼ {m1_short}</div>",
                     unsafe_allow_html=True,
                 )
-                if _is_brand_wise:
-                    from utils.visuals import _render_html_table
-                    _bw_rollups = set(engine.manufacturers())
-                    _render_html_table(tbl1_t, accent=_CMP_COLOR_A, rollup_labels=_bw_rollups)
-                else:
-                    render_chart_with_table(
-                        tbl1_t, f"{m1_short} — {metric_name}",
-                        color=_CMP_COLOR_A,
-                        key=f"cmp_{metric_name}_{m1_short}_chart",
-                        chart_type="stacked_bar",
-                        col_sig_markers=_sig_a,
-                        allow_all_sig=True,
-                    )
+                render_chart_with_table(
+                    tbl1_t, f"{m1_short} — {metric_name}",
+                    color=_CMP_COLOR_A,
+                    key=f"cmp_{metric_name}_{m1_short}_chart",
+                    chart_type="bar" if _is_brand_wise else "stacked_bar",
+                    col_sig_markers=_sig_a,
+                    allow_all_sig=True,
+                    rollup_labels=_bw_rollups,
+                )
             with c2:
                 st.markdown(
                     f"<div style='font-size:0.75rem;font-weight:700;color:{_CMP_COLOR_B};"
@@ -509,18 +506,15 @@ def render_comparison_page(engine):
                     f"◼ {m2_short}</div>",
                     unsafe_allow_html=True,
                 )
-                if _is_brand_wise:
-                    from utils.visuals import _render_html_table
-                    _render_html_table(tbl2_t, accent=_CMP_COLOR_B, rollup_labels=_bw_rollups)
-                else:
-                    render_chart_with_table(
-                        tbl2_t, f"{m2_short} — {metric_name}",
-                        color=_CMP_COLOR_B,
-                        key=f"cmp_{metric_name}_{m2_short}_chart",
-                        chart_type="stacked_bar",
-                        col_sig_markers=_sig_b,
-                        allow_all_sig=True,
-                    )
+                render_chart_with_table(
+                    tbl2_t, f"{m2_short} — {metric_name}",
+                    color=_CMP_COLOR_B,
+                    key=f"cmp_{metric_name}_{m2_short}_chart",
+                    chart_type="bar" if _is_brand_wise else "stacked_bar",
+                    col_sig_markers=_sig_b,
+                    allow_all_sig=True,
+                    rollup_labels=_bw_rollups,
+                )
             # Bottom insight line
             if cat1 and cat2:
                 if cat1 == cat2:
