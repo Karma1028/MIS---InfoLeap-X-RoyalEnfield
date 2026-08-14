@@ -129,7 +129,7 @@ SEGMENT_ICONS = {"Overview": "🏠", "Overall": "👥", "Acceptors": "✅", "Rej
 st.sidebar.markdown(sidebar_brand_html(), unsafe_allow_html=True)
 
 st.sidebar.markdown("### Segment")
-EXTRA_PAGES = ["📊 Model Comparison", "⚙️ Settings"]
+EXTRA_PAGES = ["📊 Model Comparison", "🔲 Platform Comparison", "⚙️ Settings"]
 nav_options = [f"{SEGMENT_ICONS[k]} {k}" for k in SEGMENT_LABELS] + EXTRA_PAGES
 nav_choice = st.sidebar.radio("Page", nav_options, label_visibility="collapsed")
 segment_nav = nav_choice.split(" ", 1)[1] if nav_choice not in EXTRA_PAGES else nav_choice
@@ -138,6 +138,10 @@ if nav_choice in EXTRA_PAGES:
     render_theme_css()
     if "Model Comparison" in nav_choice:
         render_comparison_page(engine)
+    elif "Platform Comparison" in nav_choice:
+        from utils.platform_compare import render_platform_compare_page
+        render_platform_compare_page(engine)
+        st.stop()
     elif "Dealership Intelligence" in nav_choice:
         # Inline sidebar filters — these variables don't exist yet (defined after st.stop())
         st.sidebar.markdown("### Report Filters")
@@ -264,7 +268,8 @@ FY_QUARTER_ORDER = engine.fy_quarter_order
 month_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in MONTH_ORDER]
 selected_months = MONTH_ORDER
 if time_mode == "Month Range":
-    lo, hi = st.sidebar.select_slider("Month range", options=month_short, value=(month_short[0], month_short[-1]), key="month_range")
+    _default_lo = month_short[-12] if len(month_short) >= 12 else month_short[0]
+    lo, hi = st.sidebar.select_slider("Month range", options=month_short, value=(_default_lo, month_short[-1]), key="month_range")
     lo_i, hi_i = month_short.index(lo), month_short.index(hi)
     selected_months = MONTH_ORDER[lo_i:hi_i + 1]
 elif time_mode == "Quarter (Financial Calendar)":

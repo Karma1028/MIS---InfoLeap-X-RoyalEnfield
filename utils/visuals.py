@@ -548,6 +548,13 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
         is_base = (i == 0)
         is_rollup = (not is_base) and rollup_labels is not None and str(row['Unnamed: 0']) in rollup_labels
         is_member = (not is_base) and rollup_labels is not None and not is_rollup
+        # Skip data rows where All column rounds to 0 — no signal to show.
+        if not is_base and 'All' in row:
+            try:
+                if float(row['All']) < 0.5:
+                    continue
+            except (ValueError, TypeError):
+                pass
         if is_member:
             member_n += 1
         elif is_rollup:

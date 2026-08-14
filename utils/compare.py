@@ -491,7 +491,8 @@ def render_comparison_page(engine):
                 )
                 if _is_brand_wise:
                     from utils.visuals import _render_html_table
-                    _render_html_table(tbl1_t, accent=_CMP_COLOR_A)
+                    _bw_rollups = set(engine.manufacturers())
+                    _render_html_table(tbl1_t, accent=_CMP_COLOR_A, rollup_labels=_bw_rollups)
                 else:
                     render_chart_with_table(
                         tbl1_t, f"{m1_short} — {metric_name}",
@@ -510,7 +511,7 @@ def render_comparison_page(engine):
                 )
                 if _is_brand_wise:
                     from utils.visuals import _render_html_table
-                    _render_html_table(tbl2_t, accent=_CMP_COLOR_B)
+                    _render_html_table(tbl2_t, accent=_CMP_COLOR_B, rollup_labels=_bw_rollups)
                 else:
                     render_chart_with_table(
                         tbl2_t, f"{m2_short} — {metric_name}",

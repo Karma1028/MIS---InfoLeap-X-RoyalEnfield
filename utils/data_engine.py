@@ -1433,9 +1433,8 @@ class DataEngine:
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("Royal Enfield", considered_mask(range(1, 15))))
-
         if by == "brand":
+            rows.append(pct_row("Royal Enfield", considered_mask(range(1, 15))))
             for code in range(1, 15):
                 rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), considered_mask([code])))
             # FIX (2026-06-19): same gap as Brand Owned — only RE's 14 codes
