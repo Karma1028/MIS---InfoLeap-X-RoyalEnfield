@@ -122,6 +122,8 @@ DEMOGRAPHIC_BUILDERS = {
     "Type of Buyer": (lambda engine, df, seg: engine.type_of_buyer_table(df, base_label=seg, numeric=True), "donut"),
 }
 ACCEPTOR_BUILDERS = {
+    "Additional + Replaced — CC Wise": (lambda engine, df, seg:
+        engine.additional_replaced_table(df, by="cc", base_label=seg, numeric=True), "bar"),
     "Additional + Replaced — Brand Wise": (lambda engine, df, seg: engine.cap_rows(
         engine.additional_replaced_table(df, by="brand", base_label=seg, numeric=True), max_rows=8), "bar"),
 }
@@ -478,8 +480,8 @@ def render_comparison_page(engine):
         cat1, pct1 = _top_cat_info(tbl1)
         cat2, pct2 = _top_cat_info(tbl2)
 
-        _is_brand_wise = "Brand Wise" in metric_name
-        _bw_rollups = set(engine.manufacturers()) if _is_brand_wise else None
+        _is_add_rep = "Additional + Replaced" in metric_name
+        _bw_rollups = set(engine.manufacturers()) if "Brand Wise" in metric_name else None
         with st.container(border=True):
             st.markdown(f"**{metric_name}**")
             c1, c2 = st.columns(2)
@@ -490,15 +492,18 @@ def render_comparison_page(engine):
                     f"◼ {m1_short}</div>",
                     unsafe_allow_html=True,
                 )
-                render_chart_with_table(
-                    tbl1_t, f"{m1_short} — {metric_name}",
-                    color=_CMP_COLOR_A,
-                    key=f"cmp_{metric_name}_{m1_short}_chart",
-                    chart_type="bar" if _is_brand_wise else "stacked_bar",
-                    col_sig_markers=_sig_a,
-                    allow_all_sig=True,
-                    rollup_labels=_bw_rollups,
-                )
+                if _is_add_rep:
+                    from utils.visuals import _render_html_table
+                    _render_html_table(tbl1_t, accent=_CMP_COLOR_A, rollup_labels=_bw_rollups)
+                else:
+                    render_chart_with_table(
+                        tbl1_t, f"{m1_short} — {metric_name}",
+                        color=_CMP_COLOR_A,
+                        key=f"cmp_{metric_name}_{m1_short}_chart",
+                        chart_type="stacked_bar",
+                        col_sig_markers=_sig_a,
+                        allow_all_sig=True,
+                    )
             with c2:
                 st.markdown(
                     f"<div style='font-size:0.75rem;font-weight:700;color:{_CMP_COLOR_B};"
@@ -506,15 +511,18 @@ def render_comparison_page(engine):
                     f"◼ {m2_short}</div>",
                     unsafe_allow_html=True,
                 )
-                render_chart_with_table(
-                    tbl2_t, f"{m2_short} — {metric_name}",
-                    color=_CMP_COLOR_B,
-                    key=f"cmp_{metric_name}_{m2_short}_chart",
-                    chart_type="bar" if _is_brand_wise else "stacked_bar",
-                    col_sig_markers=_sig_b,
-                    allow_all_sig=True,
-                    rollup_labels=_bw_rollups,
-                )
+                if _is_add_rep:
+                    from utils.visuals import _render_html_table
+                    _render_html_table(tbl2_t, accent=_CMP_COLOR_B, rollup_labels=_bw_rollups)
+                else:
+                    render_chart_with_table(
+                        tbl2_t, f"{m2_short} — {metric_name}",
+                        color=_CMP_COLOR_B,
+                        key=f"cmp_{metric_name}_{m2_short}_chart",
+                        chart_type="stacked_bar",
+                        col_sig_markers=_sig_b,
+                        allow_all_sig=True,
+                    )
             # Bottom insight line
             if cat1 and cat2:
                 if cat1 == cat2:
