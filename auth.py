@@ -55,37 +55,21 @@ def _verify_password(pwd: str, stored: str) -> bool:
         return False
 
 
-_DRIVE_FOLDER_ID = "1SoD7nzHP8Lfnr8An2NT-SXO-IzJsKkJQ"
+_USERS_SHEET_ID = "1JuCa-UrGUnI4EQrte46E1nI8gYVwrIHo"
 
 def _sync_users_from_drive():
-    """Download users.xlsx from shared Drive folder."""
-    if Path(USERS_PATH).exists():
-        return  # already present (either local or already downloaded this session)
+    """Download users Google Sheet as xlsx on every call (no cache — always fresh)."""
     try:
-        import gdown, os, shutil, tempfile
+        import requests
         Path(USERS_PATH).parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            gdown.download_folder(
-                id=_DRIVE_FOLDER_ID,
-                output=tmp,
-                quiet=True,
-                use_cookies=False,
-            )
-            # gdown creates subfolder named after Drive folder — walk all levels
-            found = False
-            for root, _, files in os.walk(tmp):
-                for fname in files:
-                    if fname == "users.xlsx":
-                        shutil.copy2(os.path.join(root, fname), USERS_PATH)
-                        print("[users-sync] users.xlsx downloaded from Drive folder.")
-                        found = True
-                        break
-                if found:
-                    break
-            if not found:
-                print("[users-sync] WARNING: users.xlsx not found in Drive folder.")
+        url = f"https://docs.google.com/spreadsheets/d/{_USERS_SHEET_ID}/export?format=xlsx"
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        with open(USERS_PATH, "wb") as f:
+            f.write(r.content)
+        print("[users-sync] users sheet downloaded.")
     except Exception as e:
-        print(f"[users-sync] WARNING: Drive folder download failed: {e}")
+        print(f"[users-sync] WARNING: failed to download users sheet: {e}")
 
 
 def _ensure_users_file():
