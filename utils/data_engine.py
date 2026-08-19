@@ -100,19 +100,27 @@ def load_column_mapping():
         return {}
     try:
         df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
-        # Skip note/header-description rows: real column names never contain spaces
+        # Skip note rows: real column names never contain spaces
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
-        return dict(zip(df["raw_column"].dropna(), df["internal_name"].dropna()))
+        # New 5-col structure: raw_column → raw_column (no internal rename needed)
+        # Special case: age_raw (dq7) maps to 'age_numeric' for legacy compat
+        _SK_COL = "semantic_key" if "semantic_key" in df.columns else None
+        rename = {}
+        for _, row in df.iterrows():
+            raw = str(row.get("raw_column", "")).strip()
+            sk  = str(row.get(_SK_COL, "") if _SK_COL else "").strip()
+            # Only rename dq7→age_numeric; everything else keeps raw name
+            if sk == "age_raw" and raw and raw != "age_numeric":
+                rename[raw] = "age_numeric"
+        return rename
     except Exception:
         return {}
 
 
 def load_field_registry():
-    """Read column_mapping sheet → {semantic_key: internal_name}.
-    semantic_key is the stable human label (e.g. 'education', 'occupation').
-    internal_name is the column name that exists in df after raw→internal rename.
-    Python code uses semantic keys only — never hardcoded survey codes like 'dq3'.
-    Returns empty dict if sheet absent (callers fall back to internal names directly)."""
+    """Read column_mapping → {semantic_key: raw_column}.
+    Python uses self.F['education'] to get the actual df column name.
+    Returns empty dict if sheet absent."""
     if not MASTER_CONFIG_PATH.exists():
         return {}
     try:
@@ -123,23 +131,23 @@ def load_field_registry():
         result = {}
         for _, row in df.iterrows():
             sk  = str(row.get("semantic_key", "")).strip()
-            col = str(row.get("internal_name", "")).strip()
-            if sk and col and sk != "nan" and col != "nan":
-                result[sk] = col
+            raw = str(row.get("raw_column", "")).strip()
+            if sk and raw and sk != "nan" and raw != "nan":
+                # age_raw special case: df column is renamed to age_numeric
+                result[sk] = "age_numeric" if sk == "age_raw" else raw
         return result
     except Exception:
         return {}
 
 
 def get_required_columns():
-    """Returns set of internal_names where required=='YES'."""
+    """Returns set of raw_column names where required=='YES'."""
     if not MASTER_CONFIG_PATH.exists():
         return set()
     try:
         df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
-        req = df[df["required"].astype(str).str.strip().str.upper() == "YES"]["internal_name"]
-        # Exclude dynamic prefix patterns (contain '*') from hard validation
+        req = df[df["required"].astype(str).str.strip().str.upper() == "YES"]["raw_column"]
         return {c for c in req if "*" not in str(c)}
     except Exception:
         return set()
