@@ -205,12 +205,11 @@ if _reload_col.button("⟳ Reload Data", key="reload_data", help="Re-download & 
 # "P Platform (650CC)" (confirmed via the scraped tab keys) — display labels
 # match that, while the underlying filter value stays the plain "350CC" etc.
 # that RE_MODEL_PLATFORM/filter_df already key off of.
-PLATFORM_DISPLAY = {
-    "All": "All", "350CC": "J Platform (350CC)",
-    "450CC": "K Platform (450CC)", "650CC": "P Platform (650CC)",
-}
-platform = st.sidebar.selectbox("Platform (CC)", ["All", "350CC", "450CC", "650CC"],
-                                  format_func=lambda p: PLATFORM_DISPLAY[p],
+from utils.data_engine import RE_PLATFORM_LABELS
+_all_platforms = sorted({p for p in RE_MODEL_PLATFORM.values() if p and str(p) != "nan"})
+PLATFORM_DISPLAY = {"All": "All", **{p: RE_PLATFORM_LABELS.get(p, p) for p in _all_platforms}}
+platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
+                                  format_func=lambda p: PLATFORM_DISPLAY.get(p, p),
                                   key="platform_filter")
 
 model_options = ["All"]
@@ -1206,7 +1205,6 @@ if _overview_is_comparison:
             _mar_rows = []
             _mar_plat = platform if platform != "All" else None
             _months_t = tuple(sorted(selected_months))
-            _PLAT_LABELS = {"350CC": "J Platform (350CC)", "450CC": "K Platform (450CC)", "650CC": "P Platform (650CC)"}
             for _mc, _ml in RE_MODEL_LABELS.items():
                 _ma = _tbl_filter("Acceptor", _mar_plat, _mc, _months_t)
                 _mr = _tbl_filter("Rejector", _mar_plat, _mc, _months_t)
@@ -1216,7 +1214,7 @@ if _overview_is_comparison:
                 if _mt_unique >= 30:
                     _mar_rows.append({
                         "model": _ml.replace("Royal Enfield ", ""),
-                        "platform": _PLAT_LABELS.get(RE_MODEL_PLATFORM.get(_mc, "350CC"), "Other"),
+                        "platform": RE_PLATFORM_LABELS.get(RE_MODEL_PLATFORM.get(_mc, ""), RE_MODEL_PLATFORM.get(_mc, "Other")),
                         "unique_n": _mt_unique,
                         "acc_pct": len(_ma) / _mt_unique * 100,
                         "rej_pct": len(_mr) / _mt_unique * 100,

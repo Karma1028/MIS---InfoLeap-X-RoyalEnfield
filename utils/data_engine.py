@@ -206,7 +206,11 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
 def load_model_config():
-    """Read model_code, model_name, platform_cc, active from model_config sheet.
+    """Read model_config sheet → (labels, platform, platform_labels).
+    labels:          {code: model_name}   — all active models
+    platform:        {code: platform_cc}  — e.g. {1:'350CC', 6:'450CC'}
+    platform_labels: {platform_cc: display_label} — e.g. {'350CC':'J Platform (350CC)'}
+    Fully dynamic: add rows/platforms to model_config sheet, no code change needed.
     Called after _sync_from_drive() so file is guaranteed to exist."""
     if not MASTER_CONFIG_PATH.exists():
         raise RuntimeError(
@@ -214,9 +218,8 @@ def load_model_config():
             "Set DRIVE_FILE_ID in Streamlit Cloud secrets."
         )
     df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
-    # Skip note/description rows (model_code must be numeric)
     df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
-    labels, platform = {}, {}
+    labels, platform, plat_labels = {}, {}, {}
     for _, row in df.iterrows():
         try:
             code   = int(float(row["model_code"]))
@@ -227,6 +230,10 @@ def load_model_config():
                 continue
             labels[code]   = name
             platform[code] = plat
+            # platform_label column optional — fallback to platform_cc itself
+            raw_lbl = row.get("platform_label", plat)
+            lbl = str(raw_lbl).strip() if raw_lbl and str(raw_lbl).strip() not in ("", "nan") else plat
+            plat_labels[plat] = lbl
         except (ValueError, TypeError, KeyError):
             continue
     if not labels:
@@ -234,12 +241,14 @@ def load_model_config():
             "model_config sheet found but no active models. "
             "Check model_code is numeric and active=YES for at least one row."
         )
-    return labels, platform
+    return labels, platform, plat_labels
 
 
 # Populated after _sync_from_drive() in load_data() so cloud boot succeeds
 RE_MODEL_LABELS: dict = {}
 RE_MODEL_PLATFORM: dict = {}
+RE_PLATFORM_LABELS: dict = {}  # {platform_cc: display_label} — dynamic from model_config
+_MAX_MODEL_CODE: int = 0       # max active model code — drives seg offset arithmetic
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
 # Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
@@ -321,9 +330,10 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
-        global RE_MODEL_LABELS, RE_MODEL_PLATFORM
+        global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE
         _sync_from_drive()
-        RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
+        RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS = load_model_config()
+        _MAX_MODEL_CODE = max(RE_MODEL_LABELS.keys()) if RE_MODEL_LABELS else 14
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
         # Auto-detect header row: if row 0 has 'Unnamed' columns, real headers are in row 1
         _probe = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
@@ -517,7 +527,8 @@ class DataEngine:
         _acc   = self.F.get('re_model_acc', 'acc')
         _seg   = self.F.get('joint_seg_model', 'seg')
         _aq3   = self.F.get('brand_model_purchased', 'aq3')
-        acceptor_mask = df[_aq3po].between(1, 14)
+        _n = _MAX_MODEL_CODE or 14  # seg block size = max model code
+        acceptor_mask = df[_aq3po].between(1, _n)
         df['segment'] = None
         df.loc[acceptor_mask, 'segment'] = 'Acceptor'
         df.loc[(df[_grida] == 2) & ~acceptor_mask, 'segment'] = 'Rejector'
@@ -526,7 +537,7 @@ class DataEngine:
         acc_or_aq3po = df[_acc].fillna(df[_aq3po])
         df['re_model_code'] = np.select(
             [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
-            [acc_or_aq3po, df[_seg] - 14, df[_seg] - 28],
+            [acc_or_aq3po, df[_seg] - _n, df[_seg] - 2*_n],
             default=np.nan,
         )
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
@@ -605,22 +616,21 @@ class DataEngine:
         _acc   = self.F.get('re_model_acc', 'acc')
         _seg   = self.F.get('joint_seg_model', 'seg')
         _aq3   = self.F.get('brand_model_purchased', 'aq3')
+        _n = _MAX_MODEL_CODE or 14
         if segment == "Acceptor":
-            df = self.df[self.df[_aq3po].between(1, 14)].copy()
+            df = self.df[self.df[_aq3po].between(1, _n)].copy()
             df['segment'] = 'Acceptor'
             df['re_model_code'] = df[_acc].fillna(df[_aq3po])
             df['owned_brand_code'] = df['re_model_code']
         elif segment == "Rejector":
             df = self.df[self.df[_grida] == 2].copy()
             df['segment'] = 'Rejector'
-            # `seg` is joint segment+model code (15-28 = Rejector block).
-            df['re_model_code'] = df[_seg] - 14
+            df['re_model_code'] = df[_seg] - _n
             df['owned_brand_code'] = df[_aq3]
         elif segment == "Cancelled":
             df = self.df[self.df[_grida] == 3].copy()
             df['segment'] = 'Cancelled'
-            # Same `seg` scheme, Cancelled block = 29-42.
-            df['re_model_code'] = df[_seg] - 28
+            df['re_model_code'] = df[_seg] - 2*_n
             df['owned_brand_code'] = df[_aq3]
         else:
             raise ValueError(segment)
@@ -965,7 +975,7 @@ class DataEngine:
             return row
 
         if by == "brand":
-            re_union = sub[model_col].between(1, 14)
+            re_union = sub[model_col].between(1, _MAX_MODEL_CODE or 14)
             rows.append(pct_row("Royal Enfield", re_union))
             for code in range(1, 15):
                 rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), sub[model_col] == code))

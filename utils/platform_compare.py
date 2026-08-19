@@ -10,9 +10,17 @@ from utils.visuals import (
 from utils.stat_engine import calculate_significance, Z_95, Z_HIGHER_LIGHT
 from utils.compare import _prune_tree_cols, _align_tree_order, _inject_cross_model_reasons_sig
 
-_PLATFORMS = ["350CC", "450CC", "650CC"]
-_PLATFORM_LABELS = {"350CC": "350 CC", "450CC": "450 CC", "650CC": "650 CC"}
-_PLATFORM_COLORS = {"350CC": "#2E3192", "450CC": "#C8102E", "650CC": "#1A7A4A"}
+_DEFAULT_PLATFORM_COLORS = ["#2E3192", "#C8102E", "#1A7A4A", "#E67E22", "#8E44AD", "#16A085"]
+
+def _get_platform_info():
+    """Derive platform list, labels, colors dynamically from RE_PLATFORM_LABELS."""
+    from utils.data_engine import RE_PLATFORM_LABELS, RE_MODEL_PLATFORM
+    platforms = sorted({p for p in RE_MODEL_PLATFORM.values() if p and p != "nan"})
+    if not platforms:
+        platforms = ["350CC", "450CC", "650CC"]
+    labels = {p: RE_PLATFORM_LABELS.get(p, p) for p in platforms}
+    colors = {p: _DEFAULT_PLATFORM_COLORS[i % len(_DEFAULT_PLATFORM_COLORS)] for i, p in enumerate(platforms)}
+    return platforms, labels, colors
 
 _SEGMENT_MAP = {
     "All": "All",
@@ -128,14 +136,15 @@ def render_platform_compare_page(engine):
     seg_label = st.sidebar.selectbox("Segment", list(_SEGMENT_MAP.keys()), key="plat_cmp_segment")
     seg_val = _SEGMENT_MAP[seg_label]
 
+    _platforms, _plat_labels, _plat_colors = _get_platform_info()
     plat_a = st.sidebar.selectbox(
-        "Platform A", _PLATFORMS, index=0, key="plat_cmp_a",
-        format_func=lambda p: _PLATFORM_LABELS[p],
+        "Platform A", _platforms, index=0, key="plat_cmp_a",
+        format_func=lambda p: _plat_labels.get(p, p),
     )
-    plat_b_options = [p for p in _PLATFORMS if p != plat_a]
+    plat_b_options = [p for p in _platforms if p != plat_a]
     plat_b = st.sidebar.selectbox(
         "Platform B", plat_b_options, index=0, key="plat_cmp_b",
-        format_func=lambda p: _PLATFORM_LABELS[p],
+        format_func=lambda p: _plat_labels.get(p, p),
     )
 
     # ── Year / Month multiselect (same as model comparison) ──────────────────
@@ -171,10 +180,10 @@ def render_platform_compare_page(engine):
 
     show_sig = st.sidebar.toggle("Significance A vs B (95%/90%)", value=True, key="plat_cmp_sig")
 
-    color_a = _PLATFORM_COLORS[plat_a]
-    color_b = _PLATFORM_COLORS[plat_b]
-    label_a = _PLATFORM_LABELS[plat_a]
-    label_b = _PLATFORM_LABELS[plat_b]
+    color_a = _plat_colors.get(plat_a, "#2E3192")
+    color_b = _plat_colors.get(plat_b, "#C8102E")
+    label_a = _plat_labels.get(plat_a, plat_a)
+    label_b = _plat_labels.get(plat_b, plat_b)
 
     # ── Build per-platform dfs (all months for "All" col, filtered for month cols) ──
     df_a_full = engine.filter_df(segment=seg_val, platform=plat_a)
