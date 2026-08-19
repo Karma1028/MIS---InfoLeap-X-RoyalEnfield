@@ -71,11 +71,18 @@ def _sync_users_from_drive():
                 quiet=True,
                 use_cookies=False,
             )
-            src = os.path.join(tmp, "users.xlsx")
-            if os.path.exists(src):
-                shutil.copy2(src, USERS_PATH)
-                print("[users-sync] users.xlsx downloaded from Drive folder.")
-            else:
+            # gdown creates subfolder named after Drive folder — walk all levels
+            found = False
+            for root, _, files in os.walk(tmp):
+                for fname in files:
+                    if fname == "users.xlsx":
+                        shutil.copy2(os.path.join(root, fname), USERS_PATH)
+                        print("[users-sync] users.xlsx downloaded from Drive folder.")
+                        found = True
+                        break
+                if found:
+                    break
+            if not found:
                 print("[users-sync] WARNING: users.xlsx not found in Drive folder.")
     except Exception as e:
         print(f"[users-sync] WARNING: Drive folder download failed: {e}")

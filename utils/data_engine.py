@@ -47,11 +47,13 @@ def _sync_from_drive(force: bool = False):
                 use_cookies=False,
             )
             import os
-            for fname in os.listdir(tmp):
-                src = os.path.join(tmp, fname)
-                dst = str(DATA_DIR / fname)
-                shutil.copy2(src, dst)
-                print(f"[drive-sync] Downloaded: {fname}")
+            # gdown creates a subfolder named after the Drive folder — walk all levels
+            for root, _, files in os.walk(tmp):
+                for fname in files:
+                    src = os.path.join(root, fname)
+                    dst = str(DATA_DIR / fname)
+                    shutil.copy2(src, dst)
+                    print(f"[drive-sync] Downloaded: {fname}")
     except Exception as e:
         if file_missing:
             raise RuntimeError(
