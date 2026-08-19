@@ -425,21 +425,23 @@ _base_cur = base_n if time_mode == "All Months" else (len(_df_cur) if len(_df_cu
 # Card 1: Average Age — use raw numeric age (dq7 → age_numeric) when available,
 # fall back to age_grp midpoints so the KPI never breaks on older data cuts.
 _AGE_MIDPOINTS = {1.0: 21.5, 2.0: 30.5, 3.0: 40.5, 4.0: 50.0}
-_HAS_AGE_NUMERIC = 'age_numeric' in df.columns
+_AGE_RAW_COL  = engine.F.get('age_raw',  'age_numeric')
+_AGE_BAND_COL = engine.F.get('age_band', 'age_grp')
+_HAS_AGE_NUMERIC = _AGE_RAW_COL in df.columns
 def _mean_age(d):
     if _HAS_AGE_NUMERIC:
         import pandas as _pd
-        return _pd.to_numeric(d['age_numeric'], errors='coerce').mean()
-    return d['age_grp'].map(_AGE_MIDPOINTS).mean()
+        return _pd.to_numeric(d[_AGE_RAW_COL], errors='coerce').mean()
+    return d[_AGE_BAND_COL].map(_AGE_MIDPOINTS).mean()
 _age_src_df = df if time_mode == "All Months" else (_df_cur if len(_df_cur) > 0 else df)
 avg_age = _mean_age(_age_src_df)
 avg_age = float(avg_age) if not (avg_age != avg_age) else 0.0  # NaN guard
 # age base = respondents with valid age answer (may be 1 less than total if one null)
 import pandas as _pd_age
 if _HAS_AGE_NUMERIC:
-    _age_base_n = int(_pd_age.to_numeric(_age_src_df['age_numeric'], errors='coerce').notna().sum())
+    _age_base_n = int(_pd_age.to_numeric(_age_src_df[_AGE_RAW_COL], errors='coerce').notna().sum())
 else:
-    _age_base_n = int(_age_src_df['age_grp'].notna().sum())
+    _age_base_n = int(_age_src_df[_AGE_BAND_COL].notna().sum())
 
 # When All Months selected, KPI values use the full period ('All' column),
 # not just the latest month — so the headline number matches the aggregate view.
@@ -452,9 +454,10 @@ top_income_val = float(top_income_row[_kpi_col if _kpi_col in income_table_full.
 
 # Card 3: First-Time Buyer count and % — full filtered df (already month-scoped by df)
 _ftb_df = df if time_mode == "All Months" else _df_cur
-_ftb_mask = _ftb_df['dq1a'].isin([3.0, 4.0])
+_dq1a = engine.F.get('buyer_type', 'dq1a')
+_ftb_mask = _ftb_df[_dq1a].isin([3.0, 4.0])
 ftb_count = int(_ftb_mask.sum())
-_ftb_base = int(_ftb_df['dq1a'].notna().sum())
+_ftb_base = int(_ftb_df[_dq1a].notna().sum())
 ftb_pct = ftb_count / _ftb_base * 100 if _ftb_base else 0.0
 
 # Card 4: Education
@@ -480,7 +483,7 @@ for _m in engine.month_order:
     _mdf = df[df['month_label'] == _m]
     _mn = len(_mdf)
     if _mn > 0:
-        _mftb = _mdf['dq1a'].isin([3.0, 4.0]).sum() / _mn * 100
+        _mftb = _mdf[engine.F.get('buyer_type', 'dq1a')].isin([3.0, 4.0]).sum() / _mn * 100
         _ftb_monthly.append((_m, float(_mftb)))
 
 seg_pct = base_n / total_n * 100

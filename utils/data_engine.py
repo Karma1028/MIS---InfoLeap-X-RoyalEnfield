@@ -111,6 +111,30 @@ def load_column_mapping():
         return {}
 
 
+def load_field_registry():
+    """Read column_mapping sheet → {semantic_key: internal_name}.
+    semantic_key is the stable human label (e.g. 'education', 'occupation').
+    internal_name is the column name that exists in df after raw→internal rename.
+    Python code uses semantic keys only — never hardcoded survey codes like 'dq3'.
+    Returns empty dict if sheet absent (callers fall back to internal names directly)."""
+    if not MASTER_CONFIG_PATH.exists():
+        return {}
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
+        if "semantic_key" not in df.columns:
+            return {}
+        result = {}
+        for _, row in df.iterrows():
+            sk  = str(row.get("semantic_key", "")).strip()
+            col = str(row.get("internal_name", "")).strip()
+            if sk and col and sk != "nan" and col != "nan":
+                result[sk] = col
+        return result
+    except Exception:
+        return {}
+
+
 def get_required_columns():
     """Returns set of internal_names where required=='YES'."""
     if not MASTER_CONFIG_PATH.exists():
@@ -213,6 +237,42 @@ def load_model_config():
 
 RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
 
+# Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
+# Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
+# in the Excel sheet auto-updates what the app reads — no code change needed.
+_FIELD_REGISTRY = load_field_registry()
+
+# Fallback registry for when display_groups sheet is absent (keeps app running)
+_FIELD_FALLBACK = {
+    "segment_gate":          "grida",
+    "re_model_acc":          "acc",
+    "joint_seg_model":       "seg",
+    "re_model_fallback":     "aq3_po",
+    "brand_model_purchased": "aq3",
+    "fieldwork_month":       "Month",
+    "fieldwork_year":        "Year",
+    "submission_date":       "SubmissionDate",
+    "buyer_type":            "dq1a",
+    "replaced_vehicle":      "dq2b",
+    "education":             "dq3",
+    "occupation":            "dq4",
+    "household_income":      "dq6",
+    "age_band":              "age_grp",
+    "age_raw":               "age_numeric",
+    "post_cancel_action":    "aq1b",
+    "competitor_cc":         "aq2a",
+    "re_model_considered":   "aq5b",
+    "brand_resilience":      "aq5c",
+    "additional_vehicles":   "dq2a_*",
+    "brands_considered":     "aq5a_*",
+    "test_ride":             "aq6_*",
+    "kbf_codes":             "kbf_codes",
+    "rejection_codes":       "rejecter_codes",
+    "cancellation_codes":    "cancelled_codes",
+}
+# Merge: Excel values override fallback
+_FIELD_REGISTRY = {**_FIELD_FALLBACK, **_FIELD_REGISTRY}
+
 # Display groups loaded from display_groups sheet in RE_MIS_Master.xlsx.
 # Edit that sheet to rename categories, merge codes, or drop codes — no code change needed.
 _DISPLAY_GROUPS = load_display_groups()
@@ -228,6 +288,10 @@ class DataEngine:
         self.df = None
         self.labels = {}
         self.value_maps = {}
+        # Field registry: semantic_key → actual column name in self.df
+        # Populated at load_data() after column rename is applied.
+        # Use self.col('education') anywhere you'd otherwise write 'dq3'.
+        self.F: dict = dict(_FIELD_REGISTRY)
         # Instance-level copies, not just the mutated module globals below —
         # Streamlit's file-watcher can re-import utils.data_engine on a code
         # change while @st.cache_resource keeps the OLD engine instance
@@ -237,6 +301,16 @@ class DataEngine:
         # that desync — see BUGS.md.
         self.month_order = []
         self.fy_quarter_order = []
+
+    def col(self, semantic_key: str) -> str:
+        """Return actual df column name for a semantic key.
+        Raises KeyError with helpful message if key not in registry."""
+        if semantic_key not in self.F:
+            raise KeyError(
+                f"Unknown semantic field '{semantic_key}'. "
+                f"Add it to column_mapping sheet (semantic_key column) in RE_MIS_Master.xlsx."
+            )
+        return self.F[semantic_key]
 
     # ------------------------------------------------------------------
     # Load + decode
@@ -432,23 +506,28 @@ class DataEngine:
         `rej`/`can` for Rejector/Cancelled as before.
         """
         df = self.df.copy()
-        acceptor_mask = df['aq3_po'].between(1, 14)
+        _aq3po = self.F.get('re_model_fallback', 'aq3_po')
+        _grida = self.F.get('segment_gate', 'grida')
+        _acc   = self.F.get('re_model_acc', 'acc')
+        _seg   = self.F.get('joint_seg_model', 'seg')
+        _aq3   = self.F.get('brand_model_purchased', 'aq3')
+        acceptor_mask = df[_aq3po].between(1, 14)
         df['segment'] = None
         df.loc[acceptor_mask, 'segment'] = 'Acceptor'
-        df.loc[(df['grida'] == 2) & ~acceptor_mask, 'segment'] = 'Rejector'
-        df.loc[(df['grida'] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
+        df.loc[(df[_grida] == 2) & ~acceptor_mask, 'segment'] = 'Rejector'
+        df.loc[(df[_grida] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
 
-        acc_or_aq3po = df['acc'].fillna(df['aq3_po'])
+        acc_or_aq3po = df[_acc].fillna(df[_aq3po])
         df['re_model_code'] = np.select(
             [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
-            [acc_or_aq3po, df['seg'] - 14, df['seg'] - 28],
+            [acc_or_aq3po, df[_seg] - 14, df[_seg] - 28],
             default=np.nan,
         )
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
         df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
 
-        df['owned_brand_code'] = acc_or_aq3po.where(df['segment'] == 'Acceptor', df['aq3'])
-        acc_map = self.value_maps.get('acc', {})
+        df['owned_brand_code'] = acc_or_aq3po.where(df['segment'] == 'Acceptor', df[_aq3])
+        acc_map = self.value_maps.get(_acc, {})
         df['owned_brand_name'] = df['owned_brand_code'].map(acc_map)
         df['owned_manufacturer'] = df['owned_brand_code'].apply(self._manufacturer_for_code)
         self.df = df.copy()
@@ -465,8 +544,10 @@ class DataEngine:
         # tags: grouping by them reproduces the live site's base counts for
         # every one of the 10 months exactly (366/678/413/468/238/375/396/
         # 324/361/391), so they're the source of truth, not SubmissionDate.
-        month_num = pd.to_numeric(self.df['Month'], errors='coerce')
-        year_num = pd.to_numeric(self.df['Year'], errors='coerce')
+        _month = self.F.get('fieldwork_month', 'Month')
+        _year  = self.F.get('fieldwork_year', 'Year')
+        month_num = pd.to_numeric(self.df[_month], errors='coerce')
+        year_num = pd.to_numeric(self.df[_year], errors='coerce')
         dt = pd.to_datetime(
             dict(year=year_num, month=month_num, day=1), errors='coerce'
         )
@@ -513,34 +594,28 @@ class DataEngine:
         """One segment's full (unfiltered) tab rows with segment/re_model_code/
         owned_brand_code/re_platform/owned_manufacturer set — see filter_df
         docstring for why each segment is scoped independently."""
+        _aq3po = self.F.get('re_model_fallback', 'aq3_po')
+        _grida = self.F.get('segment_gate', 'grida')
+        _acc   = self.F.get('re_model_acc', 'acc')
+        _seg   = self.F.get('joint_seg_model', 'seg')
+        _aq3   = self.F.get('brand_model_purchased', 'aq3')
         if segment == "Acceptor":
-            df = self.df[self.df['aq3_po'].between(1, 14)].copy()
+            df = self.df[self.df[_aq3po].between(1, 14)].copy()
             df['segment'] = 'Acceptor'
-            df['re_model_code'] = df['acc'].fillna(df['aq3_po'])
+            df['re_model_code'] = df[_acc].fillna(df[_aq3po])
             df['owned_brand_code'] = df['re_model_code']
         elif segment == "Rejector":
-            df = self.df[self.df['grida'] == 2].copy()
+            df = self.df[self.df[_grida] == 2].copy()
             df['segment'] = 'Rejector'
-            # `seg` is a joint segment+model code (1-14 Acceptor, 15-28
-            # Rejector, 29-42 Cancelled -- confirmed via MIS_datamap.xlsx
-            # "Added column label" sheet + raw value-range check: all
-            # grida==2 rows have seg in [15,28], no nulls). Verified
-            # 2026-07-29 against a fresh live-site scrape across all 14 RE
-            # models: seg-14 matches the live Rejector base EXACTLY for
-            # every model (0 diff), where the previously-used `rej` column
-            # was off by 0-3 respondents per model. `rej` itself is not
-            # wrong per se (same 1-14 codebook, no nulls) -- `seg` is just
-            # the field the live site's own pipeline actually keys off.
-            df['re_model_code'] = df['seg'] - 14
-            df['owned_brand_code'] = df['aq3']
+            # `seg` is joint segment+model code (15-28 = Rejector block).
+            df['re_model_code'] = df[_seg] - 14
+            df['owned_brand_code'] = df[_aq3]
         elif segment == "Cancelled":
-            df = self.df[self.df['grida'] == 3].copy()
+            df = self.df[self.df[_grida] == 3].copy()
             df['segment'] = 'Cancelled'
-            # Same `seg` scheme, Cancelled block = 29-42. Verified exact
-            # (0 diff, 14/14 models) against live scrape 2026-07-29,
-            # replacing the previously-used `can` column (was off by 0-2).
-            df['re_model_code'] = df['seg'] - 28
-            df['owned_brand_code'] = df['aq3']
+            # Same `seg` scheme, Cancelled block = 29-42.
+            df['re_model_code'] = df[_seg] - 28
+            df['owned_brand_code'] = df[_aq3]
         else:
             raise ValueError(segment)
         df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
@@ -741,10 +816,10 @@ class DataEngine:
         return pd.concat([base_row, normal, other], ignore_index=True)
 
     def age_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        return self.distribution_table(df, 'age_grp', base_label, numeric=numeric, extra_groups=extra_groups)
+        return self.distribution_table(df, self.F.get('age_band', 'age_grp'), base_label, numeric=numeric, extra_groups=extra_groups)
 
     def education_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        return self.distribution_table(df, 'dq3', base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
+        return self.distribution_table(df, self.F.get('education', 'dq3'), base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
 
     @staticmethod
     def sort_by_value(table_df):
@@ -760,11 +835,11 @@ class DataEngine:
         return pd.concat([base_row, rest], ignore_index=True)
 
     def occupation_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        tbl = self.distribution_table(df, 'dq4', base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
+        tbl = self.distribution_table(df, self.F.get('occupation', 'dq4'), base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
         return self.sort_by_value(tbl) if numeric else tbl
 
     def household_income_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        return self.distribution_table(df, 'dq6', base_label, numeric=numeric, extra_groups=extra_groups)
+        return self.distribution_table(df, self.F.get('household_income', 'dq6'), base_label, numeric=numeric, extra_groups=extra_groups)
 
     # ------------------------------------------------------------------
     # Type of Buyer — dq1a (prior 2W usage) x Additional/Replaced split.
@@ -782,13 +857,14 @@ class DataEngine:
     # consistent on the same source columns.
     # ------------------------------------------------------------------
     def type_of_buyer_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        base_n = df['dq1a'].notna().sum()
+        _dq1a = self.F.get('buyer_type', 'dq1a')
+        base_n = df[_dq1a].notna().sum()
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
         rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
         for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
-            rows[0][col] = df.loc[idx, 'dq1a'].notna().sum()
+            rows[0][col] = df.loc[idx, _dq1a].notna().sum()
 
         def pct_row(label, mask_fn):
             row = {"Unnamed: 0": label}
@@ -799,10 +875,10 @@ class DataEngine:
                 row[col] = val if numeric else f"{val:.0f}%"
             return row
 
-        rows.append(pct_row("This is my Additional 2W", lambda d: (d['dq1a'] == 1).sum()))
-        rows.append(pct_row("First Time Buyer of 2W (No one owns a 2W)", lambda d: (d['dq1a'] == 4).sum()))
-        rows.append(pct_row("First Time Buyer of 2W (Family owns a 2W and not a primary user)", lambda d: (d['dq1a'] == 3).sum()))
-        rows.append(pct_row("This is my Replaced 2W", lambda d: (d['dq1a'] == 2).sum()))
+        rows.append(pct_row("This is my Additional 2W", lambda d: (d[_dq1a] == 1).sum()))
+        rows.append(pct_row("First Time Buyer of 2W (No one owns a 2W)", lambda d: (d[_dq1a] == 4).sum()))
+        rows.append(pct_row("First Time Buyer of 2W (Family owns a 2W and not a primary user)", lambda d: (d[_dq1a] == 3).sum()))
+        rows.append(pct_row("This is my Replaced 2W", lambda d: (d[_dq1a] == 2).sum()))
         tbl = pd.DataFrame(rows)
         return self.sort_by_value(tbl) if numeric else tbl
 
@@ -1468,9 +1544,10 @@ class DataEngine:
         Only asked to Acceptors and Rejectors — Cancelled have 0 responses.
         Base = non-null aq5c count (not total segment n).
         """
-        if 'aq5c' not in df.columns:
+        _aq5c = self.F.get('brand_resilience', 'aq5c')
+        if _aq5c not in df.columns:
             return pd.DataFrame()
-        sub = df[df['aq5c'].notna()].copy()
+        sub = df[df[_aq5c].notna()].copy()
         base_n = len(sub)
         if base_n == 0:
             return pd.DataFrame()
@@ -1553,7 +1630,8 @@ class DataEngine:
         data_rows = []
         for code, name in RE_MODEL_LABELS.items():
             short = name.replace("Royal Enfield ", "")
-            cnt = (df['aq5b'] == float(code)).sum()
+            _aq5b = self.F.get('re_model_considered', 'aq5b')
+            cnt = (df[_aq5b] == float(code)).sum()
             if cnt > 0:
                 data_rows.append((cnt, code, short))
 
@@ -1622,7 +1700,7 @@ class DataEngine:
         Sorted by All% descending.
         """
         tbl = self.distribution_table(
-            df, 'aq2a', base_label,
+            df, self.F.get('competitor_cc', 'aq2a'), base_label,
             display_groups=self._AQ2A_DISPLAY,
             numeric=numeric,
             extra_groups=extra_groups,
@@ -1639,7 +1717,7 @@ class DataEngine:
         Strictly Cancelled-segment question (n=1,527). Base = aq1b non-null count.
         """
         tbl = self.distribution_table(
-            df, 'aq1b', base_label,
+            df, self.F.get('post_cancel_action', 'aq1b'), base_label,
             display_groups=self._AQ1B_DISPLAY,
             numeric=numeric,
             extra_groups=extra_groups,
