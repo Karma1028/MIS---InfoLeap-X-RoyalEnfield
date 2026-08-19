@@ -67,6 +67,35 @@ def _sync_from_drive(force: bool = False):
         print(f"[drive-sync] WARNING: Drive download failed, using existing local file. Error: {e}")
 
 
+def load_display_groups():
+    """Read display_groups sheet → {variable: {code_float: label_or_None}}.
+    label_or_None: str = display label (same label on multiple codes = merged);
+    None = drop that code from chart (blank cell in sheet).
+    Falls back to empty dict (raw datamap labels used as-is) if sheet absent."""
+    if not MASTER_CONFIG_PATH.exists():
+        return {}
+    try:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="display_groups")
+        # Skip note rows: variable must be a short word (no spaces, not the header note)
+        df = df[df["variable"].astype(str).str.match(r'^\w+$', na=False)]
+        result = {}
+        for _, row in df.iterrows():
+            var  = str(row["variable"]).strip()
+            try:
+                code = float(row["code"])
+            except (ValueError, TypeError):
+                continue
+            raw_lbl = row.get("display_label", "")
+            lbl = str(raw_lbl).strip() if pd.notna(raw_lbl) else ""
+            # Blank or explicit drop marker → None (drop from chart)
+            if not lbl or lbl.startswith("(dropped"):
+                lbl = None
+            result.setdefault(var, {})[code] = lbl
+        return result
+    except Exception:
+        return {}
+
+
 def load_column_mapping():
     """Reads column_mapping sheet from RE_MIS_Master.xlsx.
     Returns {raw_column: internal_name}. Falls back to empty dict
@@ -184,41 +213,12 @@ def load_model_config():
 
 RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
 
-# Display-bucket groupings matching the live dashboard's collapsed categories
-# (docs/DATA_FIELD_MAPPING.md Addendum 3 — raw per-code %s are correct, but the
-# live site shows fewer, merged rows). None = drop from the chart (negligible).
-EDUCATION_DISPLAY_GROUPS = {
-    1.0: None, 2.0: None,  # Illiterate / School<=4 (negligible, dropped)
-    3.0: "School up to 9 years",
-    4.0: "SSC / HSC",
-    5.0: "College but non-grad (Diploma)",
-    6.0: "General Graduate/PG",
-    7.0: "Professional Graduate/PG",
-}
-OCCUPATION_DISPLAY_GROUPS = {
-    # FIXED (2026-08-06): live shows dq4 categories nearly 1:1 per-code, not
-    # bucketed into one broad "Other" -- confirmed via a live per-model scrape
-    # (Bullet 350 "All" shows Full time worker/Businessman/Student/
-    # Agriculture/Self-employed/Other as 6 separate rows; Rejector segment
-    # shows a standalone "Art, music, sport etc." row; Booked-but-Cancelled
-    # shows a standalone "Housewife" row). Live only merges codes 1+2 into
-    # "Full time worker" and 5+6+7 into "Businessman"; everything else gets
-    # its own row, appearing/disappearing per segment depending on whether
-    # that code has any respondents there. Previous version folded
-    # 3/4/9/10/13/14/15 into one "Other" bucket, which inflated that bucket
-    # vs live and lost the Housewife/Retired/Part-time/Art-music-sport rows
-    # entirely.
-    1.0: "Full time worker", 2.0: "Full time worker",
-    3.0: "Part time worker", 4.0: "Part time worker",
-    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman",
-    8.0: "Self-employed",
-    9.0: "Art, music, sport etc.", 10.0: "Art, music, sport etc.",
-    11.0: "Agriculture",
-    12.0: "Student",
-    13.0: "Housewife",
-    14.0: "Retired",
-    15.0: "Other",
-}
+# Display groups loaded from display_groups sheet in RE_MIS_Master.xlsx.
+# Edit that sheet to rename categories, merge codes, or drop codes — no code change needed.
+_DISPLAY_GROUPS = load_display_groups()
+EDUCATION_DISPLAY_GROUPS  = _DISPLAY_GROUPS.get("dq3",     {}) or None
+OCCUPATION_DISPLAY_GROUPS = _DISPLAY_GROUPS.get("dq4",     {}) or None
+_AGE_GRP_DISPLAY          = _DISPLAY_GROUPS.get("age_grp", {}) or None
 
 
 class DataEngine:
@@ -278,7 +278,8 @@ class DataEngine:
         # not documented in the datamap) — bucket order confirmed against
         # scraped % in docs/DATA_FIELD_MAPPING.md (26%/53%/18%/3%).
         if not self.value_maps.get('age_grp'):
-            self.value_maps['age_grp'] = {
+            # Fall back to display_groups sheet; if also absent use inline defaults
+            self.value_maps['age_grp'] = _AGE_GRP_DISPLAY or {
                 1.0: "18 to 25 Years", 2.0: "26 to 35 Years",
                 3.0: "36 to 45 Years", 4.0: "46 or more",
             }
@@ -1610,12 +1611,10 @@ class DataEngine:
 
         return pd.DataFrame(rows)
 
-    # AQ2A display labels — competitor CC segment (confirmed G10-B: 2=150-249cc, 3=250-350cc, 4=351cc+)
-    _AQ2A_DISPLAY = {
-        2.0: "150–249 CC",
-        3.0: "250–350 CC",
-        4.0: "351 CC and above",
-    }
+    # AQ2A display labels — loaded from display_groups sheet (variable=aq2a)
+    @property
+    def _AQ2A_DISPLAY(self):
+        return _DISPLAY_GROUPS.get("aq2a") or {2.0: "150-249 CC", 3.0: "250-350 CC", 4.0: "351 CC and above"}
 
     def competitor_cc_table(self, df, base_label="All", numeric=False, extra_groups=None):
         """AQ2A: CC range of competitor bike considered / purchased.
@@ -1630,13 +1629,10 @@ class DataEngine:
         )
         return self.sort_by_value(tbl) if numeric else tbl
 
-    # AQ1B display labels — confirmed from MIS Questionnaire (G9-B audit)
-    _AQ1B_DISPLAY = {
-        1.0: "Bought another 2W",
-        2.0: "Bought a car",
-        3.0: "Still searching",
-        4.0: "Dropped the idea",
-    }
+    # AQ1B display labels — loaded from display_groups sheet (variable=aq1b)
+    @property
+    def _AQ1B_DISPLAY(self):
+        return _DISPLAY_GROUPS.get("aq1b") or {1.0: "Bought another 2W", 2.0: "Bought a car", 3.0: "Still searching", 4.0: "Dropped the idea"}
 
     def post_cancellation_table(self, df, base_label="All", numeric=False, extra_groups=None):
         """AQ1B: What did Booked-but-Cancelled respondents do after cancelling?
