@@ -27,44 +27,38 @@ MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
 # Set DRIVE_FILE_ID env var to the file ID from the shareable Drive link.
 # Format: https://drive.google.com/file/d/<FILE_ID>/view
 # The file is downloaded fresh to MASTERFILE_PATH on every engine load.
+_DRIVE_FOLDER_ID = "1SoD7nzHP8Lfnr8An2NT-SXO-IzJsKkJQ"
+
 def _sync_from_drive(force: bool = False):
-    """Download RE_MIS_Master.xlsx from Google Drive.
-    Runs when DRIVE_FILE_ID env var is set, or raises if file missing with no ID.
-    Reads env var at call time so Streamlit secrets loaded after import still work.
+    """Download all files from shared Drive folder into data/.
+    Downloads RE_MIS_Master.xlsx (and users.xlsx if present) on every load_data() call.
+    Folder ID is hardcoded — same shared folder used for all data files.
+    Falls back to local files if download fails and they already exist.
     """
-    try:
-        from config import DRIVE_FILE_ID as _cfg_id
-    except ImportError:
-        _cfg_id = ""
-    # Re-read .env at call time so changes take effect without process restart.
-    # .env file explicitly overrides both os.environ (stale from startup) and config.py.
-    _env_path = Path(__file__).parent.parent / ".env"
-    if _env_path.exists():
-        for _line in _env_path.read_text().splitlines():
-            _line = _line.strip()
-            if _line.startswith("DRIVE_FILE_ID="):
-                _env_val = _line.split("=", 1)[1].strip()
-                os.environ["DRIVE_FILE_ID"] = _env_val  # update live env
-                _cfg_id = _env_val
-                break
-    drive_file_id = os.environ.get("DRIVE_FILE_ID", _cfg_id)
     file_missing = not Path(MASTERFILE_PATH).exists()
-    if not drive_file_id:
-        if file_missing:
-            raise RuntimeError(
-                "RE_MIS_Master.xlsx not found and DRIVE_FILE_ID env var is not set. "
-                "Set DRIVE_FILE_ID in Streamlit Cloud secrets (Settings → Secrets) "
-                "or place the file in data/RE_MIS_Master.xlsx."
-            )
-        return
     try:
-        import gdown
-        url = f"https://drive.google.com/uc?id={drive_file_id}&export=download"
-        gdown.download(url, MASTERFILE_PATH, quiet=False)
+        import gdown, shutil, tempfile
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            gdown.download_folder(
+                id=_DRIVE_FOLDER_ID,
+                output=tmp,
+                quiet=False,
+                use_cookies=False,
+            )
+            import os
+            for fname in os.listdir(tmp):
+                src = os.path.join(tmp, fname)
+                dst = str(DATA_DIR / fname)
+                shutil.copy2(src, dst)
+                print(f"[drive-sync] Downloaded: {fname}")
     except Exception as e:
         if file_missing:
-            raise RuntimeError(f"[drive-sync] Drive download failed and no local file exists: {e}") from e
-        print(f"[drive-sync] WARNING: Drive download failed, using existing local file. Error: {e}")
+            raise RuntimeError(
+                f"RE_MIS_Master.xlsx not found and Drive folder download failed: {e}\n"
+                "Folder ID: " + _DRIVE_FOLDER_ID
+            ) from e
+        print(f"[drive-sync] WARNING: Drive download failed, using existing local files. Error: {e}")
 
 
 def load_display_groups():

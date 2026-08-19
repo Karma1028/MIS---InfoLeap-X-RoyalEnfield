@@ -55,21 +55,30 @@ def _verify_password(pwd: str, stored: str) -> bool:
         return False
 
 
+_DRIVE_FOLDER_ID = "1SoD7nzHP8Lfnr8An2NT-SXO-IzJsKkJQ"
+
 def _sync_users_from_drive():
-    """Download users.xlsx from Google Drive if USERS_FILE_ID secret is set."""
+    """Download users.xlsx from shared Drive folder."""
+    if Path(USERS_PATH).exists():
+        return  # already present (either local or already downloaded this session)
     try:
-        drive_id = st.secrets.get("USERS_FILE_ID", "")
-    except Exception:
-        drive_id = ""
-    if not drive_id:
-        return
-    try:
-        import gdown
+        import gdown, os, shutil, tempfile
         Path(USERS_PATH).parent.mkdir(parents=True, exist_ok=True)
-        url = f"https://drive.google.com/uc?id={drive_id}&export=download"
-        gdown.download(url, USERS_PATH, quiet=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            gdown.download_folder(
+                id=_DRIVE_FOLDER_ID,
+                output=tmp,
+                quiet=True,
+                use_cookies=False,
+            )
+            src = os.path.join(tmp, "users.xlsx")
+            if os.path.exists(src):
+                shutil.copy2(src, USERS_PATH)
+                print("[users-sync] users.xlsx downloaded from Drive folder.")
+            else:
+                print("[users-sync] WARNING: users.xlsx not found in Drive folder.")
     except Exception as e:
-        print(f"[users-sync] WARNING: Drive download failed: {e}")
+        print(f"[users-sync] WARNING: Drive folder download failed: {e}")
 
 
 def _ensure_users_file():
