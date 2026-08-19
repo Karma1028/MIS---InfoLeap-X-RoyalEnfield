@@ -17,12 +17,9 @@ import streamlit.components.v1 as _components
 from auth import render_login, render_landing
 from styles.theme import render_theme_css, SEGMENT_COLORS
 from utils.data_engine import DataEngine, RE_MODEL_PLATFORM, RE_MODEL_LABELS, month_label_to_fy_quarter
-from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers, render_collapsible_reasons_table, render_collapsible_brand_table
+from utils.visuals import render_chart_with_table, month_trend_chart, segment_trend_chart, render_sig_legend, segment_comparison_bar, PLOTLY_CONFIG, filter_sig_markers, render_collapsible_reasons_table, render_collapsible_brand_table, open_end_tree_to_excel
 from utils.stat_engine import compare_to_baseline_by_column, calculate_significance, gaps_by_column
 from utils.compare import render_comparison_page
-from utils.dealership import render_dealership_page
-from utils.product_features import render_product_features_page
-from utils.ai_summary import render_ai_summary_button  # kept for potential future reuse
 from utils.settings_page import render_settings_page
 from utils.overview_intro import render_overview_intro
 from utils.branding import re_logo_img_html, sidebar_brand_html
@@ -142,48 +139,6 @@ if nav_choice in EXTRA_PAGES:
         from utils.platform_compare import render_platform_compare_page
         render_platform_compare_page(engine)
         st.stop()
-    elif "Dealership Intelligence" in nav_choice:
-        # Inline sidebar filters — these variables don't exist yet (defined after st.stop())
-        st.sidebar.markdown("### Report Filters")
-        _dl_plat_map = {"All": "All", "350CC": "J Platform (350CC)", "450CC": "K Platform (450CC)", "650CC": "P Platform (650CC)"}
-        _dl_platform = st.sidebar.selectbox("Platform (CC)", list(_dl_plat_map.keys()),
-                                            format_func=lambda p: _dl_plat_map[p], key="dl_platform")
-        _dl_time = st.sidebar.radio("Time", ["All Months", "Month Range"], label_visibility="collapsed", key="dl_time")
-        _dl_mo = engine.month_order
-        _dl_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in _dl_mo]
-        if _dl_time == "Month Range":
-            _dl_lo, _dl_hi = st.sidebar.select_slider("Month range", options=_dl_short,
-                                                       value=(_dl_short[0], _dl_short[-1]), key="dl_month_range")
-            _dl_months = _dl_mo[_dl_short.index(_dl_lo):_dl_short.index(_dl_hi) + 1]
-        else:
-            _dl_months = _dl_mo
-        _dl_seg_dfs = {}
-        for _dl_lbl, _dl_seg in [("Acceptors", "Acceptor"), ("Rejectors", "Rejector"), ("Cancelled", "Cancelled")]:
-            _dl_df = engine.filter_df(segment=_dl_seg,
-                                      platform=_dl_platform if _dl_platform != "All" else None)
-            _dl_df = _dl_df[_dl_df['month_label'].isin(set(_dl_months))]
-            _dl_seg_dfs[_dl_lbl] = _dl_df
-        render_dealership_page(engine, _dl_seg_dfs, list(_dl_months))
-    elif "Product Feature Ratings" in nav_choice:
-        st.sidebar.markdown("### Report Filters")
-        _pf_time = st.sidebar.radio("Time", ["All Months", "Month Range"],
-                                    label_visibility="collapsed", key="pf_time")
-        _pf_mo = engine.month_order
-        _pf_short = [m.split("'")[0][:3] + "'" + m.split("'")[1][2:] for m in _pf_mo]
-        if _pf_time == "Month Range":
-            _pf_lo, _pf_hi = st.sidebar.select_slider(
-                "Month range", options=_pf_short,
-                value=(_pf_short[0], _pf_short[-1]), key="pf_month_range"
-            )
-            _pf_months = _pf_mo[_pf_short.index(_pf_lo):_pf_short.index(_pf_hi) + 1]
-        else:
-            _pf_months = _pf_mo
-        _pf_seg_dfs = {}
-        for _pf_lbl, _pf_seg in [("Acceptors", "Acceptor"), ("Rejectors", "Rejector"), ("Cancelled", "Cancelled")]:
-            _pf_df = engine.filter_df(segment=_pf_seg)
-            _pf_df = _pf_df[_pf_df['month_label'].isin(set(_pf_months))]
-            _pf_seg_dfs[_pf_lbl] = _pf_df
-        render_product_features_page(engine, _pf_seg_dfs, list(_pf_months))
     elif "Settings" in nav_choice:
         render_settings_page()
     if st.sidebar.button("Log out", type="secondary", key="logout_extra"):
@@ -241,6 +196,9 @@ if _reload_col.button("⟳ Reload Data", key="reload_data", help="Re-download & 
     load_engine.clear()
     st.cache_data.clear()
     st.session_state.pop("_engine_mtime", None)
+    # Also clear section-level table cache stored in session_state
+    for _k in [k for k in st.session_state if k.startswith("_tbl_")]:
+        del st.session_state[_k]
     st.rerun()
 
 # Live site names these "J Platform (350CC)" / "K Platform (450CC)" /
@@ -450,35 +408,69 @@ total_n = len(engine.df)
 _last_selected_month = selected_months[-1] if selected_months else engine.month_order[-1]
 
 # Calculate metrics for last selected month
-# Card 1: Average Age (midpoint mean of age_grp brackets)
+# Filter to current month; fall back to most recent month with data if empty
+_df_cur = df[df['month_label'] == _last_selected_month]
+_display_month = _last_selected_month
+if len(_df_cur) == 0:
+    for _fb_m in reversed(engine.month_order):
+        _df_cur = df[df['month_label'] == _fb_m]
+        if len(_df_cur) > 0:
+            _display_month = _fb_m
+            break
+    if len(_df_cur) == 0:
+        _df_cur = df
+        _display_month = _last_selected_month
+_base_cur = base_n if time_mode == "All Months" else (len(_df_cur) if len(_df_cur) > 0 else base_n)
+
+# Card 1: Average Age — use raw numeric age (dq7 → age_numeric) when available,
+# fall back to age_grp midpoints so the KPI never breaks on older data cuts.
 _AGE_MIDPOINTS = {1.0: 21.5, 2.0: 30.5, 3.0: 40.5, 4.0: 50.0}
-avg_age = df['age_grp'].map(_AGE_MIDPOINTS).mean()
+_HAS_AGE_NUMERIC = 'age_numeric' in df.columns
+def _mean_age(d):
+    if _HAS_AGE_NUMERIC:
+        import pandas as _pd
+        return _pd.to_numeric(d['age_numeric'], errors='coerce').mean()
+    return d['age_grp'].map(_AGE_MIDPOINTS).mean()
+_age_src_df = df if time_mode == "All Months" else (_df_cur if len(_df_cur) > 0 else df)
+avg_age = _mean_age(_age_src_df)
 avg_age = float(avg_age) if not (avg_age != avg_age) else 0.0  # NaN guard
+# age base = respondents with valid age answer (may be 1 less than total if one null)
+import pandas as _pd_age
+if _HAS_AGE_NUMERIC:
+    _age_base_n = int(_pd_age.to_numeric(_age_src_df['age_numeric'], errors='coerce').notna().sum())
+else:
+    _age_base_n = int(_age_src_df['age_grp'].notna().sum())
 
-# Card 2: Household Income (top bracket by selected month)
+# When All Months selected, KPI values use the full period ('All' column),
+# not just the latest month — so the headline number matches the aggregate view.
+_kpi_col = 'All' if time_mode == "All Months" else _display_month
+
+# Card 2: Household Income
 income_table_full = engine.household_income_table(df, base_label=segment_value, numeric=True)
-top_income_row, income_is_sig, _inc_z = _sig_best_row(income_table_full, _last_selected_month)
-top_income_val = float(top_income_row[_last_selected_month if _last_selected_month in income_table_full.columns else 'All'])
+top_income_row, income_is_sig, _inc_z = _sig_best_row(income_table_full, _kpi_col)
+top_income_val = float(top_income_row[_kpi_col if _kpi_col in income_table_full.columns else 'All'])
 
-# Card 3: First-Time Buyer count and %
-_ftb_mask = df['dq1a'].isin([3.0, 4.0])
+# Card 3: First-Time Buyer count and % — full filtered df (already month-scoped by df)
+_ftb_df = df if time_mode == "All Months" else _df_cur
+_ftb_mask = _ftb_df['dq1a'].isin([3.0, 4.0])
 ftb_count = int(_ftb_mask.sum())
-ftb_pct = ftb_count / base_n * 100 if base_n else 0.0
+_ftb_base = int(_ftb_df['dq1a'].notna().sum())
+ftb_pct = ftb_count / _ftb_base * 100 if _ftb_base else 0.0
 
-# Card 4: Education — modal bracket by selected month
+# Card 4: Education
 edu_table_full = engine.education_table(df, base_label=segment_value, numeric=True)
-top_edu_row, edu_is_sig, _edu_z = _sig_best_row(edu_table_full, _last_selected_month)
-top_edu_val = float(top_edu_row[_last_selected_month if _last_selected_month in edu_table_full.columns else 'All'])
+top_edu_row, edu_is_sig, _edu_z = _sig_best_row(edu_table_full, _kpi_col)
+top_edu_val = float(top_edu_row[_kpi_col if _kpi_col in edu_table_full.columns else 'All'])
 
 # Keep age_table_full for section rendering below
 age_table_full = engine.age_table(df, base_label=segment_value, numeric=True)
 
-# Per-month series for avg age sparkline
+# Per-month series for avg age sparkline — uses age_numeric (dq7) when present
 _avg_age_monthly = []
 for _m in engine.month_order:
     _mdf = df[df['month_label'] == _m]
     if len(_mdf) > 0:
-        _ma = _mdf['age_grp'].map(_AGE_MIDPOINTS).mean()
+        _ma = _mean_age(_mdf)
         if _ma == _ma:  # not NaN
             _avg_age_monthly.append((_m, float(_ma)))
 
@@ -589,38 +581,82 @@ else:
     )
 
     def _sparkline_svg(month_vals, current_month, color, unit="%"):
-        """Inline SVG sparkline: line + dots, highlight current month + sig-high months."""
+        """Inline SVG sparkline: trend line + avg reference + labeled peak/trough/current."""
         if not month_vals or len(month_vals) < 2:
             return ""
-        months = [m for m, v in month_vals]
         vals = [v for m, v in month_vals]
         mn, mx = min(vals), max(vals)
         rng = mx - mn if mx != mn else 1
         avg = sum(vals) / len(vals)
-        W, H, PAD = 200, 44, 6
-        def xp(i): return PAD + i * (W - 2 * PAD) / max(len(vals) - 1, 1)
-        def yp(v): return H - PAD - (v - mn) / rng * (H - 2 * PAD)
+        # Chart area: full width used for line, labels stay inside
+        W, H = 460, 200
+        PAD_L, PAD_R, PAD_T, PAD_B = 12, 12, 44, 44
+        chart_w = W - PAD_L - PAD_R
+        chart_h = H - PAD_T - PAD_B
+        def xp(i): return PAD_L + i * chart_w / max(len(vals) - 1, 1)
+        def yp(v): return PAD_T + (mx - v) / rng * chart_h
         _fmt = lambda v: f"{v:.1f}{unit}" if unit != "%" else f"{v:.0f}%"
+
         pts = " ".join(f"{xp(i):.1f},{yp(v):.1f}" for i, v in enumerate(vals))
+        avg_y = yp(avg)
+
+        max_i = vals.index(mx)
+        min_i = vals.index(mn)
+
+        # Avg dashed line
+        avg_line = (
+            f"<line x1='{PAD_L}' y1='{avg_y:.1f}' x2='{W - PAD_R}' y2='{avg_y:.1f}' "
+            f"stroke='#94A3B8' stroke-width='1.5' stroke-dasharray='6,3' opacity='0.7'/>"
+            f"<text x='{PAD_L + 5}' y='{avg_y + 16:.1f}' text-anchor='start' "
+            f"font-size='16' fill='#94A3B8' font-weight='700'>avg {_fmt(avg)}</text>"
+        )
+
+        def _safe_label_y(cy, prefer_above, margin=18):
+            candidate = cy - margin if prefer_above else cy + margin
+            if abs(candidate - avg_y) < 12:
+                candidate = cy + margin if prefer_above else cy - margin
+            return candidate
+
         circles = ""
         for i, (m, v) in enumerate(month_vals):
             cx, cy = xp(i), yp(v)
             is_current = (m == current_month)
-            is_high = (v >= avg + 2) and not is_current
+            is_max = (i == max_i) and not is_current
+            is_min = (i == min_i) and not is_current
             if is_current:
-                circles += (f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='5' fill='{color}' stroke='#fff' stroke-width='1.5'/>"
-                            f"<text x='{cx:.1f}' y='{cy - 8:.1f}' text-anchor='middle' "
-                            f"font-size='8' font-weight='700' fill='{color}'>{_fmt(v)}</text>")
-            elif is_high:
-                circles += f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='3' fill='#1B8A3F' opacity='0.85'/>"
-            else:
-                circles += f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='2' fill='{color}' opacity='0.35'/>"
-        return (f"<svg viewBox='0 0 {W} {H}' width='100%' height='{H}' style='overflow:visible;margin-top:6px;display:block;'>"
-                f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='1.5' opacity='0.55' stroke-linejoin='round'/>"
-                f"{circles}</svg>")
+                ly = _safe_label_y(cy, prefer_above=True)
+                circles += (
+                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='10' fill='{color}' stroke='#fff' stroke-width='3'/>"
+                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                    f"font-size='18' font-weight='900' fill='{color}'>{_fmt(v)}</text>"
+                )
+            elif is_max:
+                ly = _safe_label_y(cy, prefer_above=True)
+                circles += (
+                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='7' fill='#1B8A3F' stroke='#fff' stroke-width='2'/>"
+                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                    f"font-size='16' fill='#1B8A3F' font-weight='800'>{_fmt(v)}</text>"
+                )
+            elif is_min:
+                ly = _safe_label_y(cy, prefer_above=False)
+                circles += (
+                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='6' fill='#9CA3AF' stroke='#fff' stroke-width='2'/>"
+                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                    f"font-size='15' fill='#6B7280' font-weight='700'>{_fmt(v)}</text>"
+                )
 
-    def _ai_headline(label, value_label, month_vals, current_month, delta, is_sig_high=False):
-        """Flowing narrative insight with bold highlighted values — tells a story, not bullet points."""
+        return (
+            f"<svg viewBox='0 0 {W} {H}' width='100%' height='auto' "
+            f"style='overflow:visible;margin-top:8px;display:block;min-height:120px;'>"
+            f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='3' opacity='0.7' stroke-linejoin='round'/>"
+            f"{avg_line}{circles}</svg>"
+        )
+
+    def _ai_headline(label, value_label, month_vals, current_month, delta, unit="%", n_cur=None, current_override=None):
+        """Short executive insight: current vs avg, trend direction, macro context.
+        unit-aware — never shows 'yrs' values as '%' or vice-versa.
+        current_override: use this as 'cur' instead of looking up from month_vals
+        (needed when All Months view shows full-period mean, not latest-month mean)."""
         if not month_vals or len(month_vals) < 2:
             return ""
         vals_dict = dict(month_vals)
@@ -628,50 +664,86 @@ else:
         avg = sum(vals) / len(vals)
         peak_m = max(month_vals, key=lambda x: x[1])
         trough_m = min(month_vals, key=lambda x: x[1])
-        cur = vals_dict.get(current_month)
+        cur = current_override if current_override is not None else vals_dict.get(current_month)
         if cur is None:
             return ""
+
+        is_pct = unit == "%"
+        # threshold for "no meaningful deviation": 1pp for %, 0.5 yrs for yrs
+        _no_change_thresh = 1.0 if is_pct else 0.5
+        # momentum threshold: 2pp for %, 1 yr for numeric
+        _momentum_thresh = 2.0 if is_pct else 1.0
+
+        def _fmt_val(v):
+            if is_pct:
+                return f"{v:.1f}%"
+            return f"{v:.1f}{unit}"
+
+        def _fmt_delta(d):
+            sign = "+" if d >= 0 else ""
+            if is_pct:
+                return f"{sign}{d:.1f}pp"
+            return f"{sign}{d:.1f}{unit}"
+
         trend_window = vals[-3:] if len(vals) >= 3 else vals
-        if trend_window[-1] > trend_window[0] + 2:
-            trend_word, trend_icon = "rising", "↑"
-        elif trend_window[-1] < trend_window[0] - 2:
-            trend_word, trend_icon = "falling", "↓"
-        else:
-            trend_word, trend_icon = "stable", "→"
-        months_above = sum(1 for v in vals if v > avg)
+        rising  = trend_window[-1] > trend_window[0] + _momentum_thresh
+        falling = trend_window[-1] < trend_window[0] - _momentum_thresh
         gap_vs_avg = cur - avg
         b = lambda t: f"<b style='color:#1E293B;'>{t}</b>"
+        mn_val = min(vals)
+        mx_val = max(vals)
+        spread = mx_val - mn_val
 
-        # Opening clause: significance or position context
-        vl_short = value_label[:28] + "…" if len(value_label) > 30 else value_label
-        if is_sig_high:
-            direction_word = "surging" if gap_vs_avg > 8 else "elevated"
-            opening = f"{b(vl_short)} is {b(direction_word)} this month at {b(f'{cur:.0f}%')} — {b(f'+{gap_vs_avg:.0f}pp')} above the {avg:.0f}% average"
-        elif peak_m[0] == current_month:
-            opening = f"{b(vl_short)} just hit a {b('new high')} at {b(f'{cur:.0f}%')} — the strongest reading across all {len(vals)} months tracked"
+        # Count context for numeric KPIs (age etc)
+        _n_note = ""
+        if n_cur and not is_pct:
+            _n_note = f" ({n_cur:,} respondents)"
+
+        # "this month" only when viewing a specific month — All Months shows period average
+        _time_label = "period average" if current_override is not None else "this month"
+
+        # Line 1: current vs period average
+        if current_override is not None:
+            # All Months view — cur IS the period average, just show range context
+            if abs(gap_vs_avg) < _no_change_thresh:
+                line1 = (f"Period average {b(_fmt_val(cur))}{_n_note} — "
+                         f"consistent with the {_fmt_val(avg)} monthly mean. No notable shift across months.")
+            elif gap_vs_avg > 0:
+                line1 = (f"Period average {b(_fmt_val(cur))}{_n_note} — "
+                         f"{b(_fmt_delta(gap_vs_avg))} above the monthly mean of {_fmt_val(avg)}, skewing higher overall.")
+            else:
+                line1 = (f"Period average {b(_fmt_val(cur))}{_n_note} — "
+                         f"{b(_fmt_delta(gap_vs_avg))} below the monthly mean of {_fmt_val(avg)}, skewing lower overall.")
         else:
-            gap_from_peak = peak_m[1] - cur
-            opening = f"{b(vl_short)} peaked at {b(f'{peak_m[1]:.0f}%')} in {peak_m[0]}, now at {b(f'{cur:.0f}%')} ({gap_from_peak:.0f}pp off the high)"
+            if abs(gap_vs_avg) < _no_change_thresh:
+                line1 = (f"{b(_fmt_val(cur))} {_time_label}{_n_note}, matching the "
+                         f"{_fmt_val(avg)} period average — no meaningful shift.")
+            elif gap_vs_avg > 0:
+                line1 = (f"{b(_fmt_val(cur))} {_time_label}{_n_note}, "
+                         f"{b(_fmt_delta(gap_vs_avg))} above the {_fmt_val(avg)} average — skewing higher.")
+            else:
+                line1 = (f"{b(_fmt_val(cur))} {_time_label}{_n_note}, "
+                         f"{b(_fmt_delta(gap_vs_avg))} below the {_fmt_val(avg)} average — skewing lower.")
 
-        # Middle: consistency story
-        if months_above >= len(vals) * 0.7:
-            consistency = f"Dominant across {b(f'{months_above}/{len(vals)}')} months — a consistently strong segment"
-        elif months_above >= len(vals) * 0.4:
-            consistency = f"Holds above average in {b(f'{months_above}/{len(vals)}')} months — moderate consistency"
+        # Line 2: macro trend + peak/trough
+        _peak_str  = f"peak {b(_fmt_val(peak_m[1]))} in {peak_m[0]}"
+        _trough_str = f"trough {b(_fmt_val(trough_m[1]))} in {trough_m[0]}"
+        _range_str  = f"{spread:.1f}{'pp' if is_pct else unit} range"
+        if peak_m[0] == current_month:
+            momentum = "momentum still building." if rising else "recent trend has flattened."
+            line2 = f"Highest on record across all tracked months ({_range_str}), {momentum}"
+        elif rising:
+            line2 = (f"Up {b(_fmt_delta(trend_window[-1]-trend_window[0]))} over last 3 months — "
+                     f"{b('accelerating')}. {_peak_str}, {_trough_str}.")
+        elif falling:
+            line2 = (f"Down {b(_fmt_delta(trend_window[-1]-trend_window[0]))} over last 3 months — "
+                     f"{b('declining')}. {_peak_str}, {_trough_str}.")
         else:
-            consistency = f"Above average in only {b(f'{months_above}/{len(vals)}')} months — volatile performance"
+            line2 = f"Stable over last 3 months ({_range_str} all-time). {_peak_str.capitalize()}, {_trough_str}."
 
-        # Closing: segment delta + trend
-        if delta is not None and abs(delta) >= 2:
-            direction = "ahead of" if delta > 0 else "behind"
-            seg_note = f"{b(f'{abs(delta):.0f}pp')} {direction} the segment overall"
-            closing = f"{seg_note}, with a {b(trend_word)} {trend_icon} trend"
-        else:
-            closing = f"Trend is {b(trend_word)} {trend_icon} — watch this month's reading closely"
-
-        narrative = f"{opening}. {consistency}. {closing}."
-        return (f"<div style='font-size:0.68rem;color:#4A5568;margin-top:6px;line-height:1.5;"
-                f"border-top:1px solid #F0EDE8;padding-top:5px;'>{narrative}</div>")
+        narrative = f"{line1} {line2}"
+        return (f"<div style='font-size:0.75rem;color:#4A5568;margin-top:7px;line-height:1.7;"
+                f"border-top:1px solid #F0EDE8;padding-top:6px;'>{narrative}</div>")
 
     def _build_month_series(full_table, row_label_val):
         """Extract per-month % series for a given category row."""
@@ -688,35 +760,20 @@ else:
                 pass
         return result
 
-    def _stat_card(label, value_label, pct, delta_key, n_approx, full_table=None, row_label_val=None, is_sig_high=False, unit="%", month_vals_override=None):
+    def _stat_card(label, value_label, pct, delta_key, n_approx, full_table=None, row_label_val=None, is_sig_high=False, unit="%", month_vals_override=None, pill_label="TOP VALUE", current_override=None):
         if month_vals_override is not None:
             month_vals = month_vals_override
         else:
             month_vals = _build_month_series(full_table, row_label_val) if full_table is not None and row_label_val is not None else []
         delta = _chip_deltas.get(delta_key)
-        spark = _sparkline_svg(month_vals, _last_selected_month, accent, unit=unit)
-        headline = _ai_headline(label, value_label, month_vals, _last_selected_month, delta, is_sig_high=is_sig_high)
+        spark = _sparkline_svg(month_vals, _display_month, accent, unit=unit)
+        headline = _ai_headline(label, value_label, month_vals, _display_month, delta, unit=unit, n_cur=n_approx, current_override=current_override)
 
-        # Left-border accent: green if sig-high selected, red if sig-low delta, else segment accent
-        if is_sig_high:
-            left_color = "#1B8A3F"
-            border_css = f"border-left:4px solid {left_color};"
-        elif delta is not None and delta <= -2:
-            left_color = "#C8102E"
-            border_css = f"border-left:4px solid {left_color};"
+        # Left-border: red if segment notably below overall, else segment accent
+        if delta is not None and delta <= -2:
+            border_css = f"border-left:4px solid #C8102E;"
         else:
-            left_color = accent
             border_css = f"border-left:4px solid {accent}40;"
-
-        # Selection context pill
-        if is_sig_high:
-            sel_pill = (f"<span style='font-size:0.6rem;font-weight:700;color:#1B8A3F;"
-                        f"background:#1B8A3F18;border:1px solid #1B8A3F40;border-radius:4px;"
-                        f"padding:1px 5px;'>SIG HIGH ↑ this month</span>")
-        else:
-            sel_pill = (f"<span style='font-size:0.6rem;font-weight:600;color:#94A3B8;"
-                        f"background:#F8FAFC;border:1px solid #E2E8F0;border-radius:4px;"
-                        f"padding:1px 5px;'>TOP VALUE</span>")
 
         # Segment-vs-overall delta badge
         sig_note = ""
@@ -731,9 +788,8 @@ else:
             f"<div style='flex:1;min-width:185px;background:#fff;border:1px solid #E2E8F0;"
             f"{border_css}border-radius:14px;padding:16px 18px 12px;box-sizing:border-box;"
             f"box-shadow:0 2px 12px rgba(0,0,0,0.06);display:flex;flex-direction:column;gap:0;'>"
-            f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
+            f"<div style='margin-bottom:4px;'>"
             f"<div style='font-size:9.5px;text-transform:uppercase;letter-spacing:0.08em;color:#94A3B8;font-weight:700;'>{label}</div>"
-            f"{sel_pill}"
             f"</div>"
             f"<div style='font-size:0.9rem;font-weight:700;color:#1E293B;line-height:1.3;margin-bottom:3px;'>{value_label}</div>"
             f"<div style='display:flex;align-items:baseline;gap:4px;'>"
@@ -743,21 +799,25 @@ else:
             f"{spark}"
             f"{headline}"
             f"<div style='font-size:0.67rem;color:#CBD5E1;margin-top:6px;display:flex;gap:8px;'>"
-            f"<span>n&#8776;{n_approx:,}</span><span>&#183;</span><span>{_last_selected_month}</span>"
+            f"<span>n&#8776;{n_approx:,}</span><span>&#183;</span><span>{'All Months' if time_mode == 'All Months' else _display_month}</span>"
             f"</div>"
             f"</div>"
         )
 
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Average Age", "Mean Age", avg_age, 'age', base_n,
-                     is_sig_high=False, unit=" yrs", month_vals_override=_avg_age_monthly)
-        + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
-                     full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'], is_sig_high=income_is_sig)
-        + _stat_card("First-Time Buyers", f"{ftb_count:,} respondents", ftb_pct, 'ftb', ftb_count,
-                     is_sig_high=False, month_vals_override=_ftb_monthly)
-        + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(base_n*top_edu_val/100),
-                     full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'], is_sig_high=edu_is_sig)
+        + _stat_card("Average Age", "Mean Age", avg_age, 'age', _age_base_n,
+                     unit=" yrs", month_vals_override=_avg_age_monthly,
+                     current_override=avg_age if time_mode == "All Months" else None)
+        + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
+                     full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
+                     current_override=top_income_val if time_mode == "All Months" else None)
+        + _stat_card("First-Time Buyers", "Buying first bike", ftb_pct, 'ftb', base_n,
+                     month_vals_override=_ftb_monthly,
+                     current_override=ftb_pct if time_mode == "All Months" else None)
+        + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(_base_cur*top_edu_val/100),
+                     full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'],
+                     current_override=top_edu_val if time_mode == "All Months" else None)
         + f"</div>"
     )
 
@@ -769,19 +829,23 @@ else:
             f"</div>",
             unsafe_allow_html=True,
         )
-        st.markdown(_four_cards_html + "<div style='margin-bottom:1rem;'></div>", unsafe_allow_html=True)
+        st.markdown(_four_cards_html + "<div style='margin-bottom:0.5rem;'></div>", unsafe_allow_html=True)
     else:
         st.markdown(
-            f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1rem;align-items:stretch;justify-content:flex-start;'>"
+            f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Average Age", "Mean Age", avg_age, 'age', base_n,
-                         is_sig_high=False, unit=" yrs", month_vals_override=_avg_age_monthly)
-            + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(base_n*top_income_val/100),
-                         full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'], is_sig_high=income_is_sig)
-            + _stat_card("First-Time Buyers", f"{ftb_count:,} respondents", ftb_pct, 'ftb', ftb_count,
-                         is_sig_high=False, month_vals_override=_ftb_monthly)
-            + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(base_n*top_edu_val/100),
-                         full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'], is_sig_high=edu_is_sig)
+            + _stat_card("Average Age", "Mean Age", avg_age, 'age', _base_cur,
+                         unit=" yrs", month_vals_override=_avg_age_monthly,
+                         current_override=avg_age if time_mode == "All Months" else None)
+            + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
+                         full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
+                         current_override=top_income_val if time_mode == "All Months" else None)
+            + _stat_card("First-Time Buyers", "Buying first bike", ftb_pct, 'ftb', base_n,
+                         month_vals_override=_ftb_monthly,
+                         current_override=ftb_pct if time_mode == "All Months" else None)
+            + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(_base_cur*top_edu_val/100),
+                         full_table=edu_table_full, row_label_val=top_edu_row['Unnamed: 0'],
+                         current_override=top_edu_val if time_mode == "All Months" else None)
             + f"</div>",
             unsafe_allow_html=True,
         )
@@ -1681,6 +1745,9 @@ if segment_value == "Acceptor":
     _r_tree = engine.reasons_tree_data(df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree, "Key Buying Factors (Why Bought)", color=REASONS_COLOR, key_suffix="acc_mq2a")
+    _xl = open_end_tree_to_excel(_r_tree, "Key Buying Factors", show_sig=show_sig)
+    if _xl:
+        st.download_button("⬇ Download as Excel", _xl, "key_buying_factors.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_kbf_acc")
     _r_super_tbl = _trim_to_selected_months(
         engine.reasons_table(df, base_label="Acceptor", broad_prefix="mq2a", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map["Key Buying Factors — Category Wise"] = _r_super_tbl
@@ -1692,6 +1759,9 @@ elif segment_value in ("Rejector", "Cancelled"):
     _r_tree_c = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq2c", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree_c, "Why They Considered RE First", color=BRAND_CONSIDERED_COLOR, key_suffix=f"{segment_value}_mq2c")
+    _xl_c = open_end_tree_to_excel(_r_tree_c, "Why Considered RE First", show_sig=show_sig)
+    if _xl_c:
+        st.download_button("⬇ Download as Excel", _xl_c, "why_considered_re.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_considered_{segment_value}")
     _r_super_c = _trim_to_selected_months(
         engine.reasons_table(df, base_label=segment_value, broad_prefix="mq2c", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map["Why Considered RE — Category Wise"] = _r_super_c
@@ -1703,6 +1773,10 @@ elif segment_value in ("Rejector", "Cancelled"):
     _r_tree_r = engine.reasons_tree_data(df, base_label=segment_value, broad_prefix="mq3a", extra_groups=effective_extra_groups)
     with st.container(border=True):
         render_collapsible_reasons_table(_r_tree_r, _rej_label, color=REASONS_COLOR, key_suffix=f"{segment_value}_mq3a")
+    _xl_r = open_end_tree_to_excel(_r_tree_r, _rej_label[:31], show_sig=show_sig)
+    if _xl_r:
+        _rej_fname = "reasons_rejection.xlsx" if segment_value == "Rejector" else "reasons_cancelling.xlsx"
+        st.download_button("⬇ Download as Excel", _xl_r, _rej_fname, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_rej_{segment_value}")
     _r_super_r = _trim_to_selected_months(
         engine.reasons_table(df, base_label=segment_value, broad_prefix="mq3a", by="supernet", numeric=True, extra_groups=effective_extra_groups))
     trend_map[f"{_rej_label} — Category Wise"] = _r_super_r
@@ -1717,16 +1791,25 @@ elif segment_value in ("Overview", "All"):
         _r_tree_acc = engine.reasons_tree_data(_acc_df, base_label="Acceptor", broad_prefix="mq2a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_acc, "Acceptors — Key Buying Factors", color=REASONS_COLOR, key_suffix="ov_acc_mq2a")
+        _xl_ov_acc = open_end_tree_to_excel(_r_tree_acc, "Acceptors KBF", show_sig=show_sig)
+        if _xl_ov_acc:
+            st.download_button("⬇ Download as Excel", _xl_ov_acc, "acceptors_kbf.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_ov_acc")
     _rej_df = engine.filter_df("Rejector")
     if len(_rej_df) > 0:
         st.markdown("#### Rejectors — Reasons for Rejection")
         _r_tree_rej = engine.reasons_tree_data(_rej_df, base_label="Rejector", broad_prefix="mq3a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_rej, "Rejectors — Reasons for Rejection", color=REASONS_COLOR, key_suffix="ov_rej_mq3a")
+        _xl_ov_rej = open_end_tree_to_excel(_r_tree_rej, "Rejectors Reasons", show_sig=show_sig)
+        if _xl_ov_rej:
+            st.download_button("⬇ Download as Excel", _xl_ov_rej, "rejectors_reasons.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_ov_rej")
     _can_df = engine.filter_df("Cancelled")
     if len(_can_df) > 0:
         st.markdown("#### Booked & Cancelled — Reasons for Cancelling")
         _r_tree_can = engine.reasons_tree_data(_can_df, base_label="Cancelled", broad_prefix="mq3a", extra_groups=effective_extra_groups)
         with st.container(border=True):
             render_collapsible_reasons_table(_r_tree_can, "Booked & Cancelled — Reasons for Cancelling", color=REASONS_COLOR, key_suffix="ov_can_mq3a")
+        _xl_ov_can = open_end_tree_to_excel(_r_tree_can, "Cancelled Reasons", show_sig=show_sig)
+        if _xl_ov_can:
+            st.download_button("⬇ Download as Excel", _xl_ov_can, "cancelled_reasons.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_ov_can")
 

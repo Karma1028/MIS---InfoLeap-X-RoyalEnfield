@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import bcrypt
 from utils.branding import brand_header_html, swoosh_strip_html
 
 USERS_PATH = "data/users.xlsx"
@@ -39,22 +40,28 @@ def load_audit_log(n: int = 100) -> pd.DataFrame:
     return df.tail(n).iloc[::-1].reset_index(drop=True)
 
 
-DEFAULT_USERS_DATA = [
-    {"email": "misdashboard@infoleap", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
-    {"email": "misdashboard@infoleap.com", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
-    {"email": "misdashboard", "password": "MIS_INFOLEAP@1234", "name": "Infoleap MIS Team", "active": "Y"},
-    {"email": "test@test", "password": "test@123", "name": "Test Account", "active": "Y"},
-]
+def _hash_password(pwd: str) -> str:
+    return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(pwd: str, stored: str) -> bool:
+    try:
+        # bcrypt hash starts with $2b$ or $2a$
+        if stored.startswith("$2"):
+            return bcrypt.checkpw(pwd.encode(), stored.encode())
+        # Legacy plaintext — accept and upgrade on next save
+        return pwd == stored
+    except Exception:
+        return False
 
 
 def _ensure_users_file():
-    """Ensure data/users.xlsx exists with default accounts on fresh deployments."""
+    """Ensure data/users.xlsx exists. Creates empty file with headers if missing."""
     p = Path(USERS_PATH)
     if not p.exists():
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            df = pd.DataFrame(DEFAULT_USERS_DATA)
-            df.to_excel(USERS_PATH, index=False)
+            pd.DataFrame(columns=["email", "password", "name", "active"]).to_excel(USERS_PATH, index=False)
         except Exception:
             pass
 
@@ -66,17 +73,17 @@ def _save_users(df: pd.DataFrame):
     df.to_excel(USERS_PATH, index=False)
 
 
-def add_user(email: str, name: str, password: str) -> str:
+def add_user(email: str, name: str, password: str, role: str = "user") -> str:
     """Add new user row. Returns error string or empty string on success."""
     _ensure_users_file()
     try:
         df = pd.read_excel(USERS_PATH)
     except Exception:
-        df = pd.DataFrame(DEFAULT_USERS_DATA)
+        df = pd.DataFrame(columns=["email", "password", "name", "active", "role"])
     key = email.strip().lower()
     if key in df["email"].str.strip().str.lower().values:
         return f"User {key} already exists."
-    new_row = pd.DataFrame([{"email": key, "password": password, "name": name.strip(), "active": "Y"}])
+    new_row = pd.DataFrame([{"email": key, "password": _hash_password(password), "name": name.strip(), "active": "Y", "role": role.strip().lower()}])
     df = pd.concat([df, new_row], ignore_index=True)
     _save_users(df)
     _log_event(key, "USER_ADDED")
@@ -89,7 +96,7 @@ def set_user_active(email: str, active: bool) -> str:
     try:
         df = pd.read_excel(USERS_PATH)
     except Exception:
-        df = pd.DataFrame(DEFAULT_USERS_DATA)
+        df = pd.DataFrame(columns=["email", "password", "name", "active"])
     mask = df["email"].str.strip().str.lower() == email.strip().lower()
     if not mask.any():
         return f"User {email} not found."
@@ -101,25 +108,20 @@ def set_user_active(email: str, active: bool) -> str:
 
 
 def _load_users():
-    """Credentials live in data/users.xlsx (columns: email, password, name, active).
-    Always pre-populated with DEFAULT_USERS_DATA so login is bulletproof even on cloud deployments."""
+    """Load credentials from data/users.xlsx only — no hardcoded defaults."""
     users = {}
-    for r in DEFAULT_USERS_DATA:
-        email = r['email'].strip().lower()
-        users[email] = {"password": str(r['password']), "active": r['active'] != "N", "name": r['name']}
-
-    p = Path(USERS_PATH)
-    if p.exists():
-        try:
-            df = pd.read_excel(USERS_PATH)
-            for _, r in df.iterrows():
-                email = str(r['email']).strip().lower()
-                if email and email != 'nan':
-                    pwd = str(r['password']) if pd.notna(r['password']) else ""
-                    active = str(r.get('active', 'Y')).strip().upper() != "N"
-                    users[email] = {"password": pwd, "active": active, "name": str(r.get('name', ''))}
-        except Exception:
-            pass
+    _ensure_users_file()
+    try:
+        df = pd.read_excel(USERS_PATH)
+        for _, r in df.iterrows():
+            email = str(r['email']).strip().lower()
+            if email and email != 'nan':
+                pwd = str(r['password']) if pd.notna(r['password']) else ""
+                active = str(r.get('active', 'Y')).strip().upper() != "N"
+                role = str(r.get('role', 'user')).strip().lower() if 'role' in r.index else 'user'
+                users[email] = {"password": pwd, "active": active, "name": str(r.get('name', '')), "role": role}
+    except Exception:
+        pass
     return users
 
 
@@ -219,10 +221,11 @@ def render_login() -> bool:
                     users = _load_users()
                     key = email.strip().lower()
                     user = users.get(key)
-                    if user and user["active"] and password.strip() == str(user["password"]).strip():
+                    if user and user["active"] and _verify_password(password.strip(), str(user["password"]).strip()):
                         st.session_state["authenticated"] = True
                         st.session_state["auth_time"] = time.time()
                         st.session_state["username"] = key
+                        st.session_state["user_role"] = user.get("role", "user")
                         st.session_state["_session_id"] = str(uuid.uuid4())[:8]
                         st.session_state.pop("login_fails", None)
                         st.session_state.pop("login_locked_until", None)

@@ -36,6 +36,17 @@ def _sync_from_drive(force: bool = False):
         from config import DRIVE_FILE_ID as _cfg_id
     except ImportError:
         _cfg_id = ""
+    # Re-read .env at call time so changes take effect without process restart.
+    # .env file explicitly overrides both os.environ (stale from startup) and config.py.
+    _env_path = Path(__file__).parent.parent / ".env"
+    if _env_path.exists():
+        for _line in _env_path.read_text().splitlines():
+            _line = _line.strip()
+            if _line.startswith("DRIVE_FILE_ID="):
+                _env_val = _line.split("=", 1)[1].strip()
+                os.environ["DRIVE_FILE_ID"] = _env_val  # update live env
+                _cfg_id = _env_val
+                break
     drive_file_id = os.environ.get("DRIVE_FILE_ID", _cfg_id)
     file_missing = not Path(MASTERFILE_PATH).exists()
     if not drive_file_id:
@@ -624,14 +635,15 @@ class DataEngine:
         extra_groups: see quarter_combined_groups() docstring.
         """
         value_map = self.value_maps.get(code_col, {})
-        base_n = df[code_col].notna().sum()
+        base_n = df[code_col].notna().sum()  # denominator for % calculations
+        display_base_n = len(df)             # display base = total segment rows
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
 
-        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": base_n}]
+        rows = [{"Unnamed: 0": f"Base : Total_{base_label}", "All": display_base_n}]
         for col in self.month_order + extra_cols:
             idx = self._col_index(df, col, quarter_groups)
-            rows[0][col] = df.loc[idx, code_col].notna().sum()
+            rows[0][col] = len(idx)
 
         if display_groups:
             labels_in_order = []

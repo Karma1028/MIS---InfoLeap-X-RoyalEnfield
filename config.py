@@ -5,7 +5,7 @@ import os
 
 # Google Drive file ID for RE_MIS_Master.xlsx
 # Set via .env (local) or Streamlit Cloud → Settings → Secrets
-DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "1t7vWkQSSFeoojTicuVIMPMTpN-bMz-56")
+DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID", "")
 
 # Project metadata
 PROJECT_NAME = "Royal Enfield MIS Dashboard"

@@ -663,7 +663,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     )
     html = (
         f"<div style='{wrapper_style}'>"
-        f"<table style='width:100%;border-collapse:collapse;table-layout:fixed;font-size:0.82rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;'>"
+        f"<table style='min-width:100%;width:max-content;border-collapse:collapse;font-size:0.82rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;'>"
         f"<thead><tr>{header_cells}</tr></thead><tbody>{''.join(body_rows)}</tbody></table></div>"
     )
     if is_long:
@@ -864,7 +864,7 @@ def render_chart_with_table(table_df, title, color=RE_RED, sig_markers=None, key
         # the two never line up no matter what the chart's own margins
         # are. Keeping chart + table in the same column is what actually
         # keeps bars aligned with their table columns.
-        _leg_col, _content_col = st.columns([1, 5])
+        _leg_col, _content_col = st.columns([1, 8])
         with _leg_col:
             st.markdown(stacked_bar_legend_html(table_df), unsafe_allow_html=True)
         with _content_col:
@@ -1328,7 +1328,7 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
 
     def _th(c):
         if c == "Category":
-            return f"<th class='bwt-cat'>Category</th>"
+            return f"<th class='bwt-cat' style='background:#1e293b;color:#f8fafc;'>Category</th>"
         lbl = c
         if "'" in c:
             parts = c.split("'")
@@ -1475,7 +1475,7 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
         color: #f8fafc;
         font-weight: 700;
         font-size: 0.79rem;
-        padding: 10px 12px;
+        padding: 8px 8px;
         border-bottom: 2px solid #cbd5e1;
         white-space: nowrap;
         position: sticky;
@@ -1484,15 +1484,17 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
     }}
     .bwt-wrap-{key_suffix} th.bwt-cat {{
         text-align: left;
-        min-width: 220px;
+        width: auto;
     }}
     .bwt-wrap-{key_suffix} th.bwt-val {{
         text-align: center;
+        min-width: 52px;
+        width: 1%;
     }}
     .bwt-base-row td {{
         background: {BASE_BG};
         border-bottom: 2px solid #cbd5e1;
-        padding: 8px 12px;
+        padding: 7px 8px;
     }}
     .bwt-base-row td.bwt-val {{
         text-align: center;
@@ -1581,6 +1583,98 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
         st.markdown(html_out, unsafe_allow_html=True)
 
 
+def open_end_tree_to_excel(tree_data, title="Open End", show_sig=True):
+    """Flatten reasons tree_data to formatted Excel bytes for download."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+    if not tree_data or not tree_data.get("supernets"):
+        return None
+
+    cols = tree_data["columns"]
+    col_bases = tree_data["col_bases"]
+    base_label = tree_data.get("base_label", "Base")
+    supernets = tree_data["supernets"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title[:31]
+
+    # openpyxl requires 8-char ARGB hex (FF prefix = fully opaque)
+    HDR_FILL  = PatternFill(patternType="solid", fgColor="FFC8102E")
+    SNET_FILL = PatternFill(patternType="solid", fgColor="FFFFEDD5")
+    NET_FILL  = PatternFill(patternType="solid", fgColor="FFFEF9C3")
+    SUB_FILL  = PatternFill(patternType="solid", fgColor="FFE0F2FE")
+    BASE_FILL = PatternFill(patternType="solid", fgColor="FFF3F4F6")
+
+    thin = Side(style="thin", color="FFCBD5E1")
+    bdr = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def _clean(val):
+        if isinstance(val, float):
+            s = "-" if val == 0 else f"{round(val)}%"
+        else:
+            s = str(val) if val is not None else "-"
+        if not show_sig:
+            s = s.replace(" ▲", "").replace(" △", "").replace("▲", "").replace("△", "").strip()
+        return s
+
+    # Header
+    header = ["Level", "Category"] + cols
+    for ci, h in enumerate(header, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = HDR_FILL
+        cell.font = Font(bold=True, color="FFFFFFFF", size=10)
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        cell.border = bdr
+
+    # Base row
+    row_idx = 2
+    for ci, v in enumerate(["Base", base_label] + [col_bases.get(c, 0) for c in cols], 1):
+        cell = ws.cell(row=row_idx, column=ci, value=v)
+        cell.fill = BASE_FILL
+        cell.font = Font(bold=True, size=10)
+        cell.alignment = Alignment(horizontal="left" if ci <= 2 else "center")
+        cell.border = bdr
+    row_idx += 1
+
+    for snet in supernets:
+        for ci, v in enumerate(["L1", snet["name"]] + [_clean(snet["pcts"].get(c, "-")) for c in cols], 1):
+            cell = ws.cell(row=row_idx, column=ci, value=v)
+            cell.fill = SNET_FILL
+            cell.font = Font(bold=True, size=10, color="FF7C2D12")
+            cell.alignment = Alignment(horizontal="left" if ci <= 2 else "center")
+            cell.border = bdr
+        row_idx += 1
+
+        for net in snet.get("nets", []):
+            for ci, v in enumerate(["L2", "  " + net["name"]] + [_clean(net["pcts"].get(c, "-")) for c in cols], 1):
+                cell = ws.cell(row=row_idx, column=ci, value=v)
+                cell.fill = NET_FILL
+                cell.font = Font(size=10, color="FF713F12")
+                cell.alignment = Alignment(horizontal="left" if ci <= 2 else "center")
+                cell.border = bdr
+            row_idx += 1
+
+            for subnet in net.get("subnets", []):
+                for ci, v in enumerate(["L3", "    " + subnet["name"]] + [_clean(subnet["pcts"].get(c, "-")) for c in cols], 1):
+                    cell = ws.cell(row=row_idx, column=ci, value=v)
+                    cell.fill = SUB_FILL
+                    cell.font = Font(size=9, color="FF0C4A6E")
+                    cell.alignment = Alignment(horizontal="left" if ci <= 2 else "center")
+                    cell.border = bdr
+                row_idx += 1
+
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 42
+    for ci in range(3, len(header) + 1):
+        ws.column_dimensions[ws.cell(row=1, column=ci).column_letter].width = 11
+    ws.freeze_panes = "C2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 

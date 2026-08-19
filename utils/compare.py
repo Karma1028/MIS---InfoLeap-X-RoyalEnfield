@@ -13,10 +13,10 @@ import plotly.graph_objects as go
 from utils.data_engine import RE_MODEL_LABELS, month_label_to_fy_quarter
 from utils.visuals import (
     render_chart_with_table, _lighten, _pct_label, MUTED, INFOLEAP_GREEN, RE_RED, INFOLEAP_ORANGE,
-    BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table, PLOTLY_CONFIG
+    BRAND_CONSIDERED_COLOR, REASONS_COLOR, render_collapsible_reasons_table, PLOTLY_CONFIG,
+    open_end_tree_to_excel,
 )
 from utils.stat_engine import calculate_significance, compare_to_baseline_by_column
-from utils.ai_summary import render_chart_ai_blurb
 from utils.model_images import model_image_path
 
 # Palette: two distinct, accessible colors for the two models
@@ -124,8 +124,8 @@ DEMOGRAPHIC_BUILDERS = {
 ACCEPTOR_BUILDERS = {
     "Additional + Replaced — CC Wise": (lambda engine, df, seg:
         engine.additional_replaced_table(df, by="cc", base_label=seg, numeric=True), "bar"),
-    "Additional + Replaced — Brand Wise": (lambda engine, df, seg: engine.cap_rows(
-        engine.additional_replaced_table(df, by="brand", base_label=seg, numeric=True), max_rows=8), "bar"),
+    "Additional + Replaced — Brand Wise": (lambda engine, df, seg:
+        engine.additional_replaced_table(df, by="brand", base_label=seg, numeric=True), "bar"),
 }
 REJECTOR_BUILDERS = {}
 
@@ -285,6 +285,59 @@ def _inject_cross_model_reasons_sig(tree_a, tree_b, n_a, n_b):
                 if not sub_b:
                     continue
                 _patch(sub_a, sub_b)
+
+
+def _sort_brand_table(tbl, canonical_order, rollup_set):
+    """Reorder brand-wise table rows to match canonical_order (list of brand names).
+    Preserves base row, then outputs brands + their model sub-rows in canonical order.
+    Brands not in canonical_order are appended at end."""
+    base = tbl.iloc[[0]]
+    canonical_set = list(dict.fromkeys(canonical_order))  # dedupe, preserve order
+    # Build map: brand -> [brand_row, ...model_rows]
+    brand_groups = {}
+    brand_order_seen = []
+    current_brand = None
+    for _, row in tbl.iloc[1:].iterrows():
+        lbl = str(row["Unnamed: 0"])
+        if lbl in rollup_set:
+            current_brand = lbl
+            brand_order_seen.append(lbl)
+            brand_groups[lbl] = [row]
+        elif current_brand is not None:
+            brand_groups[current_brand].append(row)
+    # Reorder: canonical first, then any remaining
+    ordered_rows = []
+    for brand in canonical_set:
+        if brand in brand_groups:
+            ordered_rows.extend(brand_groups[brand])
+    for brand in brand_order_seen:
+        if brand not in set(canonical_set) and brand in brand_groups:
+            ordered_rows.extend(brand_groups[brand])
+    if not ordered_rows:
+        return tbl
+    return pd.concat([base, pd.DataFrame(ordered_rows)], ignore_index=True)
+
+
+def _filter_brand_table(tbl, selected_brands, rollup_set):
+    """Keep base row + only rows belonging to selected brands (brand row + its model rows)."""
+    if not selected_brands:
+        return tbl
+    sel = set(selected_brands)
+    base = tbl.iloc[[0]]
+    keep = []
+    current_brand_kept = False
+    for _, row in tbl.iloc[1:].iterrows():
+        lbl = str(row["Unnamed: 0"])
+        if lbl in rollup_set:
+            current_brand_kept = lbl in sel
+            if current_brand_kept:
+                keep.append(row)
+        elif current_brand_kept:
+            keep.append(row)
+    if not keep:
+        return tbl
+    import pandas as pd
+    return pd.concat([base, pd.DataFrame(keep)], ignore_index=True)
 
 
 def render_comparison_page(engine):
@@ -458,6 +511,13 @@ def render_comparison_page(engine):
         tbl1_t = _cmp_trim(tbl1, current_month)
         tbl2_t = _cmp_trim(tbl2, current_month)
 
+        # For Brand Wise tables, reorder rows to canonical brand order (RE first, then others)
+        if "Brand Wise" in metric_name:
+            _bw_rollups_tmp = set(engine.manufacturers())
+            _canonical = ["Royal Enfield"] + [m for m in engine.manufacturers() if m != "Royal Enfield"]
+            tbl1_t = _sort_brand_table(tbl1_t, _canonical, _bw_rollups_tmp)
+            tbl2_t = _sort_brand_table(tbl2_t, _canonical, _bw_rollups_tmp)
+
         # Sig markers: Model A vs Model B, column by column — higher only, no lower
         _sig_a = _model_vs_model_sig_markers(tbl1_t, tbl2_t)  # ▲/△ = A higher than B
         # B markers: flip — where A was higher, B shows nothing; where A was lower, B shows higher
@@ -481,7 +541,22 @@ def render_comparison_page(engine):
         cat2, pct2 = _top_cat_info(tbl2)
 
         _is_add_rep = "Additional + Replaced" in metric_name
-        _bw_rollups = set(engine.manufacturers()) if "Brand Wise" in metric_name else None
+        _is_brand_wise = "Brand Wise" in metric_name
+        _bw_rollups = set(engine.manufacturers()) if _is_brand_wise else None
+
+        # Brand filter for Brand Wise sections
+        _bw_sel_brands = None
+        if _is_brand_wise:
+            _all_brands = [r for r in tbl1_t["Unnamed: 0"].tolist()[1:] if r in _bw_rollups] + \
+                          [r for r in tbl2_t["Unnamed: 0"].tolist()[1:] if r in _bw_rollups and r not in
+                           [r2 for r2 in tbl1_t["Unnamed: 0"].tolist()[1:] if r2 in _bw_rollups]]
+            _all_brands_ordered = list(dict.fromkeys(_all_brands))
+            _bw_sel_brands = st.multiselect(
+                "Filter brands", _all_brands_ordered, default=_all_brands_ordered,
+                key=f"bw_brand_filter_{metric_name}",
+                help="Select which brands to display in the table"
+            )
+
         with st.container(border=True):
             st.markdown(f"**{metric_name}**")
             c1, c2 = st.columns(2)
@@ -492,7 +567,12 @@ def render_comparison_page(engine):
                     f"◼ {m1_short}</div>",
                     unsafe_allow_html=True,
                 )
-                if _is_add_rep:
+                if _is_brand_wise:
+                    from utils.visuals import render_collapsible_brand_table
+                    _t1_filtered = _filter_brand_table(tbl1_t, _bw_sel_brands, _bw_rollups) if _bw_sel_brands is not None else tbl1_t
+                    render_collapsible_brand_table(_t1_filtered, title=m1_short, color=_CMP_COLOR_A,
+                                                   rollup_labels=_bw_rollups, key_suffix=f"_cmp_a_{metric_name}")
+                elif _is_add_rep:
                     from utils.visuals import _render_html_table
                     _render_html_table(tbl1_t, accent=_CMP_COLOR_A, rollup_labels=_bw_rollups)
                 else:
@@ -511,7 +591,12 @@ def render_comparison_page(engine):
                     f"◼ {m2_short}</div>",
                     unsafe_allow_html=True,
                 )
-                if _is_add_rep:
+                if _is_brand_wise:
+                    from utils.visuals import render_collapsible_brand_table
+                    _t2_filtered = _filter_brand_table(tbl2_t, _bw_sel_brands, _bw_rollups) if _bw_sel_brands is not None else tbl2_t
+                    render_collapsible_brand_table(_t2_filtered, title=m2_short, color=_CMP_COLOR_B,
+                                                   rollup_labels=_bw_rollups, key_suffix=f"_cmp_b_{metric_name}")
+                elif _is_add_rep:
                     from utils.visuals import _render_html_table
                     _render_html_table(tbl2_t, accent=_CMP_COLOR_B, rollup_labels=_bw_rollups)
                 else:
@@ -523,6 +608,17 @@ def render_comparison_page(engine):
                         col_sig_markers=_sig_b,
                         allow_all_sig=True,
                     )
+            # Download buttons
+            _safe_fn = re.sub(r'[^\w]+', '_', metric_name.lower()).strip('_')
+            _dl1, _dl2 = st.columns(2)
+            with _dl1:
+                st.download_button("⬇ CSV", data=tbl1_t.to_csv(index=False),
+                                   file_name=f"{_safe_fn}_{re.sub(r'[^\w]+','_',m1_short.lower())}.csv",
+                                   mime="text/csv", key=f"dl_cmp_a_{metric_name}")
+            with _dl2:
+                st.download_button("⬇ CSV", data=tbl2_t.to_csv(index=False),
+                                   file_name=f"{_safe_fn}_{re.sub(r'[^\w]+','_',m2_short.lower())}.csv",
+                                   mime="text/csv", key=f"dl_cmp_b_{metric_name}")
             # Bottom insight line
             if cat1 and cat2:
                 if cat1 == cat2:
@@ -618,6 +714,12 @@ def render_comparison_page(engine):
                                 color=_tbl_color,
                                 key_suffix=f"cmp_{_prefix}_{_tbl_idx}_{model_name.replace(' ', '_')}_{_mi}"
                             )
+                        _xl = open_end_tree_to_excel(_r_tree, f"{short_names[model_name]} — {_tbl_title}"[:31], show_sig=True)
+                        if _xl:
+                            _xl_fname = f"{_prefix}_{model_name.replace(' ', '_').lower()}_{_tbl_idx}.xlsx"
+                            st.download_button("⬇ Excel", _xl, _xl_fname,
+                                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                               key=f"dl_cmp_tree_{_prefix}_{_tbl_idx}_{_mi}")
                     else:
                         st.caption("No data.")
 
