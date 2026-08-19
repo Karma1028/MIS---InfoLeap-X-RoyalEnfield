@@ -148,51 +148,38 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # Royal Enfield/Infoleap IT — wire that in once those exist; this folder
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
-# acc/rej/can/aq3_po/seg-derived RE model codes 1-14, and their CC platform.
-# Hardcoded fallback — overridden at module load time by load_model_config()
-# which reads model_config sheet from RE_MIS_Master.xlsx when present.
-_RE_MODEL_LABELS_DEFAULT = {
-    1: "Royal Enfield Bullet 350", 2: "Royal Enfield Classic 350",
-    3: "Royal Enfield Hunter 350", 4: "Royal Enfield Meteor 350",
-    5: "Royal Enfield Goan Classic 350", 6: "Royal Enfield Scram 440",
-    7: "Royal Enfield Himalayan 450", 8: "Royal Enfield Guerrilla 450",
-    9: "Royal Enfield Continental GT 650", 10: "Royal Enfield Interceptor 650",
-    11: "Royal Enfield Super Meteor 650", 12: "Royal Enfield Bear 650",
-    13: "Royal Enfield Shotgun 650", 14: "Royal Enfield Classic 650",
-}
-_RE_MODEL_PLATFORM_DEFAULT = {
-    1: "350CC", 2: "350CC", 3: "350CC", 4: "350CC", 5: "350CC",
-    6: "450CC", 7: "450CC", 8: "450CC",
-    9: "650CC", 10: "650CC", 11: "650CC", 12: "650CC", 13: "650CC", 14: "650CC",
-}
-
-
 def load_model_config():
-    """Read model_code, model_name, platform_cc from model_config sheet in
-    RE_MIS_Master.xlsx. Returns (labels_dict, platform_dict) where keys are
-    integer model codes. Falls back to hardcoded defaults on any error."""
+    """Read model_code, model_name, platform_cc, active from model_config sheet
+    in RE_MIS_Master.xlsx. Single source of truth — no hardcoded fallback.
+    Add/retire models by editing model_config sheet only; no code change needed.
+    Raises RuntimeError if sheet missing or empty so misconfiguration is visible."""
     if not MASTER_CONFIG_PATH.exists():
-        return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
-    try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
-        labels, platform = {}, {}
-        for _, row in df.iterrows():
-            try:
-                code = int(row["model_code"])
-                name = str(row["model_name"]).strip()
-                plat = str(row["platform_cc"]).strip()
-                active = str(row.get("active", "YES")).strip().upper()
-                if active == "NO":
-                    continue
-                labels[code] = name
-                platform[code] = plat
-            except (ValueError, TypeError, KeyError):
+        raise RuntimeError(
+            f"RE_MIS_Master.xlsx not found at {MASTER_CONFIG_PATH}. "
+            "Cannot load model list — add model_config sheet to the workbook."
+        )
+    df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
+    # Skip note/description rows (model_code must be numeric)
+    df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
+    labels, platform = {}, {}
+    for _, row in df.iterrows():
+        try:
+            code   = int(float(row["model_code"]))
+            name   = str(row["model_name"]).strip()
+            plat   = str(row["platform_cc"]).strip()
+            active = str(row.get("active", "YES")).strip().upper()
+            if active != "YES" or not name or name == "nan":
                 continue
-        if labels:
-            return labels, platform
-    except Exception:
-        pass
-    return _RE_MODEL_LABELS_DEFAULT.copy(), _RE_MODEL_PLATFORM_DEFAULT.copy()
+            labels[code]   = name
+            platform[code] = plat
+        except (ValueError, TypeError, KeyError):
+            continue
+    if not labels:
+        raise RuntimeError(
+            "model_config sheet exists but no active models found. "
+            "Check that model_code is numeric and active = YES for at least one row."
+        )
+    return labels, platform
 
 
 RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
