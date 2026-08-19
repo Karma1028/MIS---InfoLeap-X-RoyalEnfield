@@ -201,30 +201,15 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # Royal Enfield/Infoleap IT — wire that in once those exist; this folder
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
-_RE_MODEL_LABELS_FALLBACK = {
-    1: "Royal Enfield Bullet 350",    2: "Royal Enfield Classic 350",
-    3: "Royal Enfield Hunter 350",    4: "Royal Enfield Meteor 350",
-    5: "Royal Enfield Goan Classic 350", 6: "Royal Enfield Scram 440",
-    7: "Royal Enfield Himalayan 450", 8: "Royal Enfield Guerrilla 450",
-    9: "Royal Enfield Continental GT 650", 10: "Royal Enfield Interceptor 650",
-    11: "Royal Enfield Super Meteor 650", 12: "Royal Enfield Bear 650",
-    13: "Royal Enfield Shotgun 650",  14: "Royal Enfield Classic 650",
-}
-_RE_MODEL_PLATFORM_FALLBACK = {
-    **{k: "350CC" for k in range(1, 6)},
-    **{k: "450CC" for k in range(6, 9)},
-    **{k: "650CC" for k in range(9, 15)},
-}
-
 def load_model_config():
     """Read model_code, model_name, platform_cc, active from model_config sheet.
-    Falls back to hardcoded defaults when file not yet downloaded (cloud boot)."""
+    Called after _sync_from_drive() so file is guaranteed to exist."""
     if not MASTER_CONFIG_PATH.exists():
-        return dict(_RE_MODEL_LABELS_FALLBACK), dict(_RE_MODEL_PLATFORM_FALLBACK)
-    try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
-    except Exception:
-        return dict(_RE_MODEL_LABELS_FALLBACK), dict(_RE_MODEL_PLATFORM_FALLBACK)
+        raise RuntimeError(
+            f"RE_MIS_Master.xlsx not found at {MASTER_CONFIG_PATH}. "
+            "Set DRIVE_FILE_ID in Streamlit Cloud secrets."
+        )
+    df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
     # Skip note/description rows (model_code must be numeric)
     df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
     labels, platform = {}, {}
@@ -241,11 +226,16 @@ def load_model_config():
         except (ValueError, TypeError, KeyError):
             continue
     if not labels:
-        return dict(_RE_MODEL_LABELS_FALLBACK), dict(_RE_MODEL_PLATFORM_FALLBACK)
+        raise RuntimeError(
+            "model_config sheet found but no active models. "
+            "Check model_code is numeric and active=YES for at least one row."
+        )
     return labels, platform
 
 
-RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
+# Populated after _sync_from_drive() in load_data() so cloud boot succeeds
+RE_MODEL_LABELS: dict = {}
+RE_MODEL_PLATFORM: dict = {}
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
 # Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
@@ -327,7 +317,9 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
+        global RE_MODEL_LABELS, RE_MODEL_PLATFORM
         _sync_from_drive()
+        RE_MODEL_LABELS, RE_MODEL_PLATFORM = load_model_config()
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
         # Auto-detect header row: if row 0 has 'Unnamed' columns, real headers are in row 1
         _probe = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
