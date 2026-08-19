@@ -141,14 +141,14 @@ def load_field_registry():
 
 
 def get_required_columns():
-    """Returns set of raw_column names where required=='YES'."""
+    """All mapped raw_column names are required — no required column in sheet anymore."""
     if not MASTER_CONFIG_PATH.exists():
         return set()
     try:
         df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
-        req = df[df["required"].astype(str).str.strip().str.upper() == "YES"]["raw_column"]
-        return {c for c in req if "*" not in str(c)}
+        # Exclude wildcard prefix rows (multi-select) from hard validation
+        return {str(r).strip() for r in df["raw_column"] if "*" not in str(r)}
     except Exception:
         return set()
 
