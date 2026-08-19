@@ -55,13 +55,31 @@ def _verify_password(pwd: str, stored: str) -> bool:
         return False
 
 
+def _sync_users_from_drive():
+    """Download users.xlsx from Google Drive if USERS_FILE_ID secret is set."""
+    try:
+        drive_id = st.secrets.get("USERS_FILE_ID", "")
+    except Exception:
+        drive_id = ""
+    if not drive_id:
+        return
+    try:
+        import gdown
+        Path(USERS_PATH).parent.mkdir(parents=True, exist_ok=True)
+        url = f"https://drive.google.com/uc?id={drive_id}&export=download"
+        gdown.download(url, USERS_PATH, quiet=False)
+    except Exception as e:
+        print(f"[users-sync] WARNING: Drive download failed: {e}")
+
+
 def _ensure_users_file():
-    """Ensure data/users.xlsx exists. Creates empty file with headers if missing."""
+    """Ensure data/users.xlsx exists. Downloads from Drive if USERS_FILE_ID set."""
+    _sync_users_from_drive()
     p = Path(USERS_PATH)
     if not p.exists():
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(columns=["email", "password", "name", "active"]).to_excel(USERS_PATH, index=False)
+            pd.DataFrame(columns=["email", "password", "name", "active", "role"]).to_excel(USERS_PATH, index=False)
         except Exception:
             pass
 
