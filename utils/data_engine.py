@@ -75,6 +75,8 @@ def load_column_mapping():
         return {}
     try:
         df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        # Skip note/header-description rows: real column names never contain spaces
+        df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
         return dict(zip(df["raw_column"].dropna(), df["internal_name"].dropna()))
     except Exception:
         return {}
@@ -86,7 +88,8 @@ def get_required_columns():
         return set()
     try:
         df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
-        req = df[df["required"].str.upper() == "YES"]["internal_name"]
+        df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
+        req = df[df["required"].astype(str).str.strip().str.upper() == "YES"]["internal_name"]
         # Exclude dynamic prefix patterns (contain '*') from hard validation
         return {c for c in req if "*" not in str(c)}
     except Exception:
