@@ -1,9 +1,6 @@
 """Login gate for the Royal Enfield x Infoleap Digital Showroom.
 
-Auth backends (in priority order):
-  1. Firebase Auth — if FIREBASE_WEB_API_KEY is set (st.secrets or env)
-  2. users.xlsx — local/Drive fallback
-
+Auth backend: Firebase Auth (Email/Password + Google OAuth).
 Session-state gated: render_login() returns True once authenticated.
 """
 import csv
@@ -54,6 +51,95 @@ def _firebase_login(email: str, password: str) -> dict | None:
         return {"error": _FIREBASE_ERRORS.get(error, "Login failed.")}
     except Exception as e:
         return {"error": f"Auth service unavailable: {e}"}
+
+
+# ── Google OAuth helpers ──────────────────────────────────────────────────────
+
+def _google_client_id() -> str | None:
+    try:
+        if "GOOGLE_CLIENT_ID" in st.secrets:
+            return st.secrets["GOOGLE_CLIENT_ID"]
+    except Exception:
+        pass
+    return os.environ.get("GOOGLE_CLIENT_ID")
+
+
+def _google_client_secret() -> str | None:
+    try:
+        if "GOOGLE_CLIENT_SECRET" in st.secrets:
+            return st.secrets["GOOGLE_CLIENT_SECRET"]
+    except Exception:
+        pass
+    return os.environ.get("GOOGLE_CLIENT_SECRET")
+
+
+def _google_redirect_uri() -> str:
+    try:
+        if "GOOGLE_REDIRECT_URI" in st.secrets:
+            return st.secrets["GOOGLE_REDIRECT_URI"]
+    except Exception:
+        pass
+    return os.environ.get("GOOGLE_REDIRECT_URI", "https://mis---infoleap-x-royalenfield-kbrtsyxq6xjcjvwwtjis4r.streamlit.app/")
+
+
+def _google_auth_url() -> str | None:
+    client_id = _google_client_id()
+    if not client_id:
+        return None
+    redirect_uri = _google_redirect_uri()
+    import urllib.parse
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+
+
+def _exchange_google_code(code: str) -> dict | None:
+    """Exchange OAuth code → Google ID token → Firebase sign-in. Returns auth dict or None."""
+    import requests as _req
+    client_id = _google_client_id()
+    client_secret = _google_client_secret()
+    redirect_uri = _google_redirect_uri()
+    api_key = _firebase_api_key()
+    if not all([client_id, client_secret, api_key]):
+        return None
+    # Step 1: exchange code for tokens
+    token_resp = _req.post("https://oauth2.googleapis.com/token", data={
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }, timeout=10)
+    if token_resp.status_code != 200:
+        return {"error": "Google token exchange failed."}
+    id_token = token_resp.json().get("id_token")
+    if not id_token:
+        return {"error": "No ID token from Google."}
+    # Step 2: sign in to Firebase with Google ID token
+    fb_resp = _req.post(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={api_key}",
+        json={
+            "postBody": f"id_token={id_token}&providerId=google.com",
+            "requestUri": redirect_uri,
+            "returnSecureToken": True,
+            "returnIdpCredential": True,
+        },
+        timeout=10,
+    )
+    if fb_resp.status_code == 200:
+        d = fb_resp.json()
+        email = d.get("email", "")
+        name = d.get("displayName", email.split("@")[0])
+        return {"email": email, "uid": d.get("localId", ""), "name": name, "role": "user"}
+    err = fb_resp.json().get("error", {}).get("message", "Google login failed.")
+    return {"error": err}
+
 
 USERS_PATH = "data/users.xlsx"
 AUDIT_LOG_PATH = "data/login_audit.csv"
@@ -202,8 +288,23 @@ def _render_brand_header():
 
 _MAX_ATTEMPTS = 5
 _LOCKOUT_SECONDS = 60
-_SESSION_TTL = 8 * 3600   # 8 hours absolute max
-_INACTIVITY_TTL = 12 * 60  # 12 minutes of inactivity → auto-logout
+_SESSION_TTL = 8 * 3600
+_INACTIVITY_TTL = 12 * 60
+
+
+def _do_login(email: str, name: str, role: str, event: str):
+    """Set session state for authenticated user and rerun."""
+    st.session_state["authenticated"] = True
+    st.session_state["auth_time"] = time.time()
+    st.session_state["username"] = email.lower()
+    st.session_state["user_role"] = role
+    st.session_state["user_name"] = name
+    st.session_state["_session_id"] = str(uuid.uuid4())[:8]
+    st.session_state.pop("login_fails", None)
+    st.session_state.pop("login_locked_until", None)
+    st.session_state.pop("_google_code_used", None)
+    _log_event(email, event)
+    st.rerun()
 
 
 def _touch_activity():
@@ -260,6 +361,27 @@ def render_login() -> bool:
         st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("##### Sign in")
+
+            # ── Handle Google OAuth callback (code in URL) ────────────────
+            params = st.query_params
+            google_code = params.get("code")
+            if google_code and not st.session_state.get("_google_code_used"):
+                st.session_state["_google_code_used"] = True
+                with st.spinner("Signing in with Google..."):
+                    result = _exchange_google_code(google_code)
+                st.query_params.clear()
+                if result and "error" not in result:
+                    _do_login(result["email"], result.get("name", ""), result.get("role", "user"), "GOOGLE_LOGIN")
+                else:
+                    st.error(result.get("error", "Google login failed.") if result else "Google login failed.")
+
+            # ── Google Sign-In button ─────────────────────────────────────
+            google_url = _google_auth_url()
+            if google_url:
+                st.link_button("🔵  Sign in with Google", google_url, use_container_width=True)
+                st.markdown("<div style='text-align:center;color:#aaa;font-size:0.8rem;margin:0.4rem 0'>or</div>", unsafe_allow_html=True)
+
+            # ── Email / Password form ─────────────────────────────────────
             with st.form("login_form"):
                 email = st.text_input("Email")
                 password = st.text_input("Password", type="password")
@@ -273,46 +395,10 @@ def render_login() -> bool:
                     st.error(f"Too many failed attempts. Try again in {remaining}s.")
                 else:
                     key = email.strip().lower()
-                    auth_ok = False
-                    auth_role = "user"
-                    auth_name = key.split("@")[0]
-                    error_msg = None
-
-                    # --- Try Firebase first ---
                     fb = _firebase_login(key, password.strip())
-                    if fb is not None:
-                        if "error" in fb:
-                            error_msg = fb["error"]
-                        else:
-                            auth_ok = True
-                            auth_role = fb.get("role", "user")
-                            auth_name = fb.get("name", auth_name)
-                    else:
-                        # --- Fallback: users.xlsx ---
-                        users = _load_users()
-                        user = users.get(key)
-                        if user and not user["active"]:
-                            _log_event(key, "ACCOUNT_INACTIVE")
-                            st.error("This account has been deactivated. Contact your admin.")
-                        elif user and _verify_password(password.strip(), str(user["password"]).strip()):
-                            auth_ok = True
-                            auth_role = user.get("role", "user")
-                            auth_name = user.get("name", auth_name)
-                        else:
-                            error_msg = "Invalid email or password."
-
-                    if auth_ok:
-                        st.session_state["authenticated"] = True
-                        st.session_state["auth_time"] = time.time()
-                        st.session_state["username"] = key
-                        st.session_state["user_role"] = auth_role
-                        st.session_state["user_name"] = auth_name
-                        st.session_state["_session_id"] = str(uuid.uuid4())[:8]
-                        st.session_state.pop("login_fails", None)
-                        st.session_state.pop("login_locked_until", None)
-                        _log_event(key, "LOGIN_SUCCESS")
-                        st.rerun()
-                    elif error_msg:
+                    if fb is None:
+                        st.error("Auth service not configured.")
+                    elif "error" in fb:
                         _fails += 1
                         st.session_state["login_fails"] = _fails
                         if _fails >= _MAX_ATTEMPTS:
@@ -322,7 +408,9 @@ def render_login() -> bool:
                             st.error(f"Too many failed attempts. Locked for {_LOCKOUT_SECONDS}s.")
                         else:
                             _log_event(key, "LOGIN_FAILED")
-                            st.error(f"{error_msg} ({_MAX_ATTEMPTS - _fails} attempts remaining)")
+                            st.error(f"{fb['error']} ({_MAX_ATTEMPTS - _fails} attempts remaining)")
+                    else:
+                        _do_login(fb["email"], fb.get("name", key.split("@")[0]), fb.get("role", "user"), "LOGIN_SUCCESS")
 
     return False
 
