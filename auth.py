@@ -1,7 +1,7 @@
 """Login gate for the Royal Enfield x Infoleap Digital Showroom.
 
-Auth backend: Firebase Auth (Email/Password + Google OAuth).
-Session-state gated: render_login() returns True once authenticated.
+Auth backend: Firebase Auth (Email/Password only).
+Admin adds users via Firebase Console. Session-state gated.
 """
 import csv
 import os
@@ -51,94 +51,6 @@ def _firebase_login(email: str, password: str) -> dict | None:
         return {"error": _FIREBASE_ERRORS.get(error, "Login failed.")}
     except Exception as e:
         return {"error": f"Auth service unavailable: {e}"}
-
-
-# ── Google OAuth helpers ──────────────────────────────────────────────────────
-
-def _google_client_id() -> str | None:
-    try:
-        if "GOOGLE_CLIENT_ID" in st.secrets:
-            return st.secrets["GOOGLE_CLIENT_ID"]
-    except Exception:
-        pass
-    return os.environ.get("GOOGLE_CLIENT_ID")
-
-
-def _google_client_secret() -> str | None:
-    try:
-        if "GOOGLE_CLIENT_SECRET" in st.secrets:
-            return st.secrets["GOOGLE_CLIENT_SECRET"]
-    except Exception:
-        pass
-    return os.environ.get("GOOGLE_CLIENT_SECRET")
-
-
-def _google_redirect_uri() -> str:
-    try:
-        if "GOOGLE_REDIRECT_URI" in st.secrets:
-            return st.secrets["GOOGLE_REDIRECT_URI"]
-    except Exception:
-        pass
-    return os.environ.get("GOOGLE_REDIRECT_URI", "https://mis---infoleap-x-royalenfield-kbrtsyxq6xjcjvwwtjis4r.streamlit.app/")
-
-
-def _google_auth_url() -> str | None:
-    client_id = _google_client_id()
-    if not client_id:
-        return None
-    redirect_uri = _google_redirect_uri()
-    import urllib.parse
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "access_type": "offline",
-        "prompt": "select_account",
-    }
-    return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
-
-
-def _exchange_google_code(code: str) -> dict | None:
-    """Exchange OAuth code → Google ID token → Firebase sign-in. Returns auth dict or None."""
-    import requests as _req
-    client_id = _google_client_id()
-    client_secret = _google_client_secret()
-    redirect_uri = _google_redirect_uri()
-    api_key = _firebase_api_key()
-    if not all([client_id, client_secret, api_key]):
-        return None
-    # Step 1: exchange code for tokens
-    token_resp = _req.post("https://oauth2.googleapis.com/token", data={
-        "code": code,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code",
-    }, timeout=10)
-    if token_resp.status_code != 200:
-        return {"error": "Google token exchange failed."}
-    id_token = token_resp.json().get("id_token")
-    if not id_token:
-        return {"error": "No ID token from Google."}
-    # Step 2: sign in to Firebase with Google ID token
-    fb_resp = _req.post(
-        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={api_key}",
-        json={
-            "postBody": f"id_token={id_token}&providerId=google.com",
-            "requestUri": redirect_uri,
-            "returnSecureToken": True,
-            "returnIdpCredential": True,
-        },
-        timeout=10,
-    )
-    if fb_resp.status_code == 200:
-        d = fb_resp.json()
-        email = d.get("email", "")
-        name = d.get("displayName", email.split("@")[0])
-        return {"email": email, "uid": d.get("localId", ""), "name": name, "role": "user"}
-    err = fb_resp.json().get("error", {}).get("message", "Google login failed.")
-    return {"error": err}
 
 
 USERS_PATH = "data/users.xlsx"
@@ -302,7 +214,6 @@ def _do_login(email: str, name: str, role: str, event: str):
     st.session_state["_session_id"] = str(uuid.uuid4())[:8]
     st.session_state.pop("login_fails", None)
     st.session_state.pop("login_locked_until", None)
-    st.session_state.pop("_google_code_used", None)
     _log_event(email, event)
     st.rerun()
 
@@ -361,25 +272,6 @@ def render_login() -> bool:
         st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("##### Sign in")
-
-            # ── Handle Google OAuth callback (code in URL) ────────────────
-            params = st.query_params
-            google_code = params.get("code")
-            if google_code and not st.session_state.get("_google_code_used"):
-                st.session_state["_google_code_used"] = True
-                with st.spinner("Signing in with Google..."):
-                    result = _exchange_google_code(google_code)
-                st.query_params.clear()
-                if result and "error" not in result:
-                    _do_login(result["email"], result.get("name", ""), result.get("role", "user"), "GOOGLE_LOGIN")
-                else:
-                    st.error(result.get("error", "Google login failed.") if result else "Google login failed.")
-
-            # ── Google Sign-In button ─────────────────────────────────────
-            google_url = _google_auth_url()
-            if google_url:
-                st.link_button("🔵  Sign in with Google", google_url, use_container_width=True)
-                st.markdown("<div style='text-align:center;color:#aaa;font-size:0.8rem;margin:0.4rem 0'>or</div>", unsafe_allow_html=True)
 
             # ── Email / Password form ─────────────────────────────────────
             with st.form("login_form"):
