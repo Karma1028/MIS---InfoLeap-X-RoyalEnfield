@@ -5,6 +5,7 @@ __pycache__/
 data/processed_data.csv
 
 # Sensitive — never commit
+streamlit_secrets_TEMP.toml
 data/.settings_key
 data/api_keys.enc
 data/*.enc

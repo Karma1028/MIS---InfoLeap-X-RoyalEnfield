@@ -1,4 +1,5 @@
 import os
+import time
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -62,6 +63,10 @@ def _master_config_mtime():
 
 _current_mtime = _masterfile_mtime()
 engine = load_engine(_mtime=_current_mtime)
+
+# Show Drive sync warning if last load_data() failed to reach Drive
+if st.session_state.get("_drive_sync_warning"):
+    st.warning(st.session_state.pop("_drive_sync_warning"))
 
 # Bust @st.cache_data when Excel file changed (engine reloaded).
 # The @st.cache_data wrappers below capture engine from closure — they
@@ -192,7 +197,15 @@ if _reset_col.button("↺ Reset Filters", key="reset_filters", help="Clear all f
         if _k.startswith("_tbl_"):
             del st.session_state[_k]
     st.rerun()
-if _reload_col.button("⟳ Reload Data", key="reload_data", help="Re-download & reload master file (fetches latest from Drive if configured)", use_container_width=True):
+_reload_cooldown = 30  # seconds
+_reload_last = st.session_state.get("_reload_last_ts", 0)
+_reload_elapsed = time.time() - _reload_last
+_reload_ready = _reload_elapsed >= _reload_cooldown
+_reload_label = "⟳ Reload Data" if _reload_ready else f"⟳ {int(_reload_cooldown - _reload_elapsed)}s"
+if _reload_col.button(_reload_label, key="reload_data", disabled=not _reload_ready,
+                      help="Re-download & reload master file (fetches latest from Drive if configured)",
+                      use_container_width=True):
+    st.session_state["_reload_last_ts"] = time.time()
     load_engine.clear()
     st.cache_data.clear()
     st.session_state.pop("_engine_mtime", None)

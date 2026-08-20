@@ -26,6 +26,26 @@ def _firebase_api_key() -> str | None:
     return os.environ.get("FIREBASE_WEB_API_KEY")
 
 
+def _firebase_send_reset(email: str) -> str | None:
+    """Send Firebase password-reset email. Returns error string or None on success."""
+    api_key = _firebase_api_key()
+    if not api_key:
+        return "Auth service not configured."
+    import requests as _req
+    try:
+        resp = _req.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}",
+            json={"requestType": "PASSWORD_RESET", "email": email},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return None
+        err = resp.json().get("error", {}).get("message", "UNKNOWN")
+        return {"EMAIL_NOT_FOUND": "No account with that email."}.get(err, "Reset failed.")
+    except Exception as e:
+        return f"Auth service unavailable: {e}"
+
+
 def _firebase_login(email: str, password: str) -> dict | None:
     """Try Firebase login. Returns {email, uid} on success, {error: msg} on failure, None if not configured."""
     api_key = _firebase_api_key()
@@ -303,6 +323,20 @@ def render_login() -> bool:
                             st.error(f"{fb['error']} ({_MAX_ATTEMPTS - _fails} attempts remaining)")
                     else:
                         _do_login(fb["email"], fb.get("name", key.split("@")[0]), fb.get("role", "user"), "LOGIN_SUCCESS")
+
+        # ── Forgot password ───────────────────────────────────────────────
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
+        with st.expander("Forgot password?"):
+            reset_email = st.text_input("Enter your email address", key="reset_email")
+            if st.button("Send reset email", key="send_reset"):
+                if not reset_email.strip():
+                    st.error("Enter your email address.")
+                else:
+                    err = _firebase_send_reset(reset_email.strip().lower())
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success("Password reset email sent. Check your inbox.")
 
     return False
 

@@ -50,6 +50,13 @@ def _sync_from_drive(force: bool = False):
                 f"RE_MIS_Master.xlsx not found and Drive sync failed: {e}"
             ) from e
         print(f"[drive-sync] WARNING: Drive sync failed, using local files. Error: {e}")
+        try:
+            import streamlit as st
+            st.session_state["_drive_sync_warning"] = (
+                f"⚠️ Data could not be refreshed from Drive — showing last cached version. ({type(e).__name__})"
+            )
+        except Exception:
+            pass
 
 
 def load_display_groups():
@@ -240,7 +247,10 @@ def load_model_config():
 RE_MODEL_LABELS: dict = {}
 RE_MODEL_PLATFORM: dict = {}
 RE_PLATFORM_LABELS: dict = {}  # {platform_cc: display_label} — dynamic from model_config
-_MAX_MODEL_CODE: int = 0       # max active model code — drives seg offset arithmetic
+# Hard cap at 14 — competitor respondents use codes 15-99; raising this silently
+# inflates the Acceptors base. Add new RE models with codes 1-14 only.
+_ACCEPTOR_MAX_CODE: int = 14
+_MAX_MODEL_CODE: int = _ACCEPTOR_MAX_CODE
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
 # Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
@@ -328,7 +338,17 @@ class DataEngine:
         global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE
         _sync_from_drive()
         RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS = load_model_config()
-        _MAX_MODEL_CODE = max(RE_MODEL_LABELS.keys()) if RE_MODEL_LABELS else 14
+        _MAX_MODEL_CODE = _ACCEPTOR_MAX_CODE  # always fixed — see _ACCEPTOR_MAX_CODE note
+        # Warn if any configured model code exceeds the cap
+        if RE_MODEL_LABELS:
+            over = [c for c in RE_MODEL_LABELS if c > _ACCEPTOR_MAX_CODE]
+            if over:
+                import streamlit as st
+                st.warning(
+                    f"model_config has codes {over} > {_ACCEPTOR_MAX_CODE}. "
+                    "Acceptor detection uses codes 1–14 only — those models will not appear in Acceptors base. "
+                    "Renumber to 1–14 to include them."
+                )
         # Reload display_groups fresh from Drive file so Reload Data picks up changes
         _dg = load_display_groups()
         self.education_display_groups = _dg.get("dq3",     {}) or None

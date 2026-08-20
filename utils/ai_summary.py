@@ -45,7 +45,10 @@ def render_kpi_ai_narrative(facts: dict, key: str):
     """Auto-render AI KPI narrative below KPI cards — no button, cached."""
     provider = get_active_provider()
     if not get_api_key(provider):
-        return  # no key — silently skip, don't show error to end users
+        st.caption(
+            "💡 AI KPI insight not configured — add a Gemini API key in **Settings → API Keys** to enable."
+        )
+        return
     facts_json = json.dumps(facts, ensure_ascii=False, sort_keys=True)
     with st.spinner("Generating KPI insight…"):
         text = generate_kpi_narrative(facts_json, provider, None)

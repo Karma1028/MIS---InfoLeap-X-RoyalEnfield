@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip("plotly")
+pytest.importorskip("altair")
 from unittest.mock import patch
 from utils.visuals import render_sig_legend
 
