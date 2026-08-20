@@ -346,9 +346,15 @@ class DataEngine:
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
 
-        dm = pd.read_excel(self.datamap_path, sheet_name='datamap_labels', header=None,
-                           skiprows=2, names=['Variable', 'Label', 'col3', 'col4'])
-        self.labels = dict(zip(dm['Variable'], dm['Label']))
+        dm = pd.read_excel(self.datamap_path, sheet_name='datamap_labels')
+        # Support both old (unnamed cols, skiprows=2) and new cleaned (variable/label cols)
+        if 'variable' in dm.columns:
+            self.labels = dict(zip(dm['variable'], dm['label']))
+        else:
+            # Legacy: unnamed columns, header on row 2
+            dm2_leg = pd.read_excel(self.datamap_path, sheet_name='datamap_labels', header=None,
+                                    skiprows=2, names=['Variable', 'Label', 'col3', 'col4'])
+            self.labels = dict(zip(dm2_leg['Variable'], dm2_leg['Label']))
 
         dm2 = pd.read_excel(self.datamap_path, sheet_name='datamap_value_labels')
         self._parse_value_labels(dm2)
@@ -451,18 +457,42 @@ class DataEngine:
             self.df[dest_col] = self.df[dest_col].fillna("")
 
     def _parse_value_labels(self, dm2):
-        current_var = None
-        for _, row in dm2.iterrows():
-            var_name = row['Unnamed: 0']
-            if pd.notna(var_name) and var_name not in ('Variable Values', 'Value'):
-                current_var = var_name
-                self.value_maps[current_var] = {}
-            val, label = row['Unnamed: 1'], row['Unnamed: 2']
-            if pd.notna(val) and pd.notna(label) and current_var:
-                try:
-                    self.value_maps[current_var][float(val)] = str(label)
-                except ValueError:
-                    self.value_maps[current_var][val] = str(label)
+        # Support both old format (Unnamed: 0/1/2) and new cleaned format (variable/code/label)
+        cols = list(dm2.columns)
+        if 'variable' in cols:
+            col_var, col_code, col_label = 'variable', 'code', 'label'
+        else:
+            col_var, col_code, col_label = cols[0], cols[1], cols[2]
+
+        # New flat format: every row has variable filled (no merged cells)
+        if 'variable' in cols:
+            for _, row in dm2.iterrows():
+                var_name = row[col_var]
+                if pd.isna(var_name) or str(var_name).strip() in ('', 'nan'):
+                    continue
+                var_name = str(var_name).strip()
+                if var_name not in self.value_maps:
+                    self.value_maps[var_name] = {}
+                val, lbl = row[col_code], row[col_label]
+                if pd.notna(val):
+                    try:
+                        self.value_maps[var_name][float(val)] = str(lbl) if pd.notna(lbl) else ''
+                    except (ValueError, TypeError):
+                        self.value_maps[var_name][val] = str(lbl) if pd.notna(lbl) else ''
+        else:
+            # Legacy merged-cell format
+            current_var = None
+            for _, row in dm2.iterrows():
+                var_name = row[col_var]
+                if pd.notna(var_name) and var_name not in ('Variable Values', 'Value'):
+                    current_var = str(var_name).strip()
+                    self.value_maps[current_var] = {}
+                val, lbl = row[col_code], row[col_label]
+                if pd.notna(val) and pd.notna(lbl) and current_var:
+                    try:
+                        self.value_maps[current_var][float(val)] = str(lbl)
+                    except (ValueError, TypeError):
+                        self.value_maps[current_var][val] = str(lbl)
 
     def _manufacturer_for_code(self, code):
         """Manufacturer name for any owned_brand_code (1-124 scheme). Shared
