@@ -6,11 +6,13 @@ import os
 import tempfile
 import pandas as pd
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 from config import DRIVE_FOLDER_ID, DRIVE_FILES
 
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+SCOPES = [
+    'https://www.googleapis.com/auth/drive',  # full access — needed to update shared files
+]
 
 _service = None
 
@@ -88,6 +90,33 @@ def load_csv(key: str) -> pd.DataFrame:
     df = pd.read_csv(tmp_path)
     os.unlink(tmp_path)
     return df
+
+
+def upload_file(local_path: str, filename: str, folder_id: str = DRIVE_FOLDER_ID) -> str:
+    """Upload local_path to Drive folder, replacing existing file of same name.
+    Returns file ID. Requires Editor access on the file."""
+    import mimetypes
+    service = _get_service()
+    mime_type = mimetypes.guess_type(local_path)[0] or 'application/octet-stream'
+    media = MediaFileUpload(local_path, mimetype=mime_type, resumable=True)
+
+    existing_id = find_file_id(filename, folder_id)
+    if existing_id:
+        # Update existing file content
+        updated = service.files().update(
+            fileId=existing_id,
+            media_body=media,
+        ).execute()
+        return updated['id']
+    else:
+        # Create new file in folder
+        metadata = {'name': filename, 'parents': [folder_id]}
+        created = service.files().create(
+            body=metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        return created['id']
 
 
 def list_folder(folder_id: str = DRIVE_FOLDER_ID) -> list[dict]:
