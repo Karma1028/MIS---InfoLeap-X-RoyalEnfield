@@ -215,14 +215,17 @@ def load_model_config():
             name   = str(row["model_name"]).strip()
             plat   = str(row["platform_cc"]).strip()
             active = str(row.get("active", "YES")).strip().upper()
-            if active != "YES" or not name or name == "nan":
+            if not name or name == "nan":
                 continue
-            labels[code]   = name
+            # platform mapping includes ALL codes (active or not) so deactivated
+            # models' respondents still get correct re_platform for segment filtering
             platform[code] = plat
-            # platform_label column optional — fallback to platform_cc itself
             raw_lbl = row.get("platform_label", plat)
             lbl = str(raw_lbl).strip() if raw_lbl and str(raw_lbl).strip() not in ("", "nan") else plat
             plat_labels[plat] = lbl
+            # labels (dropdown) only includes active models
+            if active == "YES":
+                labels[code] = name
         except (ValueError, TypeError, KeyError):
             continue
     if not labels:
@@ -290,6 +293,9 @@ class DataEngine:
         self.df = None
         self.labels = {}
         self.value_maps = {}
+        self.education_display_groups = EDUCATION_DISPLAY_GROUPS
+        self.occupation_display_groups = OCCUPATION_DISPLAY_GROUPS
+        self.age_grp_display = _AGE_GRP_DISPLAY
         # Field registry: semantic_key → actual column name in self.df
         # Populated at load_data() after column rename is applied.
         # Use self.col('education') anywhere you'd otherwise write 'dq3'.
@@ -323,6 +329,11 @@ class DataEngine:
         _sync_from_drive()
         RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS = load_model_config()
         _MAX_MODEL_CODE = max(RE_MODEL_LABELS.keys()) if RE_MODEL_LABELS else 14
+        # Reload display_groups fresh from Drive file so Reload Data picks up changes
+        _dg = load_display_groups()
+        self.education_display_groups = _dg.get("dq3",     {}) or None
+        self.occupation_display_groups = _dg.get("dq4",    {}) or None
+        self.age_grp_display = _dg.get("age_grp", {}) or None
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
         # Auto-detect header row: if row 0 has 'Unnamed' columns, real headers are in row 1
         _probe = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
@@ -364,7 +375,7 @@ class DataEngine:
         # scraped % in docs/DATA_FIELD_MAPPING.md (26%/53%/18%/3%).
         if not self.value_maps.get('age_grp'):
             # Fall back to display_groups sheet; if also absent use inline defaults
-            self.value_maps['age_grp'] = _AGE_GRP_DISPLAY or {
+            self.value_maps['age_grp'] = self.age_grp_display or {
                 1.0: "18 to 25 Years", 2.0: "26 to 35 Years",
                 3.0: "36 to 45 Years", 4.0: "46 or more",
             }
@@ -854,7 +865,7 @@ class DataEngine:
         return self.distribution_table(df, self.F.get('age_band', 'age_grp'), base_label, numeric=numeric, extra_groups=extra_groups)
 
     def education_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        return self.distribution_table(df, self.F.get('education', 'dq3'), base_label, display_groups=EDUCATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
+        return self.distribution_table(df, self.F.get('education', 'dq3'), base_label, display_groups=self.education_display_groups, numeric=numeric, extra_groups=extra_groups)
 
     @staticmethod
     def sort_by_value(table_df):
@@ -870,7 +881,7 @@ class DataEngine:
         return pd.concat([base_row, rest], ignore_index=True)
 
     def occupation_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        tbl = self.distribution_table(df, self.F.get('occupation', 'dq4'), base_label, display_groups=OCCUPATION_DISPLAY_GROUPS, numeric=numeric, extra_groups=extra_groups)
+        tbl = self.distribution_table(df, self.F.get('occupation', 'dq4'), base_label, display_groups=self.occupation_display_groups, numeric=numeric, extra_groups=extra_groups)
         return self.sort_by_value(tbl) if numeric else tbl
 
     def household_income_table(self, df, base_label="All", numeric=False, extra_groups=None):
