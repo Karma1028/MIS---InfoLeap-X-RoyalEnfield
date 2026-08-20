@@ -1,9 +1,13 @@
 """Login gate for the Royal Enfield x Infoleap Digital Showroom.
 
-Session-state gated: render_login() returns True once authenticated, and the
-caller (app.py) should st.stop() if it returns False.
+Auth backends (in priority order):
+  1. Firebase Auth — if FIREBASE_WEB_API_KEY is set (st.secrets or env)
+  2. users.xlsx — local/Drive fallback
+
+Session-state gated: render_login() returns True once authenticated.
 """
 import csv
+import os
 import time
 import uuid
 from datetime import datetime
@@ -12,6 +16,44 @@ import pandas as pd
 import streamlit as st
 import bcrypt
 from utils.branding import brand_header_html, swoosh_strip_html
+
+
+def _firebase_api_key() -> str | None:
+    """Return Firebase Web API Key from st.secrets or env, or None."""
+    try:
+        import streamlit as st
+        if "FIREBASE_WEB_API_KEY" in st.secrets:
+            return st.secrets["FIREBASE_WEB_API_KEY"]
+    except Exception:
+        pass
+    return os.environ.get("FIREBASE_WEB_API_KEY")
+
+
+def _firebase_login(email: str, password: str) -> dict | None:
+    """Try Firebase login. Returns {email, uid} on success, {error: msg} on failure, None if not configured."""
+    api_key = _firebase_api_key()
+    if not api_key:
+        return None  # Firebase not configured — fall through to xlsx
+    import requests as _req
+    try:
+        resp = _req.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}",
+            json={"email": email, "password": password, "returnSecureToken": True},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            d = resp.json()
+            return {"email": d["email"], "uid": d["localId"], "name": email.split("@")[0], "role": "user"}
+        error = resp.json().get("error", {}).get("message", "UNKNOWN")
+        _FIREBASE_ERRORS = {
+            "EMAIL_NOT_FOUND": "Email not registered.",
+            "INVALID_PASSWORD": "Incorrect password.",
+            "USER_DISABLED": "Account disabled. Contact admin.",
+            "INVALID_LOGIN_CREDENTIALS": "Invalid email or password.",
+        }
+        return {"error": _FIREBASE_ERRORS.get(error, "Login failed.")}
+    except Exception as e:
+        return {"error": f"Auth service unavailable: {e}"}
 
 USERS_PATH = "data/users.xlsx"
 AUDIT_LOG_PATH = "data/login_audit.csv"
@@ -236,33 +278,57 @@ def render_login() -> bool:
                     remaining = int(_locked_until - time.time())
                     st.error(f"Too many failed attempts. Try again in {remaining}s.")
                 else:
-                    users = _load_users()
                     key = email.strip().lower()
-                    user = users.get(key)
-                    if user and user["active"] and _verify_password(password.strip(), str(user["password"]).strip()):
+                    auth_ok = False
+                    auth_role = "user"
+                    auth_name = key.split("@")[0]
+                    error_msg = None
+
+                    # --- Try Firebase first ---
+                    fb = _firebase_login(key, password.strip())
+                    if fb is not None:
+                        if "error" in fb:
+                            error_msg = fb["error"]
+                        else:
+                            auth_ok = True
+                            auth_role = fb.get("role", "user")
+                            auth_name = fb.get("name", auth_name)
+                    else:
+                        # --- Fallback: users.xlsx ---
+                        users = _load_users()
+                        user = users.get(key)
+                        if user and not user["active"]:
+                            _log_event(key, "ACCOUNT_INACTIVE")
+                            st.error("This account has been deactivated. Contact your admin.")
+                        elif user and _verify_password(password.strip(), str(user["password"]).strip()):
+                            auth_ok = True
+                            auth_role = user.get("role", "user")
+                            auth_name = user.get("name", auth_name)
+                        else:
+                            error_msg = "Invalid email or password."
+
+                    if auth_ok:
                         st.session_state["authenticated"] = True
                         st.session_state["auth_time"] = time.time()
                         st.session_state["username"] = key
-                        st.session_state["user_role"] = user.get("role", "user")
+                        st.session_state["user_role"] = auth_role
+                        st.session_state["user_name"] = auth_name
                         st.session_state["_session_id"] = str(uuid.uuid4())[:8]
                         st.session_state.pop("login_fails", None)
                         st.session_state.pop("login_locked_until", None)
                         _log_event(key, "LOGIN_SUCCESS")
                         st.rerun()
-                    elif user and not user["active"]:
-                        _log_event(key, "ACCOUNT_INACTIVE")
-                        st.error("This account has been deactivated. Contact your admin.")
-                    else:
+                    elif error_msg:
                         _fails += 1
                         st.session_state["login_fails"] = _fails
                         if _fails >= _MAX_ATTEMPTS:
                             st.session_state["login_locked_until"] = time.time() + _LOCKOUT_SECONDS
                             st.session_state["login_fails"] = 0
                             _log_event(key, "ACCOUNT_LOCKED")
-                            st.error(f"Too many failed attempts. Account locked for {_LOCKOUT_SECONDS}s.")
+                            st.error(f"Too many failed attempts. Locked for {_LOCKOUT_SECONDS}s.")
                         else:
                             _log_event(key, "LOGIN_FAILED")
-                            st.error(f"Invalid email or password. ({_MAX_ATTEMPTS - _fails} attempts remaining)")
+                            st.error(f"{error_msg} ({_MAX_ATTEMPTS - _fails} attempts remaining)")
 
     return False
 

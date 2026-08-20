@@ -71,3 +71,10 @@ post_g16_finding.py
 search_*.py
 
 
+firebase_service_account.json
+service_account.json
+credentials.json
+token.json
+token.pickle
+.env
+data/.cache_*

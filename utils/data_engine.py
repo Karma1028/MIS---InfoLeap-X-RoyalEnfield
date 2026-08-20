@@ -23,44 +23,33 @@ DQ2_CODEBOOK_PATH = "data/dq2_netting_codebook.json"
 DATA_DIR = Path("data")
 MASTER_CONFIG_PATH = DATA_DIR / "RE_MIS_Master.xlsx"
 
-# Optional Google Drive sync (Option A — gdown).
-# Set DRIVE_FILE_ID env var to the file ID from the shareable Drive link.
-# Format: https://drive.google.com/file/d/<FILE_ID>/view
-# The file is downloaded fresh to MASTERFILE_PATH on every engine load.
-_DRIVE_FOLDER_ID = "1SoD7nzHP8Lfnr8An2NT-SXO-IzJsKkJQ"
+_DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID", "1SoD7nzHP8Lfnr8An2NT-SXO-IzJsKkJQ")
+_DRIVE_FILES = {
+    "RE_MIS_Master.xlsx": "master",
+    "users.xlsx":         "users",
+    "login_audit.csv":    "login_audit",
+}
 
 def _sync_from_drive(force: bool = False):
-    """Download all files from shared Drive folder into data/.
-    Downloads RE_MIS_Master.xlsx (and users.xlsx if present) on every load_data() call.
-    Folder ID is hardcoded — same shared folder used for all data files.
-    Falls back to local files if download fails and they already exist.
-    """
+    """Download data files from Drive using service account. No gdown, no public links."""
     file_missing = not Path(MASTERFILE_PATH).exists()
     try:
-        import gdown, shutil, tempfile
+        from utils.drive_loader import download_file, find_file_id
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            gdown.download_folder(
-                id=_DRIVE_FOLDER_ID,
-                output=tmp,
-                quiet=False,
-                use_cookies=False,
-            )
-            import os
-            # gdown creates a subfolder named after the Drive folder — walk all levels
-            for root, _, files in os.walk(tmp):
-                for fname in files:
-                    src = os.path.join(root, fname)
-                    dst = str(DATA_DIR / fname)
-                    shutil.copy2(src, dst)
-                    print(f"[drive-sync] Downloaded: {fname}")
+        for fname in _DRIVE_FILES:
+            dest = str(DATA_DIR / fname)
+            fid = find_file_id(fname, _DRIVE_FOLDER_ID)
+            if not fid:
+                print(f"[drive-sync] WARNING: '{fname}' not found in Drive folder.")
+                continue
+            download_file(fname, dest, _DRIVE_FOLDER_ID)
+            print(f"[drive-sync] Downloaded: {fname}")
     except Exception as e:
         if file_missing:
             raise RuntimeError(
-                f"RE_MIS_Master.xlsx not found and Drive folder download failed: {e}\n"
-                "Folder ID: " + _DRIVE_FOLDER_ID
+                f"RE_MIS_Master.xlsx not found and Drive sync failed: {e}"
             ) from e
-        print(f"[drive-sync] WARNING: Drive download failed, using existing local files. Error: {e}")
+        print(f"[drive-sync] WARNING: Drive sync failed, using local files. Error: {e}")
 
 
 def load_display_groups():
