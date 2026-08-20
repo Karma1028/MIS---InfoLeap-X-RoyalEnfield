@@ -97,21 +97,15 @@ def _verify_password(pwd: str, stored: str) -> bool:
         return False
 
 
-_USERS_SHEET_ID = "1JuCa-UrGUnI4EQrte46E1nI8gYVwrIHo"
-
 def _sync_users_from_drive():
-    """Download users Google Sheet as xlsx on every call (no cache — always fresh)."""
+    """Download users.xlsx from Drive folder via service account (always fresh)."""
     try:
-        import requests
+        from utils.drive_loader import download_file
         Path(USERS_PATH).parent.mkdir(parents=True, exist_ok=True)
-        url = f"https://docs.google.com/spreadsheets/d/{_USERS_SHEET_ID}/export?format=xlsx"
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        with open(USERS_PATH, "wb") as f:
-            f.write(r.content)
-        print("[users-sync] users sheet downloaded.")
+        download_file("users.xlsx", USERS_PATH)
+        print("[users-sync] users.xlsx downloaded via service account.")
     except Exception as e:
-        print(f"[users-sync] WARNING: failed to download users sheet: {e}")
+        print(f"[users-sync] WARNING: failed to download users.xlsx: {e}")
 
 
 def _ensure_users_file():
