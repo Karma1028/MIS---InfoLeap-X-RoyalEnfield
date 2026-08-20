@@ -324,19 +324,20 @@ def render_login() -> bool:
                     else:
                         _do_login(fb["email"], fb.get("name", key.split("@")[0]), fb.get("role", "user"), "LOGIN_SUCCESS")
 
-        # ── Forgot password ───────────────────────────────────────────────
-        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-        with st.expander("Forgot password?"):
-            reset_email = st.text_input("Enter your email address", key="reset_email")
-            if st.button("Send reset email", key="send_reset"):
-                if not reset_email.strip():
-                    st.error("Enter your email address.")
-                else:
-                    err = _firebase_send_reset(reset_email.strip().lower())
-                    if err:
-                        st.error(err)
+            # ── Forgot password ───────────────────────────────────────────
+            st.markdown("<hr style='margin:0.8rem 0 0.6rem;border:none;border-top:1px solid #E8E5DF;'>", unsafe_allow_html=True)
+            _show_reset = st.toggle("Forgot password?", key="show_reset", value=False)
+            if _show_reset:
+                reset_email = st.text_input("Enter your email address", key="reset_email", label_visibility="collapsed", placeholder="your@email.com")
+                if st.button("Send reset email", key="send_reset", use_container_width=True):
+                    if not reset_email.strip():
+                        st.error("Enter your email address.")
                     else:
-                        st.success("Password reset email sent. Check your inbox.")
+                        err = _firebase_send_reset(reset_email.strip().lower())
+                        if err:
+                            st.error(err)
+                        else:
+                            st.success("Password reset email sent. Check your inbox.")
 
     return False
 
