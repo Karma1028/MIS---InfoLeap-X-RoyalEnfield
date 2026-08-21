@@ -247,10 +247,10 @@ def load_model_config():
 RE_MODEL_LABELS: dict = {}
 RE_MODEL_PLATFORM: dict = {}
 RE_PLATFORM_LABELS: dict = {}  # {platform_cc: display_label} — dynamic from model_config
-# Hard cap at 14 — competitor respondents use codes 15-99; raising this silently
-# inflates the Acceptors base. Add new RE models with codes 1-14 only.
-_ACCEPTOR_MAX_CODE: int = 15
-_MAX_MODEL_CODE: int = _ACCEPTOR_MAX_CODE
+# Derived at load_data() from model_config — max code among all configured RE models.
+# Competitor respondents use codes above this; never hardcode this value.
+_ACCEPTOR_MAX_CODE: int = 0  # placeholder; overwritten in load_data()
+_MAX_MODEL_CODE: int = 0
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
 # Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
@@ -335,20 +335,12 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
-        global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE
+        global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE
         _sync_from_drive()
         RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS = load_model_config()
-        _MAX_MODEL_CODE = _ACCEPTOR_MAX_CODE  # always fixed — see _ACCEPTOR_MAX_CODE note
-        # Warn if any configured model code exceeds the cap
-        if RE_MODEL_LABELS:
-            over = [c for c in RE_MODEL_LABELS if c > _ACCEPTOR_MAX_CODE]
-            if over:
-                import streamlit as st
-                st.warning(
-                    f"model_config has codes {over} > {_ACCEPTOR_MAX_CODE}. "
-                    "Acceptor detection uses codes 1–14 only — those models will not appear in Acceptors base. "
-                    "Renumber to 1–14 to include them."
-                )
+        # Derive max code dynamically — whatever the highest model_code in model_config is
+        _ACCEPTOR_MAX_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
+        _MAX_MODEL_CODE = _ACCEPTOR_MAX_CODE
         # Reload display_groups fresh from Drive file so Reload Data picks up changes
         _dg = load_display_groups()
         self.education_display_groups = _dg.get("dq3",     {}) or None
