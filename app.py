@@ -243,7 +243,7 @@ if time_mode == "Month Range":
     lo_i, hi_i = month_short.index(lo), month_short.index(hi)
     selected_months = MONTH_ORDER[lo_i:hi_i + 1]
 elif time_mode == "Quarter (Financial Calendar)":
-    quarters = st.sidebar.multiselect("Quarter (Apr-Mar FY)", FY_QUARTER_ORDER, default=FY_QUARTER_ORDER, key="quarters")
+    quarters = st.sidebar.multiselect("Quarter  —  AMJ=Apr-Jun · JAS=Jul-Sep · OND=Oct-Dec · JFM=Jan-Mar", FY_QUARTER_ORDER, default=FY_QUARTER_ORDER, key="quarters")
     selected_months = [m for m in MONTH_ORDER if month_label_to_fy_quarter(m) in quarters]
 
 # Quarter combined columns: active when Quarter time period is selected.

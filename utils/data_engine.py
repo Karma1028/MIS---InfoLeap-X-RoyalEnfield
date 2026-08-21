@@ -183,9 +183,10 @@ def month_label_to_fy_quarter(month_label):
         q, fy_start = 2, cal_year
     elif month_num in (10, 11, 12):
         q, fy_start = 3, cal_year
-    else:  # Jan-Mar belongs to the FY that started the previous April
+    else:
         q, fy_start = 4, cal_year - 1
-    return f"Q{q} FY{str(fy_start)[2:]}-{str(fy_start + 1)[2:]}"
+    year_suffix = str(cal_year)[2:]
+    return f"{QUARTER_INITIALS[q]}'{year_suffix}"
 
 
 MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
@@ -667,9 +668,7 @@ class DataEngine:
                 months = groups.get(q)
                 if not months:
                     continue
-                qnum = int(q.split()[0][1:])
-                year_suffix = months[0].split("'")[1][2:]
-                out[f"{QUARTER_INITIALS[qnum]}'{year_suffix}"] = months
+                out[q] = months  # q already in initials format e.g. "JAS'25"
         if extra_groups:
             out.update(extra_groups)
         return out
