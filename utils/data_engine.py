@@ -249,7 +249,7 @@ RE_MODEL_PLATFORM: dict = {}
 RE_PLATFORM_LABELS: dict = {}  # {platform_cc: display_label} — dynamic from model_config
 # Hard cap at 14 — competitor respondents use codes 15-99; raising this silently
 # inflates the Acceptors base. Add new RE models with codes 1-14 only.
-_ACCEPTOR_MAX_CODE: int = 14
+_ACCEPTOR_MAX_CODE: int = 15
 _MAX_MODEL_CODE: int = _ACCEPTOR_MAX_CODE
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
