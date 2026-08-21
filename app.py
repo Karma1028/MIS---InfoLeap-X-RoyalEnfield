@@ -698,11 +698,11 @@ else:
 
         # ── Signal badge ──────────────────────────────────────────────────
         if rising:
-            _sc, _sb, _si, _st = "#1B8A3F", "#E8F5E9", "▲", "TRENDING UP"
+            _sc, _sb, _si, _st = "#1B8A3F", "#E8F5E9", "▲", "Rising (last 3 months)"
         elif falling:
-            _sc, _sb, _si, _st = "#C8102E", "#FEECEC", "▼", "SOFTENING"
+            _sc, _sb, _si, _st = "#C8102E", "#FEECEC", "▼", "Falling (last 3 months)"
         else:
-            _sc, _sb, _si, _st = "#64748B", "#F8FAFC", "—", "STABLE"
+            _sc, _sb, _si, _st = "#64748B", "#F8FAFC", "—", "No clear trend"
 
         _badge = (
             f"<span style='display:inline-block;font-size:0.6rem;font-weight:800;"
