@@ -60,6 +60,22 @@ def render_settings_page():
                             st.success(f"User {new_email.strip().lower()} added.")
                             st.rerun()
 
+    if is_admin:
+        with st.expander("🗂️ Model Config Sheet Setup (Admin)", expanded=False):
+            st.caption(
+                "Writes in_survey / acceptor_code / rejector_code / cancelled_code columns "
+                "to the model_config tab in the master Google Sheet and applies green/red "
+                "color coding. Safe to re-run — existing values are preserved."
+            )
+            if st.button("Run model_config setup", use_container_width=True):
+                from utils.model_config_setup import setup_model_config_columns
+                with st.spinner("Updating master sheet…"):
+                    ok, msg = setup_model_config_columns()
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
     with st.expander("📋 Login Audit Log (last 100 events)", expanded=False):
         audit_df = load_audit_log(100)
         if not audit_df.empty and not is_admin:
