@@ -23,7 +23,7 @@ PLOTLY_CONFIG = {"displayModeBar": False, "staticPlot": False}
 # this constant is the only thing keeping them aligned. Auto-sized table
 # columns (the old behavior) varied per table depending on label length,
 # which is what caused the persistent bar-to-column misalignment.
-CATEGORY_COL_WIDTH = 170
+CATEGORY_COL_WIDTH = 150
 
 # Soothing mix of RE + Infoleap brand colors — per user feedback ("colouring
 # of the charts are not at all visible... use lighter colours... subtle and
@@ -1172,7 +1172,8 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
     }}
     .netting-table th.col-cat {{
         text-align: left;
-        min-width: 260px;
+        min-width: 200px;
+        max-width: 220px;
     }}
     .netting-table td.col-cat {{
         text-align: left !important;
@@ -1484,7 +1485,9 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
     }}
     .bwt-wrap-{key_suffix} th.bwt-cat {{
         text-align: left;
-        width: auto;
+        min-width: 160px;
+        max-width: 200px;
+        width: 200px;
     }}
     .bwt-wrap-{key_suffix} th.bwt-val {{
         text-align: center;
