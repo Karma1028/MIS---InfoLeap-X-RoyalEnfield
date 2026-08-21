@@ -879,15 +879,26 @@ def _nav_pill(label, anchor):
         f"font-weight:600;background:{accent}12;color:{accent};border:1px solid {accent}35;"
         f"cursor:pointer;white-space:nowrap;transition:all 0.2s;'>{label}</span></a>"
     )
+# Build nav pills from sections that actually exist for this segment
+_nav_section_map = [
+    ("Demographics", "sec-demographics"),
+    ("Buyer Type", "sec-buyer-type"),
+    ("Additional & Replaced", "sec-addrepl"),
+]
+if segment_value in ("Rejector", "Cancelled"):
+    _nav_section_map.append(("Brand Owned", "sec-brand-owned"))
+if segment_value == "Acceptor":
+    _nav_section_map.append(("Brand Considered", "sec-brand-considered"))
+if segment_value in ("Rejector", "Cancelled"):
+    _nav_section_map.append(("Why Considered RE", "sec-reasons-considered"))
+_nav_section_map.append(("Reasons", "sec-reasons"))
+
 _nav_pills_html = (
     f"<div id='jump-nav-bar' style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;"
     f"margin:0.6rem 0 0.6rem;position:sticky;top:3.2rem;z-index:90;"
     f"background:rgba(250,250,248,0.96);backdrop-filter:blur(6px);"
     f"padding:6px 0 8px;margin-left:-0.5rem;padding-left:0.5rem;'>"
-    + _nav_pill("Demographics", "sec-demographics")
-    + _nav_pill("Buyer Type", "sec-buyer-type")
-    + _nav_pill("Additional & Replaced", "sec-addrepl")
-    + ("" if _overview_is_comparison else _nav_pill("Month Trend", "sec-trend"))
+    + "".join(_nav_pill(lbl, anchor) for lbl, anchor in _nav_section_map)
     + "</div>"
 )
 
@@ -898,7 +909,7 @@ _components.html(
     f"""<script>
 (function(){{
   var ac='{accent}';
-  var secs=['sec-demographics','sec-buyer-type','sec-addrepl','sec-trend'];
+  var secs={str([anchor for _, anchor in _nav_section_map])};
   function activate(id){{
     var pdoc=window.parent.document;
     pdoc.querySelectorAll('a[data-sec] span.jp').forEach(function(s){{
