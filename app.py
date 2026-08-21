@@ -668,7 +668,7 @@ else:
         )
 
     def _ai_headline(label, value_label, month_vals, current_month, delta, unit="%", n_cur=None, current_override=None):
-        """CEO/CXO-grade executive insight: signal classification, trend velocity, strategic context."""
+        """Concise executive KPI insight: signal badge + one-line trend fact + segment differentiator."""
         if not month_vals or len(month_vals) < 2:
             return ""
         vals_dict = dict(month_vals)
@@ -681,7 +681,6 @@ else:
             return ""
 
         is_pct = unit == "%"
-        _no_change_thresh = 1.0 if is_pct else 0.5
         _momentum_thresh = 2.0 if is_pct else 1.0
 
         def _fmt_val(v):
@@ -692,73 +691,49 @@ else:
             return f"{sign}{d:.1f}pp" if is_pct else f"{sign}{d:.1f}{unit}"
 
         trend_window = vals[-3:] if len(vals) >= 3 else vals
-        rising  = trend_window[-1] > trend_window[0] + _momentum_thresh
-        falling = trend_window[-1] < trend_window[0] - _momentum_thresh
-        gap_vs_avg = cur - avg
-        spread = max(vals) - min(vals)
+        _3m_move = trend_window[-1] - trend_window[0]
+        rising  = _3m_move > _momentum_thresh
+        falling = _3m_move < -_momentum_thresh
         b = lambda t: f"<b style='color:#1E293B;'>{t}</b>"
 
         # ── Signal badge ──────────────────────────────────────────────────
-        # Classify each KPI dimension by strategic signal
-        if rising and gap_vs_avg >= _no_change_thresh:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#1B8A3F", "#E8F5E9", "▲", "ACCELERATING"
-        elif falling and gap_vs_avg <= -_no_change_thresh:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#C8102E", "#FEECEC", "▼", "DECLINING"
-        elif rising:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#2563EB", "#EFF6FF", "↗", "TRENDING UP"
+        if rising:
+            _sc, _sb, _si, _st = "#1B8A3F", "#E8F5E9", "▲", "TRENDING UP"
         elif falling:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#D97706", "#FFFBEB", "↘", "SOFTENING"
-        elif abs(gap_vs_avg) >= _no_change_thresh * 2:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#7C3AED", "#F5F3FF", "◆", "ELEVATED"
+            _sc, _sb, _si, _st = "#C8102E", "#FEECEC", "▼", "SOFTENING"
         else:
-            _signal_color, _signal_bg, _signal_icon, _signal_text = "#64748B", "#F8FAFC", "—", "STABLE"
+            _sc, _sb, _si, _st = "#64748B", "#F8FAFC", "—", "STABLE"
 
         _badge = (
             f"<span style='display:inline-block;font-size:0.6rem;font-weight:800;"
             f"letter-spacing:0.07em;padding:2px 7px;border-radius:4px;"
-            f"background:{_signal_bg};color:{_signal_color};border:1px solid {_signal_color}30;"
-            f"margin-bottom:5px;'>{_signal_icon} {_signal_text}</span>"
+            f"background:{_sb};color:{_sc};border:1px solid {_sc}30;'>"
+            f"{_si} {_st}</span>"
         )
 
-        # ── Velocity sentence ─────────────────────────────────────────────
-        _3m_move = trend_window[-1] - trend_window[0]
+        # ── One-line trend fact ───────────────────────────────────────────
         if rising:
-            _velocity = (f"3-month trajectory: {b(_fmt_delta(_3m_move))} — "
-                         f"sustained upward pressure. Peak on record: {b(_fmt_val(peak_m[1]))} ({peak_m[0]}).")
+            _fact = (f"{b(_fmt_delta(_3m_move))} over 3 months. "
+                     f"High: {b(_fmt_val(peak_m[1]))} in {peak_m[0]}.")
         elif falling:
-            _velocity = (f"3-month trajectory: {b(_fmt_delta(_3m_move))} — "
-                         f"sustained downward drift. Floor on record: {b(_fmt_val(trough_m[1]))} ({trough_m[0]}).")
+            _fact = (f"{b(_fmt_delta(_3m_move))} over 3 months. "
+                     f"Low: {b(_fmt_val(trough_m[1]))} in {trough_m[0]}.")
         else:
-            _velocity = (f"Flat over last 3 months. "
-                         f"All-time range: {b(_fmt_val(trough_m[1]))} ({trough_m[0]}) → {b(_fmt_val(peak_m[1]))} ({peak_m[0]}), "
-                         f"a {b(f'{spread:.1f}' + ('pp' if is_pct else unit))} spread.")
+            _fact = (f"Range across study: {b(_fmt_val(trough_m[1]))} – {b(_fmt_val(peak_m[1]))}. "
+                     f"No directional momentum.")
 
-        # ── Current vs average sentence ───────────────────────────────────
-        _period_ctx = "period average" if current_override is not None else "latest reading"
-        _n_note = f"&nbsp;<span style='color:#94A3B8;font-size:0.68rem;'>n≈{n_cur:,}</span>" if n_cur and not is_pct else ""
-        if abs(gap_vs_avg) < _no_change_thresh:
-            _vs_avg = (f"{b(_fmt_val(cur))}{_n_note} — in line with the "
-                       f"{_fmt_val(avg)} monthly mean across all tracked periods.")
-        elif gap_vs_avg > 0:
-            _vs_avg = (f"{b(_fmt_val(cur))}{_n_note} — {b(_fmt_delta(gap_vs_avg))} above the "
-                       f"{_fmt_val(avg)} period mean, indicating a structurally elevated baseline.")
-        else:
-            _vs_avg = (f"{b(_fmt_val(cur))}{_n_note} — {b(_fmt_delta(gap_vs_avg))} below the "
-                       f"{_fmt_val(avg)} period mean, indicating structural softness.")
-
-        # ── Segment delta context ─────────────────────────────────────────
-        _seg_ctx = ""
+        # ── Segment vs overall (only when material) ───────────────────────
+        _seg_line = ""
         if delta is not None and abs(delta) >= 2:
             _dir = "above" if delta > 0 else "below"
-            _seg_ctx = (f" This segment runs {b(_fmt_delta(delta))} {_dir} the overall sample average — "
-                        f"a material differentiator for targeting decisions.")
+            _seg_line = (f"<span style='color:#7A7670;'> · {_fmt_delta(delta)} {_dir} overall.</span>")
 
-        narrative = f"{_vs_avg}{_seg_ctx} {_velocity}"
         return (
-            f"<div style='margin-top:8px;border-top:1px solid #F0EDE8;padding-top:7px;'>"
+            f"<div style='margin-top:8px;border-top:1px solid #F0EDE8;padding-top:6px;"
+            f"display:flex;flex-direction:column;gap:4px;'>"
             f"{_badge}"
-            f"<div style='font-size:0.73rem;color:#4A5568;line-height:1.75;margin-top:3px;'>"
-            f"{narrative}</div>"
+            f"<div style='font-size:0.72rem;color:#4A5568;line-height:1.6;'>"
+            f"{_fact}{_seg_line}</div>"
             f"</div>"
         )
 
@@ -866,84 +841,6 @@ else:
             + f"</div>",
             unsafe_allow_html=True,
         )
-
-    # ── Executive Intelligence Brief ──────────────────────────────────────────
-    # Synthesises the 4 KPI cards into a single executive-grade paragraph.
-    # Computed entirely from live data — no AI calls.
-    _brief_lines = []
-
-    # Age signal
-    _age_trend_3m = _avg_age_monthly[-1][1] - _avg_age_monthly[-3][1] if len(_avg_age_monthly) >= 3 else 0
-    if abs(_age_trend_3m) >= 1.0:
-        _age_dir = "rising" if _age_trend_3m > 0 else "declining"
-        _brief_lines.append(
-            f"Buyer age averaging <b>{avg_age:.1f} yrs</b> and {_age_dir} "
-            f"(<b>{'%+.1f' % _age_trend_3m} yrs</b> over 3 months) — "
-            f"{'ageing buyer base warrants entry-level model push' if _age_trend_3m > 0 else 'younger cohorts entering, growth opportunity in sub-350cc and lifestyle segment'}."
-        )
-    else:
-        _brief_lines.append(
-            f"Buyer age stable at <b>{avg_age:.1f} yrs</b> — core demographic holding steady across the study period."
-        )
-
-    # FTB signal
-    if ftb_pct >= 50:
-        _brief_lines.append(
-            f"<b>{ftb_pct:.0f}%</b> first-time buyers signal high category headroom but elevated "
-            f"purchase-decision risk — dealer experience and EMI clarity are conversion-critical levers."
-        )
-    elif ftb_pct >= 30:
-        _brief_lines.append(
-            f"<b>{ftb_pct:.0f}%</b> first-time buyers — meaningful new-entrant pool; upgrade retention "
-            f"and ownership experience will determine repeat-purchase pipeline 3–5 yrs out."
-        )
-    else:
-        _brief_lines.append(
-            f"<b>{ftb_pct:.0f}%</b> first-time buyers — largely repeat or upgrade purchasers; loyalty "
-            f"programs and model upgrade paths are primary retention instruments."
-        )
-
-    # Income + Education signal
-    _income_label_short = top_income_row['Unnamed: 0'] if 'Unnamed: 0' in top_income_row.index else "dominant income band"
-    _edu_label_short = top_edu_row['Unnamed: 0'] if 'Unnamed: 0' in top_edu_row.index else "top education band"
-    _brief_lines.append(
-        f"Dominant income band: <b>{_income_label_short}</b> ({top_income_val:.0f}% of segment). "
-        f"Education profile led by <b>{_edu_label_short}</b> ({top_edu_val:.0f}%) — "
-        f"indicates price-sensitivity tier and preferred communication channels for media planning."
-    )
-
-    # Segment delta commentary
-    _seg_signals = []
-    if _chip_deltas.get('age') is not None and abs(_chip_deltas['age']) >= 1.5:
-        _d = _chip_deltas['age']
-        _seg_signals.append(f"{'older' if _d > 0 else 'younger'} than overall by {abs(_d):.1f} yrs")
-    if _chip_deltas.get('ftb') is not None and abs(_chip_deltas['ftb']) >= 5:
-        _d = _chip_deltas['ftb']
-        _seg_signals.append(f"{'more' if _d > 0 else 'fewer'} first-time buyers vs market ({_d:+.0f}pp)")
-    if _seg_signals:
-        _brief_lines.append(
-            f"Vs. overall sample: this segment is <b>{'; '.join(_seg_signals)}</b> — "
-            f"calibrate messaging and financial product offers accordingly."
-        )
-
-    _brief_html_inner = " ".join(f"<span style='display:block;margin-bottom:4px;'>{l}</span>" for l in _brief_lines)
-    st.markdown(
-        f"<div style='background:linear-gradient(135deg,#1A1A2E 0%,#16213E 100%);"
-        f"border-radius:14px;padding:18px 22px 16px;margin:10px 0 6px;box-shadow:0 4px 20px rgba(0,0,0,0.15);'>"
-        f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>"
-        f"<span style='display:inline-block;background:{accent};color:#fff;font-size:0.65rem;"
-        f"font-weight:800;letter-spacing:0.1em;padding:3px 10px;border-radius:5px;'>EXECUTIVE INTELLIGENCE BRIEF</span>"
-        f"<span style='font-size:0.7rem;color:#94A3B8;'>{segment_nav} · {base_n:,} respondents · {_latest_month}</span>"
-        f"</div>"
-        f"<div style='font-size:0.78rem;color:#CBD5E1;line-height:1.85;'>"
-        f"{_brief_html_inner}"
-        f"</div>"
-        f"<div style='margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);"
-        f"font-size:0.64rem;color:#475569;letter-spacing:0.04em;'>"
-        f"Computed from live survey data · Royal Enfield MIS Study · Infoleap Analytics"
-        f"</div></div>",
-        unsafe_allow_html=True,
-    )
 
 regen_key = f"regen_nonce_{segment_nav}"
 st.session_state.setdefault(regen_key, 0)
