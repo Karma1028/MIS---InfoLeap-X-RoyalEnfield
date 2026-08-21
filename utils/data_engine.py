@@ -359,11 +359,17 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
-        global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE
-        global _ACC_CODE_MAP, _REJ_CODE_MAP, _CAN_CODE_MAP, _HAS_EXPLICIT_CODES
+        global _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE, _HAS_EXPLICIT_CODES
         _sync_from_drive()
-        (RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS,
-         _in_survey, _ACC_CODE_MAP, _REJ_CODE_MAP, _CAN_CODE_MAP, _HAS_EXPLICIT_CODES) = load_model_config()
+        (_labels, _platform, _plat_labels,
+         _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config()
+        # Update in-place so modules that imported these dicts by reference stay in sync
+        RE_MODEL_LABELS.clear();   RE_MODEL_LABELS.update(_labels)
+        RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(_platform)
+        RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(_plat_labels)
+        _ACC_CODE_MAP.clear(); _ACC_CODE_MAP.update(_acc_map)
+        _REJ_CODE_MAP.clear(); _REJ_CODE_MAP.update(_rej_map)
+        _CAN_CODE_MAP.clear(); _CAN_CODE_MAP.update(_can_map)
         _ACCEPTOR_MAX_CODE = max(_in_survey) if _in_survey else (max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14)
         _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
         # Reload display_groups fresh from Drive file so Reload Data picks up changes
