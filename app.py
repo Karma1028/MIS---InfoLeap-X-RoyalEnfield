@@ -680,7 +680,7 @@ else:
             delta_val = v - avg
             delta_str = (f"+{delta_val:.1f}" if delta_val >= 0 else f"{delta_val:.1f}") + (
                 "pp" if unit == "%" else unit)
-            delta_col = "#1B8A3F" if delta_val >= 0 else "#C8102E"
+            delta_col = "#4ADE80" if delta_val >= 0 else "#F87171"
 
             tooltip = (
                 f"<g class='spk-tt'>"
