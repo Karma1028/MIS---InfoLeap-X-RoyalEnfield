@@ -596,14 +596,13 @@ else:
     )
 
     def _sparkline_svg(month_vals, current_month, color, unit="%"):
-        """Inline SVG sparkline: trend line + avg reference + labeled peak/trough/current."""
+        """Inline SVG sparkline with CSS-hover tooltips on every data point."""
         if not month_vals or len(month_vals) < 2:
             return ""
         vals = [v for m, v in month_vals]
         mn, mx = min(vals), max(vals)
         rng = mx - mn if mx != mn else 1
         avg = sum(vals) / len(vals)
-        # Chart area: full width used for line, labels stay inside
         W, H = 460, 200
         PAD_L, PAD_R, PAD_T, PAD_B = 12, 12, 44, 44
         chart_w = W - PAD_L - PAD_R
@@ -614,11 +613,9 @@ else:
 
         pts = " ".join(f"{xp(i):.1f},{yp(v):.1f}" for i, v in enumerate(vals))
         avg_y = yp(avg)
-
         max_i = vals.index(mx)
         min_i = vals.index(mn)
 
-        # Avg dashed line
         avg_line = (
             f"<line x1='{PAD_L}' y1='{avg_y:.1f}' x2='{W - PAD_R}' y2='{avg_y:.1f}' "
             f"stroke='#94A3B8' stroke-width='1.5' stroke-dasharray='6,3' opacity='0.7'/>"
@@ -632,37 +629,87 @@ else:
                 candidate = cy + margin if prefer_above else cy - margin
             return candidate
 
+        # CSS inside SVG for hover tooltips and grow effect
+        TT_W, TT_H = 110, 38
+        _style = (
+            "<style>"
+            ".spk-pt { cursor: crosshair; }"
+            ".spk-pt .spk-tt { visibility: hidden; opacity: 0; transition: opacity 0.15s; }"
+            ".spk-pt:hover .spk-tt { visibility: visible; opacity: 1; }"
+            ".spk-pt .spk-dot { transition: r 0.12s; }"
+            ".spk-pt:hover .spk-dot { r: 14; }"
+            "</style>"
+        )
+
         circles = ""
         for i, (m, v) in enumerate(month_vals):
             cx, cy = xp(i), yp(v)
             is_current = (m == current_month)
             is_max = (i == max_i) and not is_current
             is_min = (i == min_i) and not is_current
+
+            # Dot styling
             if is_current:
+                dot_r, dot_fill, dot_stroke = 10, color, "#fff"
                 ly = _safe_label_y(cy, prefer_above=True)
-                circles += (
-                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='10' fill='{color}' stroke='#fff' stroke-width='3'/>"
-                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                    f"font-size='18' font-weight='900' fill='{color}'>{_fmt(v)}</text>"
-                )
+                static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                                f"font-size='18' font-weight='900' fill='{color}'>{_fmt(v)}</text>")
             elif is_max:
+                dot_r, dot_fill, dot_stroke = 7, "#1B8A3F", "#fff"
                 ly = _safe_label_y(cy, prefer_above=True)
-                circles += (
-                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='7' fill='#1B8A3F' stroke='#fff' stroke-width='2'/>"
-                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                    f"font-size='16' fill='#1B8A3F' font-weight='800'>{_fmt(v)}</text>"
-                )
+                static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                                f"font-size='16' fill='#1B8A3F' font-weight='800'>{_fmt(v)}</text>")
             elif is_min:
+                dot_r, dot_fill, dot_stroke = 6, "#9CA3AF", "#fff"
                 ly = _safe_label_y(cy, prefer_above=False)
-                circles += (
-                    f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='6' fill='#9CA3AF' stroke='#fff' stroke-width='2'/>"
-                    f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                    f"font-size='15' fill='#6B7280' font-weight='700'>{_fmt(v)}</text>"
-                )
+                static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
+                                f"font-size='15' fill='#6B7280' font-weight='700'>{_fmt(v)}</text>")
+            else:
+                dot_r, dot_fill, dot_stroke = 5, color, "#fff"
+                static_label = ""
+
+            # Tooltip popup: position above point, clamp to SVG edges
+            tt_x = max(0, min(cx - TT_W / 2, W - TT_W))
+            tt_y = cy - TT_H - 14
+            if tt_y < 2:
+                tt_y = cy + 14
+
+            # vs-avg delta string inside tooltip
+            delta_val = v - avg
+            delta_str = (f"+{delta_val:.1f}" if delta_val >= 0 else f"{delta_val:.1f}") + (
+                "pp" if unit == "%" else unit)
+            delta_col = "#1B8A3F" if delta_val >= 0 else "#C8102E"
+
+            tooltip = (
+                f"<g class='spk-tt'>"
+                f"<rect x='{tt_x:.1f}' y='{tt_y:.1f}' width='{TT_W}' height='{TT_H}' "
+                f"rx='6' fill='#1E293B' opacity='0.93'/>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 14:.1f}' text-anchor='middle' "
+                f"font-size='13' font-weight='700' fill='#F1F5F9'>{m}</text>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 28:.1f}' text-anchor='middle' "
+                f"font-size='13' font-weight='800' fill='#fff'>{_fmt(v)}"
+                f"<tspan fill='{delta_col}' font-size='11'> ({delta_str} vs avg)</tspan>"
+                f"</text>"
+                f"</g>"
+            )
+
+            # Hit area (invisible wider circle for easier hover)
+            hit = (f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='18' fill='transparent'/>")
+
+            circles += (
+                f"<g class='spk-pt'>"
+                f"{hit}"
+                f"<circle class='spk-dot' cx='{cx:.1f}' cy='{cy:.1f}' r='{dot_r}' "
+                f"fill='{dot_fill}' stroke='{dot_stroke}' stroke-width='2'/>"
+                f"{static_label}"
+                f"{tooltip}"
+                f"</g>"
+            )
 
         return (
             f"<svg viewBox='0 0 {W} {H}' width='100%' height='auto' "
             f"style='overflow:visible;margin-top:8px;display:block;min-height:120px;'>"
+            f"{_style}"
             f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='3' opacity='0.7' stroke-linejoin='round'/>"
             f"{avg_line}{circles}</svg>"
         )
