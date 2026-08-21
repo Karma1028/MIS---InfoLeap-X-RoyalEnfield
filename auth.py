@@ -1,24 +1,25 @@
 """Login gate for the Royal Enfield x Infoleap Digital Showroom.
 
 Auth backend: Firebase Auth (Email/Password only).
-Admin adds users via Firebase Console. Session-state gated.
+User roster + audit log stored in Google Sheets (Sheets API v4).
 """
-import csv
 import os
 import time
 import uuid
 from datetime import datetime
-from pathlib import Path
 import pandas as pd
 import streamlit as st
 import bcrypt
 from utils.branding import brand_header_html, swoosh_strip_html
 
+_USERS_COLS  = ["email", "password", "name", "active", "role"]
+_AUDIT_COLS  = ["timestamp", "email", "event", "session_id"]
+
+
+# ── Firebase helpers ──────────────────────────────────────────────────────────
 
 def _firebase_api_key() -> str | None:
-    """Return Firebase Web API Key from st.secrets or env, or None."""
     try:
-        import streamlit as st
         if "FIREBASE_WEB_API_KEY" in st.secrets:
             return st.secrets["FIREBASE_WEB_API_KEY"]
     except Exception:
@@ -27,7 +28,6 @@ def _firebase_api_key() -> str | None:
 
 
 def _firebase_send_reset(email: str) -> str | None:
-    """Send Firebase password-reset email. Returns error string or None on success."""
     api_key = _firebase_api_key()
     if not api_key:
         return "Auth service not configured."
@@ -47,10 +47,9 @@ def _firebase_send_reset(email: str) -> str | None:
 
 
 def _firebase_login(email: str, password: str) -> dict | None:
-    """Try Firebase login. Returns {email, uid} on success, {error: msg} on failure, None if not configured."""
     api_key = _firebase_api_key()
     if not api_key:
-        return None  # Firebase not configured — fall through to xlsx
+        return None
     import requests as _req
     try:
         resp = _req.post(
@@ -73,32 +72,46 @@ def _firebase_login(email: str, password: str) -> dict | None:
         return {"error": f"Auth service unavailable: {e}"}
 
 
-USERS_PATH = "data/users.xlsx"
-AUDIT_LOG_PATH = "data/login_audit.csv"
-_AUDIT_COLS = ["timestamp", "email", "event", "session_id"]
+# ── Sheets helpers ────────────────────────────────────────────────────────────
+
+def _users_sid() -> str | None:
+    from utils.sheets_client import users_sheet_id
+    return users_sheet_id()
 
 
-def _log_event(email: str, event: str):
-    """Append one auth event row to login_audit.csv (creates file + header on first write)."""
-    log_path = Path(AUDIT_LOG_PATH)
-    write_header = not log_path.exists() or log_path.stat().st_size == 0
-    session_id = st.session_state.get("_session_id", "")
-    row = [datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"), email.lower(), event, session_id]
-    with log_path.open("a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if write_header:
-            w.writerow(_AUDIT_COLS)
-        w.writerow(row)
+def _audit_sid() -> str | None:
+    from utils.sheets_client import audit_sheet_id
+    return audit_sheet_id()
 
 
-def load_audit_log(n: int = 100) -> pd.DataFrame:
-    """Return last n rows of login_audit.csv for display in Settings."""
-    p = Path(AUDIT_LOG_PATH)
-    if not p.exists():
-        return pd.DataFrame(columns=_AUDIT_COLS)
-    df = pd.read_csv(p)
-    return df.tail(n).iloc[::-1].reset_index(drop=True)
+def _sheet_to_df(rows: list[list], cols: list[str]) -> pd.DataFrame:
+    """Convert raw Sheets rows (list-of-lists) to DataFrame with given columns."""
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    header = [str(c).strip() for c in rows[0]]
+    data   = rows[1:]
+    df = pd.DataFrame(data, columns=header)
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
+    return df[cols]
 
+
+def _load_users_df() -> pd.DataFrame:
+    sid = _users_sid()
+    if not sid:
+        return pd.DataFrame(columns=_USERS_COLS)
+    try:
+        from utils.sheets_client import read_sheet, ensure_header
+        ensure_header(sid, _USERS_COLS)
+        rows = read_sheet(sid)
+        return _sheet_to_df(rows, _USERS_COLS)
+    except Exception as e:
+        print(f"[auth] users sheet read error: {e}")
+        return pd.DataFrame(columns=_USERS_COLS)
+
+
+# ── Password helpers ──────────────────────────────────────────────────────────
 
 def _hash_password(pwd: str) -> str:
     return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
@@ -106,132 +119,128 @@ def _hash_password(pwd: str) -> str:
 
 def _verify_password(pwd: str, stored: str) -> bool:
     try:
-        # bcrypt hash starts with $2b$ or $2a$
         if stored.startswith("$2"):
             return bcrypt.checkpw(pwd.encode(), stored.encode())
-        # Legacy plaintext — accept and upgrade on next save
         return pwd == stored
     except Exception:
         return False
 
 
-def _sync_users_from_drive():
-    """Download users.xlsx from Drive folder via service account (always fresh)."""
+# ── Audit log ─────────────────────────────────────────────────────────────────
+
+def _log_event(email: str, event: str):
+    sid = _audit_sid()
+    if not sid:
+        return
     try:
-        from utils.drive_loader import download_file
-        Path(USERS_PATH).parent.mkdir(parents=True, exist_ok=True)
-        download_file("users.xlsx", USERS_PATH)
-        print("[users-sync] users.xlsx downloaded via service account.")
+        from utils.sheets_client import ensure_header, append_row
+        ensure_header(sid, _AUDIT_COLS)
+        session_id = st.session_state.get("_session_id", "")
+        row = [
+            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            email.lower(), event, session_id,
+        ]
+        append_row(sid, row)
     except Exception as e:
-        print(f"[users-sync] WARNING: failed to download users.xlsx: {e}")
+        print(f"[auth] audit log write error: {e}")
 
 
-def _ensure_users_file():
-    """Ensure data/users.xlsx exists. Downloads from Drive if USERS_FILE_ID set."""
-    _sync_users_from_drive()
-    p = Path(USERS_PATH)
-    if not p.exists():
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(columns=["email", "password", "name", "active", "role"]).to_excel(USERS_PATH, index=False)
-        except Exception:
-            pass
+def load_audit_log(n: int = 100) -> pd.DataFrame:
+    sid = _audit_sid()
+    if not sid:
+        return pd.DataFrame(columns=_AUDIT_COLS)
+    try:
+        from utils.sheets_client import read_sheet
+        rows = read_sheet(sid)
+        df = _sheet_to_df(rows, _AUDIT_COLS)
+        return df.tail(n).iloc[::-1].reset_index(drop=True)
+    except Exception as e:
+        print(f"[auth] audit log read error: {e}")
+        return pd.DataFrame(columns=_AUDIT_COLS)
 
 
-def _save_users(df: pd.DataFrame):
-    """Write users DataFrame back to users.xlsx. Caller responsible for column correctness."""
-    p = Path(USERS_PATH)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    df.to_excel(USERS_PATH, index=False)
-
+# ── User CRUD ─────────────────────────────────────────────────────────────────
 
 def add_user(email: str, name: str, password: str, role: str = "user") -> str:
-    """Add new user row. Returns error string or empty string on success."""
-    _ensure_users_file()
-    try:
-        df = pd.read_excel(USERS_PATH)
-    except Exception:
-        df = pd.DataFrame(columns=["email", "password", "name", "active", "role"])
+    sid = _users_sid()
+    if not sid:
+        return "Users sheet not configured (USERS_SHEET_ID missing)."
+    df = _load_users_df()
     key = email.strip().lower()
     if key in df["email"].str.strip().str.lower().values:
         return f"User {key} already exists."
-    new_row = pd.DataFrame([{"email": key, "password": _hash_password(password), "name": name.strip(), "active": "Y", "role": role.strip().lower()}])
-    df = pd.concat([df, new_row], ignore_index=True)
-    _save_users(df)
-    _log_event(key, "USER_ADDED")
-    return ""
+    try:
+        from utils.sheets_client import ensure_header, append_row
+        ensure_header(sid, _USERS_COLS)
+        append_row(sid, [key, _hash_password(password), name.strip(), "Y", role.strip().lower()])
+        _log_event(key, "USER_ADDED")
+        return ""
+    except Exception as e:
+        return f"Failed to add user: {e}"
 
 
 def set_user_active(email: str, active: bool) -> str:
-    """Toggle active flag for a user. Returns error string or empty string on success."""
-    _ensure_users_file()
-    try:
-        df = pd.read_excel(USERS_PATH)
-    except Exception:
-        df = pd.DataFrame(columns=["email", "password", "name", "active"])
-    mask = df["email"].str.strip().str.lower() == email.strip().lower()
+    sid = _users_sid()
+    if not sid:
+        return "Users sheet not configured."
+    df = _load_users_df()
+    key = email.strip().lower()
+    mask = df["email"].str.strip().str.lower() == key
     if not mask.any():
         return f"User {email} not found."
+    row_idx = df[mask].index[0] + 2  # +1 header, +1 1-based
     df.loc[mask, "active"] = "Y" if active else "N"
-    _save_users(df)
-    evt = "USER_ACTIVATED" if active else "USER_REVOKED"
-    _log_event(email, evt)
-    return ""
-
-
-def _load_users():
-    """Load credentials from data/users.xlsx only — no hardcoded defaults."""
-    users = {}
-    _ensure_users_file()
+    row = df.loc[df[mask].index[0], _USERS_COLS].tolist()
     try:
-        df = pd.read_excel(USERS_PATH)
-        for _, r in df.iterrows():
-            email = str(r['email']).strip().lower()
-            if email and email != 'nan':
-                pwd = str(r['password']) if pd.notna(r['password']) else ""
-                active = str(r.get('active', 'Y')).strip().upper() != "N"
-                role = str(r.get('role', 'user')).strip().lower() if 'role' in r.index else 'user'
-                users[email] = {"password": pwd, "active": active, "name": str(r.get('name', '')), "role": role}
-    except Exception:
-        pass
+        from utils.sheets_client import update_row
+        update_row(sid, row_idx, row)
+        evt = "USER_ACTIVATED" if active else "USER_REVOKED"
+        _log_event(email, evt)
+        return ""
+    except Exception as e:
+        return f"Failed to update user: {e}"
+
+
+def _load_users() -> dict:
+    df = _load_users_df()
+    users = {}
+    for _, r in df.iterrows():
+        em = str(r["email"]).strip().lower()
+        if em and em != "nan":
+            pwd    = str(r["password"]) if pd.notna(r.get("password")) else ""
+            active = str(r.get("active", "Y")).strip().upper() != "N"
+            role   = str(r.get("role", "user")).strip().lower()
+            users[em] = {"password": pwd, "active": active, "name": str(r.get("name", "")), "role": role}
     return users
 
 
-
 def list_users():
-    """Account-info view for the Settings page — email/name/active only,
-    NEVER the password column, even though the source file itself stores
-    it in plaintext (documented limitation, not something to compound by
-    also surfacing it in the UI)."""
     users = _load_users()
     return [
-        {"email": email, "name": info["name"], "active": "Yes" if info["active"] else "No"}
-        for email, info in users.items()
+        {"email": em, "name": info["name"], "active": "Yes" if info["active"] else "No"}
+        for em, info in users.items()
     ]
 
 
+# ── UI helpers ────────────────────────────────────────────────────────────────
+
 def _render_brand_header():
-    # Real Infoleap + Royal Enfield logo images (utils/branding.py) —
-    # replaces the earlier CSS-mock (3 colored squares standing in for
-    # the real Infoleap mark, per BUGS.md) now that both logos exist as
-    # actual assets, sourced from the client's own PPT (2026-07-27).
     st.markdown(brand_header_html(), unsafe_allow_html=True)
 
 
-_MAX_ATTEMPTS = 5
+_MAX_ATTEMPTS    = 5
 _LOCKOUT_SECONDS = 60
-_SESSION_TTL = 8 * 3600
-_INACTIVITY_TTL = 12 * 60
+_SESSION_TTL     = 8 * 3600
+_INACTIVITY_TTL  = 12 * 60
 
 
 def _do_login(email: str, name: str, role: str, event: str):
-    """Set session state for authenticated user and rerun."""
-    st.session_state["authenticated"] = True
-    st.session_state["auth_time"] = time.time()
-    st.session_state["username"] = email.lower()
-    st.session_state["user_role"] = role
-    st.session_state["user_name"] = name
-    st.session_state["_session_id"] = str(uuid.uuid4())[:8]
+    st.session_state["authenticated"]  = True
+    st.session_state["auth_time"]      = time.time()
+    st.session_state["username"]       = email.lower()
+    st.session_state["user_role"]      = role
+    st.session_state["user_name"]      = name
+    st.session_state["_session_id"]    = str(uuid.uuid4())[:8]
     st.session_state.pop("login_fails", None)
     st.session_state.pop("login_locked_until", None)
     _log_event(email, event)
@@ -239,21 +248,17 @@ def _do_login(email: str, name: str, role: str, event: str):
 
 
 def _touch_activity():
-    """Call on every authenticated page load to reset the inactivity clock."""
     st.session_state["_last_activity"] = time.time()
 
 
 def render_login() -> bool:
-    # Session expiry — re-authenticate after 8 hours absolute, or 12 min inactivity
     if st.session_state.get("authenticated"):
         now = time.time()
         if now - st.session_state.get("auth_time", 0) < _SESSION_TTL:
-            # Inactivity check
             last_active = st.session_state.get("_last_activity", now)
             if now - last_active < _INACTIVITY_TTL:
                 _touch_activity()
                 return True
-            # Inactive too long
             st.session_state.pop("authenticated", None)
             st.session_state.pop("auth_time", None)
             st.session_state.pop("_last_activity", None)
@@ -293,21 +298,20 @@ def render_login() -> bool:
         with st.container(border=True):
             st.markdown("##### Sign in")
 
-            # ── Email / Password form ─────────────────────────────────────
             with st.form("login_form"):
-                email = st.text_input("Email")
+                email    = st.text_input("Email")
                 password = st.text_input("Password", type="password")
                 submitted = st.form_submit_button("Sign In", use_container_width=True)
 
             if submitted:
-                _fails = st.session_state.get("login_fails", 0)
+                _fails        = st.session_state.get("login_fails", 0)
                 _locked_until = st.session_state.get("login_locked_until", 0)
                 if time.time() < _locked_until:
                     remaining = int(_locked_until - time.time())
                     st.error(f"Too many failed attempts. Try again in {remaining}s.")
                 else:
                     key = email.strip().lower()
-                    fb = _firebase_login(key, password.strip())
+                    fb  = _firebase_login(key, password.strip())
                     if fb is None:
                         st.error("Auth service not configured.")
                     elif "error" in fb:
@@ -324,7 +328,6 @@ def render_login() -> bool:
                     else:
                         _do_login(fb["email"], fb.get("name", key.split("@")[0]), fb.get("role", "user"), "LOGIN_SUCCESS")
 
-            # ── Forgot password ───────────────────────────────────────────
             st.markdown("<hr style='margin:0.8rem 0 0.6rem;border:none;border-top:1px solid #E8E5DF;'>", unsafe_allow_html=True)
             _show_reset = st.toggle("Forgot password?", key="show_reset", value=False)
             if _show_reset:
@@ -343,10 +346,6 @@ def render_login() -> bool:
 
 
 def render_landing() -> bool:
-    """Branded interstitial shown once per session, between login and the
-    dashboard itself — per user request: 'place a landing page where the
-    infoleap x royalenfiled branding will mentioned, clicking there to
-    next will open the whole page'. Gated the same way as render_login()."""
     if st.session_state.get("entered_dashboard"):
         return True
 

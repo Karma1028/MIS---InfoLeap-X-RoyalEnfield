@@ -8,7 +8,7 @@ import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
-from config import DRIVE_FOLDER_ID, DRIVE_FILES
+from config import DRIVE_FOLDER_ID, DRIVE_FILES, MASTER_SHEET_ID
 
 SCOPES = [
     'https://www.googleapis.com/auth/drive',  # full access — needed to update shared files
@@ -117,6 +117,60 @@ def upload_file(local_path: str, filename: str, folder_id: str = DRIVE_FOLDER_ID
             fields='id'
         ).execute()
         return created['id']
+
+
+def _file_modified_time(file_id: str) -> str | None:
+    """Return RFC 3339 modifiedTime string for any Drive/Sheet file ID, or None."""
+    try:
+        meta = _get_service().files().get(
+            fileId=file_id, fields="modifiedTime"
+        ).execute()
+        return meta.get("modifiedTime")
+    except Exception:
+        return None
+
+
+def download_latest_master(dest_path: str) -> str:
+    """Download master data from whichever source (xlsx in Drive or Google Sheet)
+    was modified most recently. Exports the Sheet as xlsx if it wins.
+    Returns dest_path."""
+    service = _get_service()
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+
+    # ── Get modification times ────────────────────────────────────────────────
+    xlsx_id   = find_file_id(DRIVE_FILES["master"], DRIVE_FOLDER_ID)
+    xlsx_time = _file_modified_time(xlsx_id)  if xlsx_id   else None
+    sheet_time = _file_modified_time(MASTER_SHEET_ID) if MASTER_SHEET_ID else None
+
+    use_sheet = False
+    if sheet_time and xlsx_time:
+        use_sheet = sheet_time > xlsx_time  # lexicographic ISO-8601 compare is valid
+        print(f"[drive] xlsx={xlsx_time}  sheet={sheet_time}  → {'Sheet' if use_sheet else 'xlsx'} wins")
+    elif sheet_time and not xlsx_time:
+        use_sheet = True
+        print("[drive] xlsx not found — using Sheet")
+    elif xlsx_time:
+        print("[drive] Sheet not accessible — using xlsx")
+    else:
+        raise FileNotFoundError("Neither RE_MIS_Master.xlsx nor MASTER_SHEET_ID accessible from Drive.")
+
+    if use_sheet:
+        # Export Google Sheet → xlsx bytes
+        resp = service.files().export(
+            fileId=MASTER_SHEET_ID,
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ).execute()
+        with open(dest_path, "wb") as f:
+            f.write(resp)
+    else:
+        request = service.files().get_media(fileId=xlsx_id)
+        with io.FileIO(dest_path, "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+
+    return dest_path
 
 
 def list_folder(folder_id: str = DRIVE_FOLDER_ID) -> list[dict]:

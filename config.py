@@ -8,10 +8,12 @@ SERVICE_ACCOUNT_FILE = os.environ.get("SERVICE_ACCOUNT_FILE", "service_account.j
 
 # Filenames to search for inside the folder — update these if files are renamed
 DRIVE_FILES = {
-    "master":     "RE_MIS_Master.xlsx",
-    "users":      "users.xlsx",
-    "login_audit":"login_audit.csv",
+    "master": "RE_MIS_Master.xlsx",
 }
+
+# Google Sheet ID for master data — compared against xlsx modifiedTime at sync;
+# whichever is newer wins and is downloaded as xlsx.
+MASTER_SHEET_ID = os.environ.get("MASTER_SHEET_ID", "1j4TsEfRuG8A4wBAEaq72WWDC3LuoosuoMLIloHbrTQ4")
 
 # ── Project metadata ──────────────────────────────────────────────────────────
 PROJECT_NAME = "Royal Enfield MIS Dashboard"

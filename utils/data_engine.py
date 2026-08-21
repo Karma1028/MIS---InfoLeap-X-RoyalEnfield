@@ -34,16 +34,10 @@ def _sync_from_drive(force: bool = False):
     """Download data files from Drive using service account. No gdown, no public links."""
     file_missing = not Path(MASTERFILE_PATH).exists()
     try:
-        from utils.drive_loader import download_file, find_file_id
+        from utils.drive_loader import download_latest_master
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        for fname in _DRIVE_FILES:
-            dest = str(DATA_DIR / fname)
-            fid = find_file_id(fname, _DRIVE_FOLDER_ID)
-            if not fid:
-                print(f"[drive-sync] WARNING: '{fname}' not found in Drive folder.")
-                continue
-            download_file(fname, dest, _DRIVE_FOLDER_ID)
-            print(f"[drive-sync] Downloaded: {fname}")
+        download_latest_master(str(DATA_DIR / "RE_MIS_Master.xlsx"))
+        print("[drive-sync] Downloaded: RE_MIS_Master.xlsx (latest source)")
     except Exception as e:
         if file_missing:
             raise RuntimeError(
