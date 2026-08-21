@@ -312,46 +312,21 @@ model_code = None
 if model != "All":
     model_code = next(c for c, n in RE_MODEL_LABELS.items() if n == model)
 
-df = engine.filter_df(segment=segment_value, platform=platform, model_code=model_code)
-df = df[df['month_label'].isin(selected_months)]
+_months_t = tuple(sorted(selected_months))
+df = _tbl_filter(segment_value, platform, model_code, _months_t)
 
-# BUG FIX: baseline used to be the full unfiltered population, which
-# INCLUDES the current segment inside itself — comparing Acceptor against
-# "everyone, including all Acceptors" dilutes the true difference and is
-# not a clean, unbiased comparison. Per user feedback ("significance test
-# engine is still not running correctly... unbiased narrative"), the
-# baseline for a specific segment is now the OTHER segments combined
-# (e.g. Acceptor vs Rejector+Cancelled) — a real "this group vs the rest"
-# test.
-#
-# REAL BUG FOUND (2026-06-19, "overall page not highlighting significant
-# values"): on Overview, this used to re-apply the SAME platform/model
-# filters to the baseline as the main view — meaning baseline_df was
-# IDENTICAL to df whenever segment_value=="All", so nothing could ever be
-# significant there even with a Model filter active (e.g. "Bullet 350
-# buyers" had no "everyone" to compare against). Fixed: Overview's baseline
-# is now the genuinely unfiltered FULL population (no platform/model
-# filters at all), so picking a Model on Overview can show how that
-# slice differs from everyone. With no filters active at all, baseline
-# trivially still equals df (whole population) — correctly shows nothing
-# significant, since there's truly nothing to compare against, not a bug.
 if segment_value == "All":
-    baseline_df = engine.filter_df()
+    baseline_df = _tbl_filter("All", None, None, _months_t)
 else:
     other_segments = [s for s in ("Acceptor", "Rejector", "Cancelled") if s != segment_value]
-    everyone = engine.filter_df(platform=platform, model_code=model_code)
-    baseline_df = everyone[everyone['segment'].isin(other_segments)]
-baseline_df = baseline_df[baseline_df['month_label'].isin(selected_months)]
+    _everyone = _tbl_filter("All", platform, model_code, _months_t)
+    baseline_df = _everyone[_everyone['segment'].isin(other_segments)]
 base_n = len(df)
 
-# Pre-compute one filtered df per segment for the cross-segment comparison
-# bar — same platform/model filter, ALL months (not just selected window)
-# so the "All periods" comparison is unaffected by time-period picker.
 _seg_label_map = {"All": "Overview", "Acceptor": "Acceptors", "Rejector": "Rejectors", "Cancelled": "Cancelled"}
 _seg_dfs = {}
 for _seg in ("All", "Acceptor", "Rejector", "Cancelled"):
-    _sdf = engine.filter_df(segment=_seg, platform=platform, model_code=model_code)
-    _sdf = _sdf[_sdf['month_label'].isin(selected_months)]
+    _sdf = _tbl_filter(_seg, platform, model_code, _months_t)
     if len(_sdf) >= 30:
         _seg_dfs[_seg_label_map[_seg]] = _sdf
 
