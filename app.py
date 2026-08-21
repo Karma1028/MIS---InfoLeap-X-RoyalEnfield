@@ -643,14 +643,15 @@ else:
             "</style>"
         )
 
-        circles = ""
+        # Two-pass render: dots layer first, tooltips layer on top (SVG z-order)
+        dot_layer = ""
+        tooltip_layer = ""
         for i, (m, v) in enumerate(month_vals):
             cx, cy = xp(i), yp(v)
             is_current = (m == current_month)
             is_max = (i == max_i) and not is_current
             is_min = (i == min_i) and not is_current
 
-            # Dot styling
             if is_current:
                 dot_r, dot_fill, dot_stroke = 13, color, "#fff"
                 ly = _safe_label_y(cy, prefer_above=True)
@@ -670,22 +671,32 @@ else:
                 dot_r, dot_fill, dot_stroke = 6, color, "#fff"
                 static_label = ""
 
-            # Tooltip popup: position above point, clamp to SVG edges
+            # Tooltip position: above point, clamped to SVG bounds
             tt_x = max(0, min(cx - TT_W / 2, W - TT_W))
             tt_y = cy - TT_H - 14
             if tt_y < 2:
                 tt_y = cy + 14
 
-            # vs-avg delta string inside tooltip
             delta_val = v - avg
             delta_str = (f"+{delta_val:.1f}" if delta_val >= 0 else f"{delta_val:.1f}") + (
                 "pp" if unit == "%" else unit)
             delta_col = "#4ADE80" if delta_val >= 0 else "#F87171"
 
-            tooltip = (
-                f"<g class='spk-tt'>"
+            # Dot layer: hit area + visible dot + static label
+            dot_layer += (
+                f"<g class='spk-pt' data-idx='{i}'>"
+                f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='22' fill='transparent'/>"
+                f"<circle class='spk-dot' cx='{cx:.1f}' cy='{cy:.1f}' r='{dot_r}' "
+                f"fill='{dot_fill}' stroke='{dot_stroke}' stroke-width='2'/>"
+                f"{static_label}"
+                f"</g>"
+            )
+
+            # Tooltip layer: rendered after ALL dots so always on top
+            tooltip_layer += (
+                f"<g class='spk-tt' data-idx='{i}' style='visibility:hidden;opacity:0;transition:opacity 0.15s;pointer-events:none;'>"
                 f"<rect x='{tt_x:.1f}' y='{tt_y:.1f}' width='{TT_W}' height='{TT_H}' "
-                f"rx='10' fill='#1E293B' opacity='0.96'/>"
+                f"rx='10' fill='#1E293B' opacity='0.97'/>"
                 f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 32:.1f}' text-anchor='middle' "
                 f"font-size='33' font-weight='600' fill='#94A3B8'>{m}</text>"
                 f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 72:.1f}' text-anchor='middle' "
@@ -695,25 +706,29 @@ else:
                 f"</g>"
             )
 
-            # Hit area (invisible wider circle for easier hover)
-            hit = (f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='18' fill='transparent'/>")
-
-            circles += (
-                f"<g class='spk-pt'>"
-                f"{hit}"
-                f"<circle class='spk-dot' cx='{cx:.1f}' cy='{cy:.1f}' r='{dot_r}' "
-                f"fill='{dot_fill}' stroke='{dot_stroke}' stroke-width='2'/>"
-                f"{static_label}"
-                f"{tooltip}"
-                f"</g>"
-            )
+        # JS wires dot hover → matching tooltip (same data-idx), keeps CSS fallback
+        _hover_js = (
+            "<script>"
+            "(function(){"
+            "var svg=document.currentScript.closest('svg');"
+            "if(!svg)return;"
+            "svg.querySelectorAll('.spk-pt').forEach(function(pt){"
+            "var idx=pt.getAttribute('data-idx');"
+            "var tt=svg.querySelector('.spk-tt[data-idx=\"'+idx+'\"]');"
+            "if(!tt)return;"
+            "pt.addEventListener('mouseenter',function(){tt.style.visibility='visible';tt.style.opacity='1';});"
+            "pt.addEventListener('mouseleave',function(){tt.style.visibility='hidden';tt.style.opacity='0';});"
+            "});"
+            "})();"
+            "</script>"
+        )
 
         return (
             f"<svg viewBox='0 0 {W} {H}' width='100%' height='auto' "
             f"style='overflow:visible;margin-top:8px;display:block;min-height:170px;'>"
             f"{_style}"
             f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='4' opacity='0.75' stroke-linejoin='round'/>"
-            f"{avg_line}{circles}</svg>"
+            f"{avg_line}{dot_layer}{tooltip_layer}{_hover_js}</svg>"
         )
 
     def _ai_headline(label, value_label, month_vals, current_month, delta, unit="%", n_cur=None, current_override=None):
