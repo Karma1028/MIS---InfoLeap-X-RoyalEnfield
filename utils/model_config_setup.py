@@ -90,52 +90,41 @@ def setup_model_config_columns() -> tuple[bool, str]:
         rej_idx = header.index("rejector_code")
         can_idx = header.index("cancelled_code")
 
-        # ── Build updated rows ────────────────────────────────────────────
-        # Determine _n from max in-survey model code (fall back to 14)
+        # ── Pass 1: determine in_survey for every row ─────────────────────
+        # Do NOT derive _n yet — EV (in_survey=NO) must be excluded first.
         existing_in_survey_col = col_idx("in_survey")
-        existing_codes_in_survey: list[int] = []
-        for r in data:
-            try:
-                code = int(float(r[mc_idx]))
-                in_s = str(r[existing_in_survey_col]).strip().upper() if (
-                    existing_in_survey_col is not None and
-                    existing_in_survey_col < len(r)
-                ) else "YES"
-                if in_s != "NO":
-                    existing_codes_in_survey.append(code)
-            except (ValueError, TypeError, IndexError):
-                continue
-        _n = max(existing_codes_in_survey) if existing_codes_in_survey else 14
-
-        new_data: list[list] = []
+        parsed: list[tuple[list, int | None, str]] = []  # (row, code, in_survey)
         for r in data:
             row = list(r)
-            # Pad to full header width
             while len(row) < len(header):
                 row.append("")
             try:
                 code = int(float(row[mc_idx]))
             except (ValueError, TypeError):
-                new_data.append(row)
+                parsed.append((row, None, "YES"))
                 continue
-
-            # in_survey: keep existing value if set, else YES
-            cur_is = str(row[is_idx]).strip().upper() if row[is_idx] else ""
+            cur_is = str(row[is_idx]).strip().upper() if str(row[is_idx]).strip() else ""
             in_survey = cur_is if cur_is in ("YES", "NO") else "YES"
             row[is_idx] = in_survey
+            parsed.append((row, code, in_survey))
 
-            # Only set code columns when in_survey=YES and not already filled
-            if in_survey == "YES":
-                if not str(row[acc_idx]).strip():
-                    row[acc_idx] = code
-                if not str(row[rej_idx]).strip():
-                    row[rej_idx] = code + _n
-                if not str(row[can_idx]).strip():
-                    row[can_idx] = code + 2 * _n
-            else:
-                # in_survey=NO — leave code columns blank (future model)
-                pass
+        # _n = max code among models actually in current survey (in_survey=YES)
+        in_survey_codes_found = [code for _, code, ins in parsed if code and ins == "YES"]
+        _n = max(in_survey_codes_found) if in_survey_codes_found else 14
 
+        # ── Pass 2: fill acceptor/rejector/cancelled codes ────────────────
+        new_data: list[list] = []
+        for row, code, in_survey in parsed:
+            if code is None or in_survey != "YES":
+                new_data.append(row)
+                continue
+            # Only fill blank cells — never overwrite manually set values
+            if not str(row[acc_idx]).strip():
+                row[acc_idx] = code
+            if not str(row[rej_idx]).strip():
+                row[rej_idx] = code + _n
+            if not str(row[can_idx]).strip():
+                row[can_idx] = code + 2 * _n
             new_data.append(row)
 
         # ── Write header + data back ──────────────────────────────────────
