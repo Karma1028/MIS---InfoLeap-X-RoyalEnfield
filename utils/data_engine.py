@@ -210,12 +210,14 @@ def load_model_config():
     df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
     df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
     labels, platform, plat_labels = {}, {}, {}
+    in_survey_codes: set[int] = set()
     for _, row in df.iterrows():
         try:
-            code   = int(float(row["model_code"]))
-            name   = str(row["model_name"]).strip()
-            plat   = str(row["platform_cc"]).strip()
-            active = str(row.get("active", "YES")).strip().upper()
+            code      = int(float(row["model_code"]))
+            name      = str(row["model_name"]).strip()
+            plat      = str(row["platform_cc"]).strip()
+            active    = str(row.get("active", "YES")).strip().upper()
+            in_survey = str(row.get("in_survey", "YES")).strip().upper()
             if not name or name == "nan":
                 continue
             # platform mapping includes ALL codes (active or not) so deactivated
@@ -227,6 +229,9 @@ def load_model_config():
             # labels (dropdown) only includes active models
             if active == "YES":
                 labels[code] = name
+            # in_survey=YES → code is present in raw survey data (used for acceptor mask)
+            if in_survey != "NO":
+                in_survey_codes.add(code)
         except (ValueError, TypeError, KeyError):
             continue
     if not labels:
@@ -234,7 +239,7 @@ def load_model_config():
             "model_config sheet found but no active models. "
             "Check model_code is numeric and active=YES for at least one row."
         )
-    return labels, platform, plat_labels
+    return labels, platform, plat_labels, in_survey_codes
 
 
 # Populated after _sync_from_drive() in load_data() so cloud boot succeeds
@@ -331,10 +336,12 @@ class DataEngine:
         import datetime
         global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE
         _sync_from_drive()
-        RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS = load_model_config()
-        # Derive max code dynamically — whatever the highest model_code in model_config is
-        _ACCEPTOR_MAX_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
-        _MAX_MODEL_CODE = _ACCEPTOR_MAX_CODE
+        RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _in_survey = load_model_config()
+        # _ACCEPTOR_MAX_CODE = max code present in actual survey data (in_survey=YES)
+        # _MAX_MODEL_CODE = max of ALL configured codes (includes future models like EV)
+        # Keeping these separate prevents future model codes from widening the acceptor mask
+        _ACCEPTOR_MAX_CODE = max(_in_survey) if _in_survey else (max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14)
+        _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
         # Reload display_groups fresh from Drive file so Reload Data picks up changes
         _dg = load_display_groups()
         self.education_display_groups = _dg.get("dq3",     {}) or None
