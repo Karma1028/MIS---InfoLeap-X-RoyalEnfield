@@ -1,5 +1,4 @@
-"""Settings page — Gemini API key management and user administration.
-Groq/OpenRouter removed 2026-08-19 (Gemini-only AI layer)."""
+"""Settings page — user administration and login audit log."""
 import streamlit as st
 from auth import list_users, add_user, set_user_active, load_audit_log
 
