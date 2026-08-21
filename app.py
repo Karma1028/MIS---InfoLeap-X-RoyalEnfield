@@ -603,8 +603,8 @@ else:
         mn, mx = min(vals), max(vals)
         rng = mx - mn if mx != mn else 1
         avg = sum(vals) / len(vals)
-        W, H = 460, 200
-        PAD_L, PAD_R, PAD_T, PAD_B = 12, 12, 44, 44
+        W, H = 460, 280
+        PAD_L, PAD_R, PAD_T, PAD_B = 16, 16, 60, 60
         chart_w = W - PAD_L - PAD_R
         chart_h = H - PAD_T - PAD_B
         def xp(i): return PAD_L + i * chart_w / max(len(vals) - 1, 1)
@@ -618,9 +618,9 @@ else:
 
         avg_line = (
             f"<line x1='{PAD_L}' y1='{avg_y:.1f}' x2='{W - PAD_R}' y2='{avg_y:.1f}' "
-            f"stroke='#94A3B8' stroke-width='1.5' stroke-dasharray='6,3' opacity='0.7'/>"
-            f"<text x='{PAD_L + 5}' y='{avg_y + 16:.1f}' text-anchor='start' "
-            f"font-size='16' fill='#94A3B8' font-weight='700'>avg {_fmt(avg)}</text>"
+            f"stroke='#94A3B8' stroke-width='2' stroke-dasharray='7,4' opacity='0.7'/>"
+            f"<text x='{PAD_L + 6}' y='{avg_y + 20:.1f}' text-anchor='start' "
+            f"font-size='20' fill='#94A3B8' font-weight='700'>avg {_fmt(avg)}</text>"
         )
 
         def _safe_label_y(cy, prefer_above, margin=18):
@@ -630,14 +630,14 @@ else:
             return candidate
 
         # CSS inside SVG for hover tooltips and grow effect
-        TT_W, TT_H = 110, 38
+        TT_W, TT_H = 150, 52
         _style = (
             "<style>"
             ".spk-pt { cursor: crosshair; }"
             ".spk-pt .spk-tt { visibility: hidden; opacity: 0; transition: opacity 0.15s; }"
             ".spk-pt:hover .spk-tt { visibility: visible; opacity: 1; }"
             ".spk-pt .spk-dot { transition: r 0.12s; }"
-            ".spk-pt:hover .spk-dot { r: 14; }"
+            ".spk-pt:hover .spk-dot { r: 18; }"
             "</style>"
         )
 
@@ -650,22 +650,22 @@ else:
 
             # Dot styling
             if is_current:
-                dot_r, dot_fill, dot_stroke = 10, color, "#fff"
+                dot_r, dot_fill, dot_stroke = 13, color, "#fff"
                 ly = _safe_label_y(cy, prefer_above=True)
                 static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                                f"font-size='18' font-weight='900' fill='{color}'>{_fmt(v)}</text>")
+                                f"font-size='24' font-weight='900' fill='{color}'>{_fmt(v)}</text>")
             elif is_max:
-                dot_r, dot_fill, dot_stroke = 7, "#1B8A3F", "#fff"
+                dot_r, dot_fill, dot_stroke = 10, "#1B8A3F", "#fff"
                 ly = _safe_label_y(cy, prefer_above=True)
                 static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                                f"font-size='16' fill='#1B8A3F' font-weight='800'>{_fmt(v)}</text>")
+                                f"font-size='21' fill='#1B8A3F' font-weight='800'>{_fmt(v)}</text>")
             elif is_min:
-                dot_r, dot_fill, dot_stroke = 6, "#9CA3AF", "#fff"
+                dot_r, dot_fill, dot_stroke = 8, "#9CA3AF", "#fff"
                 ly = _safe_label_y(cy, prefer_above=False)
                 static_label = (f"<text x='{cx:.1f}' y='{ly:.1f}' text-anchor='middle' "
-                                f"font-size='15' fill='#6B7280' font-weight='700'>{_fmt(v)}</text>")
+                                f"font-size='20' fill='#6B7280' font-weight='700'>{_fmt(v)}</text>")
             else:
-                dot_r, dot_fill, dot_stroke = 5, color, "#fff"
+                dot_r, dot_fill, dot_stroke = 6, color, "#fff"
                 static_label = ""
 
             # Tooltip popup: position above point, clamp to SVG edges
@@ -683,12 +683,12 @@ else:
             tooltip = (
                 f"<g class='spk-tt'>"
                 f"<rect x='{tt_x:.1f}' y='{tt_y:.1f}' width='{TT_W}' height='{TT_H}' "
-                f"rx='6' fill='#1E293B' opacity='0.93'/>"
-                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 14:.1f}' text-anchor='middle' "
-                f"font-size='13' font-weight='700' fill='#F1F5F9'>{m}</text>"
-                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 28:.1f}' text-anchor='middle' "
-                f"font-size='13' font-weight='800' fill='#fff'>{_fmt(v)}"
-                f"<tspan fill='{delta_col}' font-size='11'> ({delta_str} vs avg)</tspan>"
+                f"rx='8' fill='#1E293B' opacity='0.95'/>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 18:.1f}' text-anchor='middle' "
+                f"font-size='17' font-weight='600' fill='#94A3B8'>{m}</text>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 38:.1f}' text-anchor='middle' "
+                f"font-size='19' font-weight='900' fill='#fff'>{_fmt(v)} "
+                f"<tspan fill='{delta_col}' font-size='15' font-weight='700'>({delta_str})</tspan>"
                 f"</text>"
                 f"</g>"
             )
@@ -708,9 +708,9 @@ else:
 
         return (
             f"<svg viewBox='0 0 {W} {H}' width='100%' height='auto' "
-            f"style='overflow:visible;margin-top:8px;display:block;min-height:120px;'>"
+            f"style='overflow:visible;margin-top:8px;display:block;min-height:170px;'>"
             f"{_style}"
-            f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='3' opacity='0.7' stroke-linejoin='round'/>"
+            f"<polyline points='{pts}' fill='none' stroke='{color}' stroke-width='4' opacity='0.75' stroke-linejoin='round'/>"
             f"{avg_line}{circles}</svg>"
         )
 
