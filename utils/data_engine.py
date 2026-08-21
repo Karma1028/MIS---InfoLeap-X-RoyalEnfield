@@ -211,6 +211,13 @@ def load_model_config():
     df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
     labels, platform, plat_labels = {}, {}, {}
     in_survey_codes: set[int] = set()
+    # Explicit segment-code lookup tables (table-driven, no block math)
+    # Keys = raw survey code values; values = model_code
+    acc_code_map:  dict[int, int] = {}   # acceptor_code  → model_code
+    rej_code_map:  dict[int, int] = {}   # rejector_code  → model_code
+    can_code_map:  dict[int, int] = {}   # cancelled_code → model_code
+    has_explicit_codes = any(c in df.columns for c in ("acceptor_code", "rejector_code", "cancelled_code"))
+
     for _, row in df.iterrows():
         try:
             code      = int(float(row["model_code"]))
@@ -220,18 +227,31 @@ def load_model_config():
             in_survey = str(row.get("in_survey", "YES")).strip().upper()
             if not name or name == "nan":
                 continue
-            # platform mapping includes ALL codes (active or not) so deactivated
-            # models' respondents still get correct re_platform for segment filtering
+            # platform mapping includes ALL codes so deactivated models still
+            # get correct re_platform for segment filtering
             platform[code] = plat
             raw_lbl = row.get("platform_label", plat)
             lbl = str(raw_lbl).strip() if raw_lbl and str(raw_lbl).strip() not in ("", "nan") else plat
             plat_labels[plat] = lbl
-            # labels (dropdown) only includes active models
             if active == "YES":
                 labels[code] = name
-            # in_survey=YES → code is present in raw survey data (used for acceptor mask)
             if in_survey != "NO":
                 in_survey_codes.add(code)
+                # Explicit segment codes — fall back to model_code if column absent
+                def _int_col(col, default):
+                    v = row.get(col, default)
+                    try:
+                        return int(float(v)) if str(v).strip() not in ("", "nan") else default
+                    except (ValueError, TypeError):
+                        return default
+                acc_c = _int_col("acceptor_code",  code)
+                rej_c = _int_col("rejector_code",  None)
+                can_c = _int_col("cancelled_code", None)
+                acc_code_map[acc_c] = code
+                if rej_c is not None:
+                    rej_code_map[rej_c] = code
+                if can_c is not None:
+                    can_code_map[can_c] = code
         except (ValueError, TypeError, KeyError):
             continue
     if not labels:
@@ -239,17 +259,21 @@ def load_model_config():
             "model_config sheet found but no active models. "
             "Check model_code is numeric and active=YES for at least one row."
         )
-    return labels, platform, plat_labels, in_survey_codes
+    return labels, platform, plat_labels, in_survey_codes, acc_code_map, rej_code_map, can_code_map, has_explicit_codes
 
 
 # Populated after _sync_from_drive() in load_data() so cloud boot succeeds
 RE_MODEL_LABELS: dict = {}
 RE_MODEL_PLATFORM: dict = {}
 RE_PLATFORM_LABELS: dict = {}  # {platform_cc: display_label} — dynamic from model_config
-# Derived at load_data() from model_config — max code among all configured RE models.
-# Competitor respondents use codes above this; never hardcode this value.
-_ACCEPTOR_MAX_CODE: int = 0  # placeholder; overwritten in load_data()
-_MAX_MODEL_CODE: int = 0
+_ACCEPTOR_MAX_CODE: int = 0   # max code present in survey data (in_survey=YES); overwritten in load_data()
+_MAX_MODEL_CODE: int = 0      # max of ALL configured codes including future models
+# Explicit segment-code lookup tables — populated from model_config columns
+# acceptor_code / rejector_code / cancelled_code (table-driven, no block math)
+_ACC_CODE_MAP: dict[int, int] = {}   # acceptor_code  → model_code
+_REJ_CODE_MAP: dict[int, int] = {}   # rejector_code  → model_code
+_CAN_CODE_MAP: dict[int, int] = {}   # cancelled_code → model_code
+_HAS_EXPLICIT_CODES: bool = False     # True when model_config has explicit code columns
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
 # Python code uses self.F['education'] instead of 'dq3'. Adding/renaming columns
@@ -335,11 +359,10 @@ class DataEngine:
     def load_data(self):
         import datetime
         global RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE
+        global _ACC_CODE_MAP, _REJ_CODE_MAP, _CAN_CODE_MAP, _HAS_EXPLICIT_CODES
         _sync_from_drive()
-        RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS, _in_survey = load_model_config()
-        # _ACCEPTOR_MAX_CODE = max code present in actual survey data (in_survey=YES)
-        # _MAX_MODEL_CODE = max of ALL configured codes (includes future models like EV)
-        # Keeping these separate prevents future model codes from widening the acceptor mask
+        (RE_MODEL_LABELS, RE_MODEL_PLATFORM, RE_PLATFORM_LABELS,
+         _in_survey, _ACC_CODE_MAP, _REJ_CODE_MAP, _CAN_CODE_MAP, _HAS_EXPLICIT_CODES) = load_model_config()
         _ACCEPTOR_MAX_CODE = max(_in_survey) if _in_survey else (max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14)
         _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
         # Reload display_groups fresh from Drive file so Reload Data picks up changes
@@ -570,19 +593,33 @@ class DataEngine:
         _acc   = self.F.get('re_model_acc', 'acc')
         _seg   = self.F.get('joint_seg_model', 'seg')
         _aq3   = self.F.get('brand_model_purchased', 'aq3')
-        _n = _MAX_MODEL_CODE or 14  # seg block size = max model code
-        acceptor_mask = df[_aq3po].between(1, _n)
+        _n = _ACCEPTOR_MAX_CODE or 14  # seg block size = codes present in survey
+        if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP:
+            # Table-driven: use explicit acceptor_code/rejector_code/cancelled_code columns
+            acceptor_mask = df[_aq3po].isin(_ACC_CODE_MAP.keys())
+        else:
+            acceptor_mask = df[_aq3po].between(1, _n)
         df['segment'] = None
         df.loc[acceptor_mask, 'segment'] = 'Acceptor'
         df.loc[(df[_grida] == 2) & ~acceptor_mask, 'segment'] = 'Rejector'
         df.loc[(df[_grida] == 3) & ~acceptor_mask, 'segment'] = 'Cancelled'
 
         acc_or_aq3po = df[_acc].fillna(df[_aq3po])
-        df['re_model_code'] = np.select(
-            [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
-            [acc_or_aq3po, df[_seg] - _n, df[_seg] - 2*_n],
-            default=np.nan,
-        )
+        if _HAS_EXPLICIT_CODES and _REJ_CODE_MAP and _CAN_CODE_MAP:
+            # Map raw seg value → model_code via explicit lookup tables
+            rej_model = df[_seg].map(_REJ_CODE_MAP)
+            can_model = df[_seg].map(_CAN_CODE_MAP)
+            df['re_model_code'] = np.select(
+                [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
+                [acc_or_aq3po.map(_ACC_CODE_MAP).fillna(acc_or_aq3po), rej_model, can_model],
+                default=np.nan,
+            )
+        else:
+            df['re_model_code'] = np.select(
+                [df['segment'] == 'Acceptor', df['segment'] == 'Rejector', df['segment'] == 'Cancelled'],
+                [acc_or_aq3po, df[_seg] - _n, df[_seg] - 2*_n],
+                default=np.nan,
+            )
         df['re_model_name'] = df['re_model_code'].map(RE_MODEL_LABELS)
         df['re_platform'] = df['re_model_code'].map(RE_MODEL_PLATFORM)
 
@@ -659,21 +696,30 @@ class DataEngine:
         _acc   = self.F.get('re_model_acc', 'acc')
         _seg   = self.F.get('joint_seg_model', 'seg')
         _aq3   = self.F.get('brand_model_purchased', 'aq3')
-        _n = _MAX_MODEL_CODE or 14
+        _n = _ACCEPTOR_MAX_CODE or 14
         if segment == "Acceptor":
-            df = self.df[self.df[_aq3po].between(1, _n)].copy()
+            if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP:
+                df = self.df[self.df[_aq3po].isin(_ACC_CODE_MAP.keys())].copy()
+            else:
+                df = self.df[self.df[_aq3po].between(1, _n)].copy()
             df['segment'] = 'Acceptor'
             df['re_model_code'] = df[_acc].fillna(df[_aq3po])
             df['owned_brand_code'] = df['re_model_code']
         elif segment == "Rejector":
             df = self.df[self.df[_grida] == 2].copy()
             df['segment'] = 'Rejector'
-            df['re_model_code'] = df[_seg] - _n
+            if _HAS_EXPLICIT_CODES and _REJ_CODE_MAP:
+                df['re_model_code'] = df[_seg].map(_REJ_CODE_MAP)
+            else:
+                df['re_model_code'] = df[_seg] - _n
             df['owned_brand_code'] = df[_aq3]
         elif segment == "Cancelled":
             df = self.df[self.df[_grida] == 3].copy()
             df['segment'] = 'Cancelled'
-            df['re_model_code'] = df[_seg] - 2*_n
+            if _HAS_EXPLICIT_CODES and _CAN_CODE_MAP:
+                df['re_model_code'] = df[_seg].map(_CAN_CODE_MAP)
+            else:
+                df['re_model_code'] = df[_seg] - 2*_n
             df['owned_brand_code'] = df[_aq3]
         else:
             raise ValueError(segment)
