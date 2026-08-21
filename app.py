@@ -632,7 +632,7 @@ else:
         # CSS inside SVG for hover tooltips and grow effect
         # TT font sizes are in SVG units — viewBox=460 renders at ~250-300px wide,
         # so scale ≈ 0.55x. Target 16-20px screen = 29-36 SVG units.
-        TT_W, TT_H = 230, 80
+        TT_W, TT_H = 300, 100
         _style = (
             "<style>"
             ".spk-pt { cursor: crosshair; }"
@@ -686,11 +686,11 @@ else:
                 f"<g class='spk-tt'>"
                 f"<rect x='{tt_x:.1f}' y='{tt_y:.1f}' width='{TT_W}' height='{TT_H}' "
                 f"rx='10' fill='#1E293B' opacity='0.96'/>"
-                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 28:.1f}' text-anchor='middle' "
-                f"font-size='26' font-weight='600' fill='#94A3B8'>{m}</text>"
-                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 60:.1f}' text-anchor='middle' "
-                f"font-size='30' font-weight='900' fill='#fff'>{_fmt(v)} "
-                f"<tspan fill='{delta_col}' font-size='24' font-weight='700'>({delta_str})</tspan>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 32:.1f}' text-anchor='middle' "
+                f"font-size='33' font-weight='600' fill='#94A3B8'>{m}</text>"
+                f"<text x='{tt_x + TT_W/2:.1f}' y='{tt_y + 72:.1f}' text-anchor='middle' "
+                f"font-size='38' font-weight='900' fill='#fff'>{_fmt(v)} "
+                f"<tspan fill='{delta_col}' font-size='30' font-weight='700'>({delta_str})</tspan>"
                 f"</text>"
                 f"</g>"
             )
