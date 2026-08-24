@@ -155,16 +155,34 @@ def download_latest_master(dest_path: str) -> str:
         raise FileNotFoundError("Neither RE_MIS_Master.xlsx nor MASTER_SHEET_ID accessible from Drive.")
 
     if use_sheet:
-        # Export Google Sheet → xlsx via streaming (avoids memory cap on large Sheets)
-        request = service.files().export_media(
-            fileId=MASTER_SHEET_ID,
-            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        # Export Google Sheet → xlsx via requests streaming (45s timeout, fallback to Drive xlsx)
+        import requests
+        from google.auth.transport.requests import Request as AuthRequest
+        creds = _get_credentials()
+        if not creds.valid:
+            creds.refresh(AuthRequest())
+        export_resp = requests.get(
+            f"https://www.googleapis.com/drive/v3/files/{MASTER_SHEET_ID}/export",
+            params={"mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+            headers={"Authorization": f"Bearer {creds.token}"},
+            stream=True,
+            timeout=45,
         )
-        with io.FileIO(dest_path, "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
+        if export_resp.status_code == 200:
+            with open(dest_path, "wb") as f:
+                for chunk in export_resp.iter_content(chunk_size=65536):
+                    f.write(chunk)
+            print("[drive] Sheet exported via requests streaming OK")
+        else:
+            print(f"[drive] Sheet export failed ({export_resp.status_code}) — falling back to Drive xlsx")
+            if not xlsx_id:
+                raise FileNotFoundError("Sheet export failed and no Drive xlsx fallback found.")
+            request = service.files().get_media(fileId=xlsx_id)
+            with io.FileIO(dest_path, "wb") as fh:
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
     else:
         request = service.files().get_media(fileId=xlsx_id)
         with io.FileIO(dest_path, "wb") as fh:
