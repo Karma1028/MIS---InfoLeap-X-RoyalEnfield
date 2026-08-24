@@ -14,7 +14,7 @@ except ImportError:
                 os.environ.setdefault(_k.strip(), _v.strip())
 
 import streamlit as st
-import streamlit.components.v1 as _components
+# st.html replaces st.components.v1.html (deprecated after 2026-06-01)
 from auth import render_login, render_landing
 from styles.theme import render_theme_css, SEGMENT_COLORS
 from utils.data_engine import DataEngine, RE_MODEL_PLATFORM, RE_MODEL_LABELS, month_label_to_fy_quarter
@@ -229,8 +229,8 @@ platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
                                   format_func=lambda p: PLATFORM_DISPLAY.get(p, p),
                                   key="platform_filter")
 
-_ml = engine.model_labels or RE_MODEL_LABELS
-_mp = engine.model_platform or RE_MODEL_PLATFORM
+_ml = getattr(engine, 'model_labels', None) or RE_MODEL_LABELS
+_mp = getattr(engine, 'model_platform', None) or RE_MODEL_PLATFORM
 model_options = ["All"]
 if platform != "All":
     model_options += sorted(_ml[code] for code, plat in _mp.items() if plat == platform and code in _ml)
@@ -961,13 +961,13 @@ _nav_pills_html = (
 st.markdown(_nav_pills_html, unsafe_allow_html=True)
 
 # Active-pill scroll observer (same-origin iframe → parent DOM)
-_components.html(
+st.html(
     f"""<script>
 (function(){{
   var ac='{accent}';
   var secs={str([anchor for _, anchor in _nav_section_map])};
   function activate(id){{
-    var pdoc=window.parent.document;
+    var pdoc=document;
     pdoc.querySelectorAll('a[data-sec] span.jp').forEach(function(s){{
       var sec=s.parentNode.getAttribute('data-sec');
       if(sec===id){{
@@ -980,7 +980,7 @@ _components.html(
     }});
   }}
   function init(){{
-    var pdoc=window.parent.document;
+    var pdoc=document;
     var obs=new IntersectionObserver(function(entries){{
       entries.forEach(function(e){{if(e.isIntersecting)activate(e.target.id);}});
     }},{{threshold:0.1,rootMargin:'-60px 0px -60% 0px'}});
@@ -989,7 +989,6 @@ _components.html(
   setTimeout(init,1200);
 }})();
 </script>""",
-    height=0,
 )
 
 # ── Overview-only insight blocks ────────────────────────────────────────────
