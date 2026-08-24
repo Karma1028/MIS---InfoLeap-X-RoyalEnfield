@@ -587,10 +587,10 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
             else:
                 try:
                     val = float(val)
-                    if is_base:
-                        txt = f"{val:,.0f}"
-                    elif is_low_base:
+                    if is_low_base:
                         txt = "-"
+                    elif is_base:
+                        txt = f"{val:,.0f}"
                     elif val == 0:
                         txt = "-"
                     elif is_member:
@@ -598,7 +598,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     else:
                         txt = f"{val:.0f}%"
                 except (ValueError, TypeError):
-                    txt = "-" if is_low_base and not is_base else str(val)
+                    txt = "-" if is_low_base else str(val)
                 if is_base:
                     style = f"padding:7px 10px;text-align:center;font-weight:800;color:{accent};"
                 elif is_member:
@@ -1025,6 +1025,8 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
     def _base_cell(c):
         if c == 'Category':
             return f"<td class='col-cat'><strong>{_html.escape(base_label)}</strong></td>"
+        if c in low_base_cols:
+            return "<td class='col-val'><strong>-</strong></td>"
         n_val = col_bases.get(c, 0)
         return f"<td class='col-val'><strong>{n_val:,}</strong></td>"
 
@@ -1360,6 +1362,8 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
     def _base_td(c):
         if c == "Category":
             return f"<td class='bwt-cat' style='font-weight:800;color:{accent_col};text-align:left;'>{_h.escape(str(base_row['Unnamed: 0']))}</td>"
+        if c in low_base_bwt_cols:
+            return f"<td class='bwt-val' style='font-weight:800;color:{accent_col};'>-</td>"
         val = base_row.get(c, "")
         try:
             return f"<td class='bwt-val' style='font-weight:800;color:{accent_col};'>{int(float(val)):,}</td>"

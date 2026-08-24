@@ -202,28 +202,47 @@ def render_overview_intro(engine=None):
     _latest_reported, _latest_used = _cadence[-1]
     _chip_css = (
         "flex-shrink:0;background:#fff;border:1px solid #ECE9E4;border-radius:10px;"
-        "padding:8px 14px;text-align:center;min-width:76px;"
+        "padding:10px 16px;text-align:center;min-width:90px;box-shadow:0 1px 3px rgba(0,0,0,0.04);"
     )
     _chips = []
+    
+    # Calculate sample base for each month if engine available
+    _month_bases = {}
+    if engine and hasattr(engine, 'df') and engine.df is not None:
+        _m_counts = engine.df['month_label'].value_counts()
+        for _m_lbl, _cnt in _m_counts.items():
+            # e.g. "August'25" -> "August"
+            _full_name = _m_lbl.split("'")[0]
+            _month_bases[_full_name] = _cnt
+
     for _reported, _used in _cadence:
         _is_latest = (_reported, _used) == (_latest_reported, _latest_used)
+        _base_num = _month_bases.get(_reported)
+        _base_badge = (
+            f"<div style='margin-top:5px;display:inline-block;padding:2px 8px;border-radius:12px;"
+            f"font-size:0.75rem;font-weight:800;background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;'>"
+            f"Base: {_base_num:,}</div>"
+            if _base_num is not None else ""
+        )
         if _is_latest:
             _chips.append(
-                f"<div style='{_chip_css}border-color:#C8102E;border-width:2px;'>"
-                f"<div style='font-size:0.7rem;font-weight:800;color:#C8102E;letter-spacing:0.04em;'>Latest</div>"
-                f"<div style='font-size:0.92rem;font-weight:800;color:#1A1A1A;margin-top:2px;'>{_reported}</div>"
-                f"<div style='font-size:0.65rem;color:#9A958D;margin-top:1px;'>uses {_used}</div>"
+                f"<div style='{_chip_css}border-color:#C8102E;border-width:2px;background:#FFF5F5;'>"
+                f"<div style='font-size:0.7rem;font-weight:800;color:#C8102E;letter-spacing:0.04em;text-transform:uppercase;'>Latest</div>"
+                f"<div style='font-size:0.95rem;font-weight:800;color:#1A1A1A;margin-top:2px;'>{_reported}</div>"
+                f"<div style='font-size:0.65rem;color:#7A7670;margin-top:1px;'>uses {_used}</div>"
+                f"{_base_badge}"
                 f"</div>"
             )
         else:
             _chips.append(
                 f"<div style='{_chip_css}'>"
-                f"<div style='font-size:0.88rem;font-weight:700;color:#1A1A1A;'>{_reported}</div>"
+                f"<div style='font-size:0.90rem;font-weight:700;color:#1A1A1A;'>{_reported}</div>"
                 f"<div style='font-size:0.65rem;color:#9A958D;margin-top:1px;'>uses {_used}</div>"
+                f"{_base_badge}"
                 f"</div>"
             )
     _arrow = (
-        "<span style='flex-shrink:0;color:#D8D3CC;font-size:1.1rem;align-self:center;'>&#8594;</span>"
+        "<span style='flex-shrink:0;color:#CBD5E1;font-size:1.2rem;font-weight:bold;align-self:center;'>&#8594;</span>"
     )
     _timeline_html = _arrow.join(_chips)
     st.markdown(
