@@ -155,13 +155,16 @@ def download_latest_master(dest_path: str) -> str:
         raise FileNotFoundError("Neither RE_MIS_Master.xlsx nor MASTER_SHEET_ID accessible from Drive.")
 
     if use_sheet:
-        # Export Google Sheet → xlsx bytes
-        resp = service.files().export(
+        # Export Google Sheet → xlsx via streaming (avoids memory cap on large Sheets)
+        request = service.files().export_media(
             fileId=MASTER_SHEET_ID,
             mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ).execute()
-        with open(dest_path, "wb") as f:
-            f.write(resp)
+        )
+        with io.FileIO(dest_path, "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
     else:
         request = service.files().get_media(fileId=xlsx_id)
         with io.FileIO(dest_path, "wb") as fh:
