@@ -12,7 +12,7 @@ _SECTION_CSS = """
     border-left: 4px solid #C8102E;
 }
 .settings-hero h2 {
-    color: #F1F5F9; margin: 0 0 0.2rem; font-size: 1.5rem; font-weight: 700;
+    color: #F1F5F9 !important; margin: 0 0 0.2rem; font-size: 1.5rem; font-weight: 700;
 }
 .settings-hero p {
     color: #94A3B8; margin: 0; font-size: 0.88rem;
