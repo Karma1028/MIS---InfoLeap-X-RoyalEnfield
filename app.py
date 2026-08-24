@@ -232,6 +232,8 @@ platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
 model_options = ["All"]
 if platform != "All":
     model_options += sorted(RE_MODEL_LABELS[code] for code, plat in RE_MODEL_PLATFORM.items() if plat == platform)
+else:
+    model_options += sorted(set(RE_MODEL_LABELS[code] for code in RE_MODEL_PLATFORM if code in RE_MODEL_LABELS))
 model = st.sidebar.selectbox("Model", model_options, key="model_filter")
 
 st.sidebar.markdown("### Time Period")
