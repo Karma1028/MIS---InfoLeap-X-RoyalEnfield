@@ -228,6 +228,7 @@ def render_overview_intro(engine=None):
             _chips.append(
                 f"<div style='{_chip_css}border-color:#C8102E;border-width:2px;background:#FFF5F5;'>"
                 f"<div style='font-size:0.95rem;font-weight:800;color:#C8102E;margin-top:2px;'>{_reported}</div>"
+                f"<div style='font-size:0.65rem;color:#7A7670;margin-top:1px;'>uses {_used}</div>"
                 f"{_base_badge}"
                 f"</div>"
             )
