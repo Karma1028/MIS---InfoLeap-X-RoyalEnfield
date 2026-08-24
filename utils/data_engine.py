@@ -1157,7 +1157,7 @@ class DataEngine:
 
         def pct_row(label, mask):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(sub, col, quarter_groups)
                 sub_base = len(idx)
                 val = mask.loc[idx].sum() / sub_base * 100 if sub_base else 0
@@ -1246,7 +1246,7 @@ class DataEngine:
 
         def pct_row(label, mask):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(sub, col, quarter_groups)
                 sub_base = len(idx)
                 val = mask.loc[idx].sum() / sub_base * 100 if sub_base else 0
@@ -1402,7 +1402,7 @@ class DataEngine:
 
         def pct_row(label, mask):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 sub_base = len(idx)
                 val = mask.loc[idx].sum() / sub_base * 100 if sub_base else 0
@@ -1711,7 +1711,7 @@ class DataEngine:
 
         def pct_row(label, mask):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 sub_base = len(idx)
                 val = mask.loc[idx].sum() / sub_base * 100 if sub_base else 0
@@ -1768,7 +1768,7 @@ class DataEngine:
 
         def pct_row(label, mask):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(sub, col, quarter_groups)
                 n_col = len(idx)
                 if n_col == 0:
@@ -1823,7 +1823,7 @@ class DataEngine:
 
         def pct_row(label, code):
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 n_col = len(idx)
                 if n_col == 0:
@@ -1868,7 +1868,7 @@ class DataEngine:
             if col_name not in df.columns:
                 return None
             row = {"Unnamed: 0": label}
-            for col in ["All"] + MONTH_ORDER + extra_cols:
+            for col in ["All"] + self.month_order + extra_cols:
                 idx = self._col_index(df, col, quarter_groups)
                 n_col = len(idx)
                 if n_col == 0:
