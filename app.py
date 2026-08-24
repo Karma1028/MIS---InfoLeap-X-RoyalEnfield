@@ -46,7 +46,7 @@ def _masterfile_mtime():
         return 0
 
 @st.cache_resource(hash_funcs={float: lambda x: x})
-def load_engine(_mtime: float = 0.0):
+def load_engine_v2(_mtime: float = 0.0):
     engine = DataEngine()
     engine.load_data()
     return engine
@@ -66,7 +66,7 @@ def _master_config_mtime():
 
 
 _current_mtime = _masterfile_mtime()
-engine = load_engine(_mtime=_current_mtime)
+engine = load_engine_v2(_mtime=_current_mtime)
 
 # Show Drive sync warning if last load_data() failed to reach Drive
 if st.session_state.get("_drive_sync_warning"):
