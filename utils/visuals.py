@@ -491,18 +491,16 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     {"Royal Enfield", "HERO", "BAJAJ"}) — per user request to match the live site's nested
     look, every OTHER non-Base row is indented and shown in a lighter
     weight as a "member" of whichever rollup precedes it."""
-    # Filter out columns where base n < 50 (keep 'Unnamed: 0', 'All', and any column with base >= 50)
+    cols = ["Unnamed: 0", "All"] + [c for c in table_df.columns if c not in ("Unnamed: 0", "All")]
     base_row_check = table_df.iloc[0] if len(table_df) > 0 else {}
-    def _is_col_visible(c):
-        if c in ("Unnamed: 0", "All"):
-            return True
-        try:
-            val = float(base_row_check.get(c, 0))
-            return val >= 50
-        except (ValueError, TypeError):
-            return True
-
-    cols = ["Unnamed: 0", "All"] + [c for c in table_df.columns if c not in ("Unnamed: 0", "All") and _is_col_visible(c)]
+    low_base_cols = set()
+    for c in cols:
+        if c not in ("Unnamed: 0", "All"):
+            try:
+                if float(base_row_check.get(c, 0)) < 50:
+                    low_base_cols.add(c)
+            except (ValueError, TypeError):
+                pass
     # Long brand-wise tables (rollup + many member rows) get a sticky header
     # + scrollable body instead of pushing the whole page down, plus zebra
     # striping on member rows and a subtle top-border between brand groups
@@ -573,6 +571,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
         cells = []
         for c in cols:
             val = row[c]
+            is_low_base = c in low_base_cols
             if c == "Unnamed: 0":
                 txt = str(val)
                 _cat_w = f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;white-space:normal;word-break:break-word;"
@@ -588,12 +587,10 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
             else:
                 try:
                     val = float(val)
-                    # Per user request: a 0% cell reads as "no signal" at a
-                    # glance, easy to mistake for missing/broken data — a
-                    # dash makes "genuinely zero" visually distinct from a
-                    # small-but-real percentage.
                     if is_base:
                         txt = f"{val:,.0f}"
+                    elif is_low_base:
+                        txt = "-"
                     elif val == 0:
                         txt = "-"
                     elif is_member:
@@ -601,7 +598,7 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     else:
                         txt = f"{val:.0f}%"
                 except (ValueError, TypeError):
-                    txt = str(val)
+                    txt = "-" if is_low_base and not is_base else str(val)
                 if is_base:
                     style = f"padding:7px 10px;text-align:center;font-weight:800;color:{accent};"
                 elif is_member:
@@ -611,13 +608,13 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                 else:
                     style = "padding:6px 10px;text-align:center;"
                 # Visual-only suppression: hide values below threshold in brand-wise tables
-                if not is_base and hide_below is not None:
+                if not is_base and not is_low_base and hide_below is not None:
                     try:
                         if float(row[c]) < hide_below:
                             txt = "-"
                     except (ValueError, TypeError):
                         pass
-                if not is_base:
+                if not is_base and not is_low_base:
                     # Per user instruction: significance NEVER runs on the
                     # aggregate 'All' column, anywhere — only on individual
                     # month columns. col_sig_markers only ever carries month
@@ -626,16 +623,8 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
                     if col_sig_markers and c in col_sig_markers and (c != "All" or allow_all_sig):
                         col_markers = col_sig_markers[c]
                         marker = col_markers[i - 1] if i - 1 < len(col_markers) else ''
-                    # Per user request ("if one section is significant how
-                    # much significant it is it should be shown") — the
-                    # cell used to be color-only, with no marker/gap TEXT
-                    # at all in the table (only the chart's inline label
-                    # had a bare marker glyph, no magnitude either). Now
-                    # appends "▲ +Xpp" to the cell text itself, not just a
-                    # background tint, so it reads without relying on color.
-                    # Suppress marker display when value rounds to "0%" — underlying
-                    # proportion is <0.5% and showing "0% ▲" is visually misleading.
-                    _suppress = (txt == "0%")
+                    # Suppress marker display when value rounds to "0%" or is a dash
+                    _suppress = (txt in ("0%", "-"))
                     if not _suppress and marker in ('▲', '△', '▼', '▽'):
                         txt = f"{txt} {marker}"
                     if not _suppress and marker == '▲':
@@ -1020,8 +1009,8 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
     col_bases = tree_data['col_bases']
     base_label = tree_data['base_label']
     supernets = tree_data['supernets']
-    # Filter out columns where base n < 50
-    cols = [c for c in tree_data['columns'] if c == 'All' or col_bases.get(c, 0) >= 50]
+    cols = list(tree_data['columns'])
+    low_base_cols = {c for c in cols if c != 'All' and col_bases.get(c, 0) < 50}
 
     expand_all = st.checkbox("Expand All Categories", value=False, key=f"expand_all_{key_suffix}")
 
@@ -1046,17 +1035,15 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         pcts = item.get('pcts', {})
         markers = item.get('sig_markers', {})
         for c in cols:
-            txt = str(pcts.get(c, '-'))
-            marker = markers.get(c, '')
+            is_low_base = c in low_base_cols
+            txt = "-" if is_low_base else str(pcts.get(c, '-'))
+            marker = "" if is_low_base else markers.get(c, '')
             style = f"padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid #cbd5e1; background: {row_bg};"
             if is_bold:
                 style += " font-weight: 700;"
-            # Suppress significance highlight when display value rounds to "0%" —
-            # underlying proportion is <0.5% but z-test can still fire on near-zero
-            # values, producing a confusing "0% ▲" cell.
-            if txt != "0%" and marker == '▲':
+            if txt not in ("0%", "-") and marker == '▲':
                 style += f" background: {SIG_DEEP_GREEN} !important; color: white !important; font-weight: 700;"
-            elif txt != "0%" and marker == '△':
+            elif txt not in ("0%", "-") and marker == '△':
                 style += f" background: {SIG_LIGHT_GREEN} !important; color: #0F5132 !important; font-weight: 600;"
             cells.append(f"<td style='{style}'>{txt}</td>")
         return "".join(cells)
@@ -1335,8 +1322,15 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
         except (ValueError, TypeError):
             return True
 
-    # Keep All first, then rest
-    display_cols = ["All"] + [c for c in cols_data if c != "All" and _is_bwt_col_visible(c)]
+    display_cols = ["All"] + [c for c in cols_data if c != "All"]
+    low_base_bwt_cols = set()
+    for c in display_cols:
+        if c != "All":
+            try:
+                if float(base_row_check.get(c, 0)) < 50:
+                    low_base_bwt_cols.add(c)
+            except (ValueError, TypeError):
+                pass
 
     SIG_DEEP_GREEN = "#1A7A3C"
     SIG_LIGHT_GREEN = "#B7E4C0"
@@ -1401,6 +1395,9 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
         return False
 
     def _val_cell(val_raw, marker, is_model=False, col=None):
+        if col in low_base_bwt_cols:
+            style = f"background:{HIGHLIGHT_BG};" if col == highlight_col else ""
+            return f"<td class='bwt-val' style='{style}'>-</td>"
         try:
             val = float(val_raw)
         except (ValueError, TypeError):
