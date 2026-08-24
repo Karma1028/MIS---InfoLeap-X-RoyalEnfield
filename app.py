@@ -421,6 +421,7 @@ _base_cur = base_n if time_mode == "All Months" else (len(_df_cur) if len(_df_cu
 # Card 1: Average Age — use raw numeric age (dq7 → age_numeric) when available,
 # fall back to age_grp midpoints so the KPI never breaks on older data cuts.
 _AGE_MIDPOINTS = {1.0: 21.5, 2.0: 30.5, 3.0: 40.5, 4.0: 50.0}
+_AGE_BRACKET_LABELS = {1.0: "18–25 Yrs", 2.0: "26–35 Yrs", 3.0: "36–45 Yrs", 4.0: "46+ Yrs"}
 _AGE_RAW_COL  = engine.F.get('age_raw',  'age_numeric')
 _AGE_BAND_COL = engine.F.get('age_band', 'age_grp')
 _HAS_AGE_NUMERIC = _AGE_RAW_COL in df.columns
@@ -432,6 +433,9 @@ def _mean_age(d):
 _age_src_df = df if time_mode == "All Months" else (_df_cur if len(_df_cur) > 0 else df)
 avg_age = _mean_age(_age_src_df)
 avg_age = float(avg_age) if not (avg_age != avg_age) else 0.0  # NaN guard
+# Dominant age bracket for KPI card display
+_dom_age_code = _age_src_df[_AGE_BAND_COL].value_counts().idxmax() if len(_age_src_df) > 0 else 2.0
+_dom_age_label = _AGE_BRACKET_LABELS.get(float(_dom_age_code), "26–35 Yrs")
 # age base = respondents with valid age answer (may be 1 less than total if one null)
 import pandas as _pd_age
 if _HAS_AGE_NUMERIC:
@@ -843,7 +847,7 @@ else:
             f"<div style='font-size:0.9rem;font-weight:700;color:#1E293B;line-height:1.3;margin-bottom:3px;'>{value_label}</div>"
             f"<div style='display:flex;align-items:baseline;gap:4px;'>"
             f"<span style='font-size:2rem;font-weight:800;color:{accent};line-height:1;"
-            f"font-family:Oswald,sans-serif;letter-spacing:-0.01em;'>{f'{pct:.1f}' if unit != '%' else f'{pct:.0f}'}{unit}</span>"
+            f"font-family:Oswald,sans-serif;letter-spacing:-0.01em;'>{pct if isinstance(pct, str) else (f'{pct:.1f}' if unit != '%' else f'{pct:.0f}')}{unit}</span>"
             f"{_delta_badge(delta)}{sig_note}</div>"
             f"{spark}"
             f"{headline}"
@@ -855,9 +859,9 @@ else:
 
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Average Age", "Mean Age", avg_age, 'age', _age_base_n,
-                     unit=" yrs", month_vals_override=_avg_age_monthly,
-                     current_override=avg_age if time_mode == "All Months" else None)
+        + _stat_card("Average Age", "Dominant Bracket", _dom_age_label, 'age', _age_base_n,
+                     unit="", month_vals_override=_avg_age_monthly,
+                     current_override=None)
         + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                      full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
                      current_override=top_income_val if time_mode == "All Months" else None)
