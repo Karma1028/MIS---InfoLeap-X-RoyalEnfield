@@ -229,11 +229,13 @@ platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
                                   format_func=lambda p: PLATFORM_DISPLAY.get(p, p),
                                   key="platform_filter")
 
+_ml = engine.model_labels or RE_MODEL_LABELS
+_mp = engine.model_platform or RE_MODEL_PLATFORM
 model_options = ["All"]
 if platform != "All":
-    model_options += sorted(RE_MODEL_LABELS[code] for code, plat in RE_MODEL_PLATFORM.items() if plat == platform)
+    model_options += sorted(_ml[code] for code, plat in _mp.items() if plat == platform and code in _ml)
 else:
-    model_options += sorted(set(RE_MODEL_LABELS[code] for code in RE_MODEL_PLATFORM if code in RE_MODEL_LABELS))
+    model_options += sorted(set(_ml[code] for code in _mp if code in _ml))
 model = st.sidebar.selectbox("Model", model_options, key="model_filter")
 
 st.sidebar.markdown("### Time Period")
@@ -316,7 +318,7 @@ if show_sig and segment_value == "All" and platform == "All" and model == "All":
 
 model_code = None
 if model != "All":
-    model_code = next(c for c, n in RE_MODEL_LABELS.items() if n == model)
+    model_code = next(c for c, n in _ml.items() if n == model)
 
 _months_t = tuple(sorted(selected_months))
 df = _tbl_filter(segment_value, platform, model_code, _months_t)

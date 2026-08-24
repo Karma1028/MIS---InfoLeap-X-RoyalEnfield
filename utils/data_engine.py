@@ -378,6 +378,8 @@ class DataEngine:
         # that desync — see BUGS.md.
         self.month_order = []
         self.fy_quarter_order = []
+        self.model_labels: dict = {}   # code → display name, instance-level copy
+        self.model_platform: dict = {} # code → platform cc, instance-level copy
 
     def col(self, semantic_key: str) -> str:
         """Return actual df column name for a semantic key.
@@ -415,9 +417,11 @@ class DataEngine:
                     self.load_timestamp = cached_data["load_timestamp"]
                     self.month_order = cached_data.get("month_order", [])
 
-                    # Update module globals
+                    # Update module globals and instance attrs
                     RE_MODEL_LABELS.clear(); RE_MODEL_LABELS.update(cached_data["model_labels"])
                     RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(cached_data["model_platform"])
+                    self.model_labels.clear(); self.model_labels.update(cached_data["model_labels"])
+                    self.model_platform.clear(); self.model_platform.update(cached_data["model_platform"])
                     RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(cached_data["plat_labels"])
                     _ACC_CODE_MAP.clear(); _ACC_CODE_MAP.update(cached_data["acc_map"])
                     _REJ_CODE_MAP.clear(); _REJ_CODE_MAP.update(cached_data["rej_map"])
@@ -441,6 +445,8 @@ class DataEngine:
          _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config(xl)
         RE_MODEL_LABELS.clear();   RE_MODEL_LABELS.update(_labels)
         RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(_platform)
+        self.model_labels.clear();   self.model_labels.update(_labels)
+        self.model_platform.clear(); self.model_platform.update(_platform)
         RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(_plat_labels)
         _ACC_CODE_MAP.clear(); _ACC_CODE_MAP.update(_acc_map)
         _REJ_CODE_MAP.clear(); _REJ_CODE_MAP.update(_rej_map)
