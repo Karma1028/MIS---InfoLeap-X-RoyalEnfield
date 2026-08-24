@@ -225,8 +225,9 @@ if _reload_col.button(_reload_label, key="reload_data", disabled=not _reload_rea
 from utils.data_engine import RE_PLATFORM_LABELS
 _ml = getattr(engine, 'model_labels', None) or RE_MODEL_LABELS
 _mp = getattr(engine, 'model_platform', None) or RE_MODEL_PLATFORM
+_pl = getattr(engine, 'platform_labels', None) or RE_PLATFORM_LABELS
 _all_platforms = sorted({p for p in _mp.values() if p and str(p) != "nan"})
-PLATFORM_DISPLAY = {"All": "All", **{p: RE_PLATFORM_LABELS.get(p, p) for p in _all_platforms}}
+PLATFORM_DISPLAY = {"All": "All", **{p: _pl.get(p, p) for p in _all_platforms}}
 platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
                                   format_func=lambda p: PLATFORM_DISPLAY.get(p, p),
                                   key="platform_filter")
