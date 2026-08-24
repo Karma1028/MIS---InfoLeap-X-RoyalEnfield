@@ -118,7 +118,8 @@ def _pct_label(v, marker="", gap=None):
     shown"), a bare ▲ only said THAT something was significant, not BY
     HOW MUCH. Shown only when a marker is actually present (a gap on a
     non-significant category is noise, not signal)."""
-    base = "-" if v == 0 else f"{v:.0f}%"
+    import math as _math
+    base = "-" if (v == 0 or _math.isnan(v)) else f"{v:.0f}%"
     if not marker:
         return base
     return f"{base} {marker}".strip()
@@ -587,7 +588,8 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
             else:
                 try:
                     val = float(val)
-                    if is_low_base:
+                    import math as _math
+                    if is_low_base or _math.isnan(val):
                         txt = "-"
                     elif is_base:
                         txt = f"{val:,.0f}"
