@@ -209,6 +209,10 @@ if _reload_col.button("⟳ Reload Data", key="reload_data", disabled=not _reload
                       help="Re-download & reload master file (fetches latest from Drive if configured)",
                       use_container_width=True):
     st.session_state["_reload_last_ts"] = time.time()
+    # Force fresh download BEFORE clearing pickle cache — otherwise
+    # load_data() reads old xlsx mtime → pickle cache hit → stale engine.
+    from utils.data_engine import _sync_from_drive
+    _sync_from_drive()
     load_engine_v2.clear()
     st.cache_data.clear()
     st.session_state.pop("_engine_mtime", None)
