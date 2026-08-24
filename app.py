@@ -887,9 +887,9 @@ else:
         st.markdown(
             f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Average Age", "Mean Age", avg_age, 'age', _base_cur,
-                         unit=" yrs", month_vals_override=_avg_age_monthly,
-                         current_override=avg_age if time_mode == "All Months" else None)
+            + _stat_card("Average Age", "Dominant Bracket", _dom_age_label, 'age', _base_cur,
+                         unit="", month_vals_override=_avg_age_monthly,
+                         current_override=None)
             + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                          full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
                          current_override=top_income_val if time_mode == "All Months" else None)
