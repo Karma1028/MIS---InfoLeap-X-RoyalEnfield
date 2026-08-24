@@ -1406,8 +1406,9 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
             val = float(val_raw)
         except (ValueError, TypeError):
             return f"<td class='bwt-val'>-</td>"
-        # Show "-" only if value rounds to 0%
-        if round(val) == 0:
+        # Show "-" if NaN or value rounds to 0%
+        import math
+        if math.isnan(val) or round(val) == 0:
             display = "-"
         elif is_model:
             display = f"{val:.0f}%"
