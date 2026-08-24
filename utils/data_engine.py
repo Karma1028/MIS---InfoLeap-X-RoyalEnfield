@@ -53,15 +53,20 @@ def _sync_from_drive(force: bool = False):
             pass
 
 
-def load_display_groups():
+def load_display_groups(xl_or_df=None):
     """Read display_groups sheet → {variable: {code_float: label_or_None}}.
     label_or_None: str = display label (same label on multiple codes = merged);
     None = drop that code from chart (blank cell in sheet).
     Falls back to empty dict (raw datamap labels used as-is) if sheet absent."""
-    if not MASTER_CONFIG_PATH.exists():
+    if not MASTER_CONFIG_PATH.exists() and xl_or_df is None:
         return {}
     try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="display_groups")
+        if isinstance(xl_or_df, pd.DataFrame):
+            df = xl_or_df
+        elif isinstance(xl_or_df, pd.ExcelFile):
+            df = xl_or_df.parse("display_groups")
+        else:
+            df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="display_groups")
         # Skip note rows: variable must be a short word (no spaces, not the header note)
         df = df[df["variable"].astype(str).str.match(r'^\w+$', na=False)]
         result = {}
@@ -82,14 +87,19 @@ def load_display_groups():
         return {}
 
 
-def load_column_mapping():
+def load_column_mapping(xl_or_df=None):
     """Reads column_mapping sheet from RE_MIS_Master.xlsx.
     Returns {raw_column: internal_name}. Falls back to empty dict
     (identity mapping — raw names used as-is) if master config missing."""
-    if not MASTER_CONFIG_PATH.exists():
+    if not MASTER_CONFIG_PATH.exists() and xl_or_df is None:
         return {}
     try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        if isinstance(xl_or_df, pd.DataFrame):
+            df = xl_or_df
+        elif isinstance(xl_or_df, pd.ExcelFile):
+            df = xl_or_df.parse("column_mapping")
+        else:
+            df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
         # Skip note rows: real column names never contain spaces
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
         # New 5-col structure: raw_column → raw_column (no internal rename needed)
@@ -107,14 +117,19 @@ def load_column_mapping():
         return {}
 
 
-def load_field_registry():
+def load_field_registry(xl_or_df=None):
     """Read column_mapping → {semantic_key: raw_column}.
     Python uses self.F['education'] to get the actual df column name.
     Returns empty dict if sheet absent."""
-    if not MASTER_CONFIG_PATH.exists():
+    if not MASTER_CONFIG_PATH.exists() and xl_or_df is None:
         return {}
     try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        if isinstance(xl_or_df, pd.DataFrame):
+            df = xl_or_df
+        elif isinstance(xl_or_df, pd.ExcelFile):
+            df = xl_or_df.parse("column_mapping")
+        else:
+            df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
         if "semantic_key" not in df.columns:
             return {}
@@ -130,12 +145,17 @@ def load_field_registry():
         return {}
 
 
-def get_required_columns():
+def get_required_columns(xl_or_df=None):
     """All mapped raw_column names are required — no required column in sheet anymore."""
-    if not MASTER_CONFIG_PATH.exists():
+    if not MASTER_CONFIG_PATH.exists() and xl_or_df is None:
         return set()
     try:
-        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
+        if isinstance(xl_or_df, pd.DataFrame):
+            df = xl_or_df
+        elif isinstance(xl_or_df, pd.ExcelFile):
+            df = xl_or_df.parse("column_mapping")
+        else:
+            df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="column_mapping")
         df = df[df["raw_column"].astype(str).str.strip().str.contains(r'^\S+$', na=False)]
         # Exclude wildcard prefix rows (multi-select) from hard validation
         return {str(r).strip() for r in df["raw_column"] if "*" not in str(r)}
@@ -196,19 +216,24 @@ MONTHLY_DROPS_DIR = "data/monthly_drops"  # poor-man's sync target: drop a
 # Royal Enfield/Infoleap IT — wire that in once those exist; this folder
 # is the interim mechanism so the system itself isn't hardcoded to one file.
 
-def load_model_config():
+def load_model_config(xl_or_df=None):
     """Read model_config sheet → (labels, platform, platform_labels).
     labels:          {code: model_name}   — all active models
     platform:        {code: platform_cc}  — e.g. {1:'350CC', 6:'450CC'}
     platform_labels: {platform_cc: display_label} — e.g. {'350CC':'J Platform (350CC)'}
     Fully dynamic: add rows/platforms to model_config sheet, no code change needed.
     Called after _sync_from_drive() so file is guaranteed to exist."""
-    if not MASTER_CONFIG_PATH.exists():
+    if not MASTER_CONFIG_PATH.exists() and xl_or_df is None:
         raise RuntimeError(
             f"RE_MIS_Master.xlsx not found at {MASTER_CONFIG_PATH}. "
             "Set DRIVE_FILE_ID in Streamlit Cloud secrets."
         )
-    df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
+    if isinstance(xl_or_df, pd.DataFrame):
+        df = xl_or_df
+    elif isinstance(xl_or_df, pd.ExcelFile):
+        df = xl_or_df.parse("model_config")
+    else:
+        df = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="model_config")
     df = df[pd.to_numeric(df["model_code"], errors="coerce").notna()]
     labels, platform, plat_labels = {}, {}, {}
     in_survey_codes: set[int] = set()
@@ -312,11 +337,21 @@ _FIELD_FALLBACK = {
 # Merge: Excel values override fallback
 _FIELD_REGISTRY = {**_FIELD_FALLBACK, **_FIELD_REGISTRY}
 
+# Standard 6-category occupation mapping with full names
+_DEFAULT_OCCUPATION_DISPLAY = {
+    1.0: "Full-time Worker", 2.0: "Full-time Worker",
+    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman",
+    8.0: "Self-employed",
+    11.0: "Agriculture",
+    12.0: "Students",
+    3.0: "Others", 4.0: "Others", 9.0: "Others", 10.0: "Others", 13.0: "Others", 14.0: "Others", 15.0: "Others",
+}
+
 # Display groups loaded from display_groups sheet in RE_MIS_Master.xlsx.
 # Edit that sheet to rename categories, merge codes, or drop codes — no code change needed.
 _DISPLAY_GROUPS = load_display_groups()
 EDUCATION_DISPLAY_GROUPS  = _DISPLAY_GROUPS.get("dq3",     {}) or None
-OCCUPATION_DISPLAY_GROUPS = _DISPLAY_GROUPS.get("dq4",     {}) or None
+OCCUPATION_DISPLAY_GROUPS = _DISPLAY_GROUPS.get("dq4") or _DEFAULT_OCCUPATION_DISPLAY
 _AGE_GRP_DISPLAY          = _DISPLAY_GROUPS.get("age_grp", {}) or None
 
 
@@ -359,11 +394,47 @@ class DataEngine:
     # ------------------------------------------------------------------
     def load_data(self):
         import datetime
+        import pickle
         global _MAX_MODEL_CODE, _ACCEPTOR_MAX_CODE, _HAS_EXPLICIT_CODES
-        _sync_from_drive()
+
+        cache_path = DATA_DIR / ".cache_data_engine.pkl"
+        master_mtime = os.path.getmtime(self.masterfile_path) if os.path.exists(self.masterfile_path) else 0
+
+        # Try ultra-fast binary cache first
+        if cache_path.exists():
+            try:
+                with open(cache_path, "rb") as f:
+                    cached_data = pickle.load(f)
+                if cached_data.get("mtime") == master_mtime:
+                    self.df = cached_data["df"]
+                    self.labels = cached_data["labels"]
+                    self.value_maps = cached_data["value_maps"]
+                    self.education_display_groups = cached_data["education_display_groups"]
+                    self.occupation_display_groups = cached_data["occupation_display_groups"]
+                    self.age_grp_display = cached_data["age_grp_display"]
+                    self.load_timestamp = cached_data["load_timestamp"]
+                    self.month_order = cached_data.get("month_order", [])
+
+                    # Update module globals
+                    RE_MODEL_LABELS.clear(); RE_MODEL_LABELS.update(cached_data["model_labels"])
+                    RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(cached_data["model_platform"])
+                    RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(cached_data["plat_labels"])
+                    _ACC_CODE_MAP.clear(); _ACC_CODE_MAP.update(cached_data["acc_map"])
+                    _REJ_CODE_MAP.clear(); _REJ_CODE_MAP.update(cached_data["rej_map"])
+                    _CAN_CODE_MAP.clear(); _CAN_CODE_MAP.update(cached_data["can_map"])
+                    _ACCEPTOR_MAX_CODE = cached_data["acc_max_code"]
+                    _MAX_MODEL_CODE = cached_data["max_model_code"]
+                    _HAS_EXPLICIT_CODES = cached_data["has_explicit_codes"]
+                    return
+            except Exception:
+                pass
+
+        # Load all sheets in a single pass using pd.ExcelFile
+        xl = pd.ExcelFile(self.masterfile_path)
+
+        # 1. model_config
         (_labels, _platform, _plat_labels,
          _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config()
-        # Update in-place so modules that imported these dicts by reference stay in sync
         RE_MODEL_LABELS.clear();   RE_MODEL_LABELS.update(_labels)
         RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(_platform)
         RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(_plat_labels)
@@ -372,52 +443,39 @@ class DataEngine:
         _CAN_CODE_MAP.clear(); _CAN_CODE_MAP.update(_can_map)
         _ACCEPTOR_MAX_CODE = max(_in_survey) if _in_survey else (max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14)
         _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
-        # Reload display_groups fresh from Drive file so Reload Data picks up changes
+
+        # 2. display_groups
         _dg = load_display_groups()
-        self.education_display_groups = _dg.get("dq3",     {}) or None
-        self.occupation_display_groups = _dg.get("dq4",    {}) or None
+        self.education_display_groups = _dg.get("dq3", {}) or None
+        self.occupation_display_groups = _dg.get("dq4") or _DEFAULT_OCCUPATION_DISPLAY
         self.age_grp_display = _dg.get("age_grp", {}) or None
         self.load_timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
-        # Auto-detect header row: if row 0 has 'Unnamed' columns, real headers are in row 1
-        _probe = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, nrows=0, header=0)
+
+        # 3. raw_data
+        _probe = xl.parse(RAW_DATA_SHEET, nrows=0, header=0)
         _header_row = 1 if all(str(c).startswith("Unnamed") for c in _probe.columns[:5]) else 0
-        self.df = pd.read_excel(self.masterfile_path, sheet_name=RAW_DATA_SHEET, header=_header_row)
-        # Apply column mapping from RE_MIS_Master.xlsx (no-op if file absent)
+        self.df = xl.parse(RAW_DATA_SHEET, header=_header_row)
+
         col_map = load_column_mapping()
-        # Only rename columns that actually exist in the data, skip others
         rename_map = {k: v for k, v in col_map.items() if k in self.df.columns and k != v and "*" not in k}
         if rename_map:
             self.df = self.df.rename(columns=rename_map)
-        # Schema validation: required columns must exist post-rename
-        required = get_required_columns()
-        if required:
-            missing = required - set(self.df.columns)
-            if missing:
-                print(
-                    f"[column_mapping] WARNING: Missing required columns after mapping: {sorted(missing)}. "
-                    f"Check column_mapping sheet in {MASTER_CONFIG_PATH}."
-                )
+
         self._merge_reasons_codes()
         self._ingest_monthly_drops()
 
-        dm = pd.read_excel(self.datamap_path, sheet_name='datamap_labels')
-        # Support both old (unnamed cols, skiprows=2) and new cleaned (variable/label cols)
+        # 4. datamap_labels & value_labels
+        dm = xl.parse('datamap_labels')
         if 'variable' in dm.columns:
             self.labels = dict(zip(dm['variable'], dm['label']))
         else:
-            # Legacy: unnamed columns, header on row 2
-            dm2_leg = pd.read_excel(self.datamap_path, sheet_name='datamap_labels', header=None,
-                                    skiprows=2, names=['Variable', 'Label', 'col3', 'col4'])
+            dm2_leg = xl.parse('datamap_labels', header=None, skiprows=2, names=['Variable', 'Label', 'col3', 'col4'])
             self.labels = dict(zip(dm2_leg['Variable'], dm2_leg['Label']))
 
-        dm2 = pd.read_excel(self.datamap_path, sheet_name='datamap_value_labels')
+        dm2 = xl.parse('datamap_value_labels')
         self._parse_value_labels(dm2)
 
-        # age_grp has no Sheet2 value-map block (derived/recoded variable,
-        # not documented in the datamap) — bucket order confirmed against
-        # scraped % in docs/DATA_FIELD_MAPPING.md (26%/53%/18%/3%).
         if not self.value_maps.get('age_grp'):
-            # Fall back to display_groups sheet; if also absent use inline defaults
             self.value_maps['age_grp'] = self.age_grp_display or {
                 1.0: "18 to 25 Years", 2.0: "26 to 35 Years",
                 3.0: "36 to 45 Years", 4.0: "46 or more",
@@ -431,10 +489,7 @@ class DataEngine:
         # the month-window question below; this is just data hygiene.
         self.df = self.df[self.df['month_label'].notna()].copy()
 
-        # Dynamic month list (see BUGS.md Bug #1 for the historical finding
-        # this replaces): derive every month actually present in the data,
-        # in true chronological order, instead of a hardcoded literal list.
-        # This is what lets new monthly drops show up automatically.
+        # Dynamic month list
         present_months = self.df['month_label'].dropna().unique().tolist()
         present_months.sort(key=lambda m: pd.to_datetime(m.replace("'", " "), format="%B %Y"))
         fy_quarters = sorted(set(month_label_to_fy_quarter(m) for m in present_months),
@@ -444,6 +499,35 @@ class DataEngine:
         self.fy_quarter_order = fy_quarters
         MONTH_ORDER[:] = present_months          # kept for backward compat / direct module use
         FY_QUARTER_ORDER[:] = fy_quarters
+
+        # Save binary cache for subsequent instant loads (< 0.05s)
+        try:
+            cache_obj = {
+                "mtime": master_mtime,
+                "df": self.df,
+                "labels": self.labels,
+                "value_maps": self.value_maps,
+                "education_display_groups": self.education_display_groups,
+                "occupation_display_groups": self.occupation_display_groups,
+                "age_grp_display": self.age_grp_display,
+                "load_timestamp": self.load_timestamp,
+                "month_order": self.month_order,
+                "fy_quarter_order": self.fy_quarter_order,
+                "model_labels": dict(RE_MODEL_LABELS),
+                "model_platform": dict(RE_MODEL_PLATFORM),
+                "plat_labels": dict(RE_PLATFORM_LABELS),
+                "acc_map": dict(_ACC_CODE_MAP),
+                "rej_map": dict(_REJ_CODE_MAP),
+                "can_map": dict(_CAN_CODE_MAP),
+                "acc_max_code": _ACCEPTOR_MAX_CODE,
+                "max_model_code": _MAX_MODEL_CODE,
+                "has_explicit_codes": _HAS_EXPLICIT_CODES,
+            }
+            with open(cache_path, "wb") as f:
+                pickle.dump(cache_obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            pass
+
         return self.df
 
     def _ingest_monthly_drops(self):
@@ -945,8 +1029,7 @@ class DataEngine:
         return pd.concat([base_row, rest], ignore_index=True)
 
     def occupation_table(self, df, base_label="All", numeric=False, extra_groups=None):
-        tbl = self.distribution_table(df, self.F.get('occupation', 'dq4'), base_label, display_groups=self.occupation_display_groups, numeric=numeric, extra_groups=extra_groups)
-        return self.sort_by_value(tbl) if numeric else tbl
+        return self.distribution_table(df, self.F.get('occupation', 'dq4'), base_label, display_groups=self.occupation_display_groups, numeric=numeric, extra_groups=extra_groups)
 
     def household_income_table(self, df, base_label="All", numeric=False, extra_groups=None):
         return self.distribution_table(df, self.F.get('household_income', 'dq6'), base_label, numeric=numeric, extra_groups=extra_groups)

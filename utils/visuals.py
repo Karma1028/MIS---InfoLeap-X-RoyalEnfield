@@ -491,7 +491,18 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     {"Royal Enfield", "HERO", "BAJAJ"}) — per user request to match the live site's nested
     look, every OTHER non-Base row is indented and shown in a lighter
     weight as a "member" of whichever rollup precedes it."""
-    cols = ["Unnamed: 0", "All"] + [c for c in table_df.columns if c not in ("Unnamed: 0", "All")]
+    # Filter out columns where base n < 50 (keep 'Unnamed: 0', 'All', and any column with base >= 50)
+    base_row_check = table_df.iloc[0] if len(table_df) > 0 else {}
+    def _is_col_visible(c):
+        if c in ("Unnamed: 0", "All"):
+            return True
+        try:
+            val = float(base_row_check.get(c, 0))
+            return val >= 50
+        except (ValueError, TypeError):
+            return True
+
+    cols = ["Unnamed: 0", "All"] + [c for c in table_df.columns if c not in ("Unnamed: 0", "All") and _is_col_visible(c)]
     # Long brand-wise tables (rollup + many member rows) get a sticky header
     # + scrollable body instead of pushing the whole page down, plus zebra
     # striping on member rows and a subtle top-border between brand groups
@@ -1006,10 +1017,11 @@ def render_collapsible_reasons_table(tree_data, title, color="#D6742D", key_suff
         st.info("No data available for this question / selection.")
         return
 
-    cols = tree_data['columns']
     col_bases = tree_data['col_bases']
     base_label = tree_data['base_label']
     supernets = tree_data['supernets']
+    # Filter out columns where base n < 50
+    cols = [c for c in tree_data['columns'] if c == 'All' or col_bases.get(c, 0) >= 50]
 
     expand_all = st.checkbox("Expand All Categories", value=False, key=f"expand_all_{key_suffix}")
 
@@ -1314,8 +1326,17 @@ def render_collapsible_brand_table(table_df, title, color="#2E3192", rollup_labe
     accent_col = accent or color
 
     cols_data = [c for c in table_df.columns if c not in ("Unnamed: 0",)]
+    base_row_check = table_df.iloc[0] if len(table_df) > 0 else {}
+    def _is_bwt_col_visible(c):
+        if c == "All":
+            return True
+        try:
+            return float(base_row_check.get(c, 0)) >= 50
+        except (ValueError, TypeError):
+            return True
+
     # Keep All first, then rest
-    display_cols = ["All"] + [c for c in cols_data if c != "All"]
+    display_cols = ["All"] + [c for c in cols_data if c != "All" and _is_bwt_col_visible(c)]
 
     SIG_DEEP_GREEN = "#1A7A3C"
     SIG_LIGHT_GREEN = "#B7E4C0"

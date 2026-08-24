@@ -231,7 +231,7 @@ def _render_brand_header():
 _MAX_ATTEMPTS    = 5
 _LOCKOUT_SECONDS = 60
 _SESSION_TTL     = 8 * 3600
-_INACTIVITY_TTL  = 12 * 60
+_INACTIVITY_TTL  = 37 * 60  # 37 mins (increased by 25 mins from 12 mins)
 
 
 def _do_login(email: str, name: str, role: str, event: str):
