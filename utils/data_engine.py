@@ -429,12 +429,16 @@ class DataEngine:
             except Exception:
                 pass
 
+        # If masterfile does not exist locally (e.g. fresh Streamlit Cloud container boot), sync from Drive
+        if not Path(self.masterfile_path).exists():
+            _sync_from_drive()
+
         # Load all sheets in a single pass using pd.ExcelFile
         xl = pd.ExcelFile(self.masterfile_path)
 
         # 1. model_config
         (_labels, _platform, _plat_labels,
-         _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config()
+         _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config(xl)
         RE_MODEL_LABELS.clear();   RE_MODEL_LABELS.update(_labels)
         RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(_platform)
         RE_PLATFORM_LABELS.clear(); RE_PLATFORM_LABELS.update(_plat_labels)
@@ -445,7 +449,7 @@ class DataEngine:
         _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
 
         # 2. display_groups
-        _dg = load_display_groups()
+        _dg = load_display_groups(xl)
         self.education_display_groups = _dg.get("dq3", {}) or None
         self.occupation_display_groups = _dg.get("dq4") or _DEFAULT_OCCUPATION_DISPLAY
         self.age_grp_display = _dg.get("age_grp", {}) or None
@@ -456,7 +460,7 @@ class DataEngine:
         _header_row = 1 if all(str(c).startswith("Unnamed") for c in _probe.columns[:5]) else 0
         self.df = xl.parse(RAW_DATA_SHEET, header=_header_row)
 
-        col_map = load_column_mapping()
+        col_map = load_column_mapping(xl)
         rename_map = {k: v for k, v in col_map.items() if k in self.df.columns and k != v and "*" not in k}
         if rename_map:
             self.df = self.df.rename(columns=rename_map)

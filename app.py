@@ -36,7 +36,11 @@ if not render_landing():
 
 def _masterfile_mtime():
     import os
+    from pathlib import Path
     try:
+        if not Path("data/RE_MIS_Master.xlsx").exists():
+            from utils.data_engine import _sync_from_drive
+            _sync_from_drive()
         return os.path.getmtime("data/RE_MIS_Master.xlsx")
     except Exception:
         return 0
