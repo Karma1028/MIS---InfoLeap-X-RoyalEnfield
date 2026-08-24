@@ -205,8 +205,7 @@ _reload_cooldown = 30  # seconds
 _reload_last = st.session_state.get("_reload_last_ts", 0)
 _reload_elapsed = time.time() - _reload_last
 _reload_ready = _reload_elapsed >= _reload_cooldown
-_reload_label = "⟳ Reload Data" if _reload_ready else f"⟳ {int(_reload_cooldown - _reload_elapsed)}s"
-if _reload_col.button(_reload_label, key="reload_data", disabled=not _reload_ready,
+if _reload_col.button("⟳ Reload Data", key="reload_data", disabled=not _reload_ready,
                       help="Re-download & reload master file (fetches latest from Drive if configured)",
                       use_container_width=True):
     st.session_state["_reload_last_ts"] = time.time()
