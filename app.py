@@ -221,16 +221,15 @@ if _reload_col.button(_reload_label, key="reload_data", disabled=not _reload_rea
 # Live site names these "J Platform (350CC)" / "K Platform (450CC)" /
 # "P Platform (650CC)" (confirmed via the scraped tab keys) — display labels
 # match that, while the underlying filter value stays the plain "350CC" etc.
-# that RE_MODEL_PLATFORM/filter_df already key off of.
+# Use engine instance attrs (survive module reload) with module global fallback
 from utils.data_engine import RE_PLATFORM_LABELS
-_all_platforms = sorted({p for p in RE_MODEL_PLATFORM.values() if p and str(p) != "nan"})
+_ml = getattr(engine, 'model_labels', None) or RE_MODEL_LABELS
+_mp = getattr(engine, 'model_platform', None) or RE_MODEL_PLATFORM
+_all_platforms = sorted({p for p in _mp.values() if p and str(p) != "nan"})
 PLATFORM_DISPLAY = {"All": "All", **{p: RE_PLATFORM_LABELS.get(p, p) for p in _all_platforms}}
 platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
                                   format_func=lambda p: PLATFORM_DISPLAY.get(p, p),
                                   key="platform_filter")
-
-_ml = getattr(engine, 'model_labels', None) or RE_MODEL_LABELS
-_mp = getattr(engine, 'model_platform', None) or RE_MODEL_PLATFORM
 model_options = ["All"]
 if platform != "All":
     model_options += sorted(_ml[code] for code, plat in _mp.items() if plat == platform and code in _ml)
