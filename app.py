@@ -233,8 +233,6 @@ platform = st.sidebar.selectbox("Platform (CC)", ["All"] + _all_platforms,
 model_options = ["All"]
 if platform != "All":
     model_options += sorted(_ml[code] for code, plat in _mp.items() if plat == platform and code in _ml)
-else:
-    model_options += sorted(set(_ml[code] for code in _mp if code in _ml))
 model = st.sidebar.selectbox("Model", model_options, key="model_filter")
 
 st.sidebar.markdown("### Time Period")
