@@ -62,9 +62,25 @@ def _card(inner, accent="#C8102E", extra=""):
     )
 
 
+def _latest_month_label(engine):
+    """Convert engine.month_order[-1] (e.g. "May'26") → "May 2026"."""
+    try:
+        if engine and engine.month_order:
+            lbl = engine.month_order[-1]  # e.g. "May'26"
+            abbr = lbl[:3]
+            yr = int("20" + lbl[-2:])
+            full = _MONTH_NUM_TO_NAME.get(_MONTH_ABBR_TO_NUM.get(abbr, 0), abbr)
+            return f"{full} {yr}"
+    except Exception:
+        pass
+    return "April 2026"
+
+
 def render_overview_intro(engine=None):
     """Renders the full static Overview narrative (slides 1-4).
     Pass engine to get dynamic reporting cadence from live data."""
+
+    _date_label = _latest_month_label(engine)
 
     # ── Slide 1: title + logo ────────────────────────────────────────────
     # Rendered as one flex block (not st.columns) so the logo and title
@@ -89,7 +105,7 @@ def render_overview_intro(engine=None):
             <div style='font-family:Oswald,sans-serif;font-size:1.9rem;font-weight:800;
                         color:#1A1A1A;line-height:1.15;'>Understanding the RE Brands</div>
             <div style='font-size:1.05rem;color:#C8102E;font-weight:700;margin-top:3px;'>Research Findings</div>
-            <div style='font-size:0.85rem;color:#7A7670;margin-top:2px;'>April 2026</div>
+            <div style='font-size:0.85rem;color:#7A7670;margin-top:2px;'>{_date_label}</div>
           </div>
         </div>
         """,
