@@ -210,7 +210,7 @@ if _reload_col.button(_reload_label, key="reload_data", disabled=not _reload_rea
                       help="Re-download & reload master file (fetches latest from Drive if configured)",
                       use_container_width=True):
     st.session_state["_reload_last_ts"] = time.time()
-    load_engine.clear()
+    load_engine_v2.clear()
     st.cache_data.clear()
     st.session_state.pop("_engine_mtime", None)
     # Also clear section-level table cache stored in session_state
