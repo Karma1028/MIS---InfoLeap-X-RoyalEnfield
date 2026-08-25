@@ -478,6 +478,15 @@ for _m in engine.month_order:
         if _total > 0:
             _dom_pct = round(100 * _band_counts.get(float(_dom_age_code), 0) / _total, 1)
             _avg_age_monthly.append((_m, _dom_pct))
+# Limit sparkline to last 12 months (or selected period window)
+_avg_age_monthly = _avg_age_monthly[-12:]
+
+# Current-period dominant bracket % for KPI card display
+_dom_age_pct = None
+_age_band_src = _age_src_df[_AGE_BAND_COL].value_counts()
+_age_band_total = _age_band_src.sum()
+if _age_band_total > 0:
+    _dom_age_pct = round(100 * _age_band_src.get(float(_dom_age_code), 0) / _age_band_total, 1)
 
 # Per-month series for FTB % sparkline
 _ftb_monthly = []
@@ -861,9 +870,9 @@ else:
 
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Age Bracket", "Dominant Bracket", _dom_age_label, 'age', _age_base_n,
+        + _stat_card("Age Bracket", _dom_age_label, _dom_age_pct if _dom_age_pct is not None else 0, 'age', _age_base_n,
                      unit="%", month_vals_override=_avg_age_monthly,
-                     current_override=None)
+                     current_override=_dom_age_pct if time_mode == "All Months" else None)
         + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                      full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
                      current_override=top_income_val if time_mode == "All Months" else None)
@@ -889,9 +898,9 @@ else:
         st.markdown(
             f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;align-items:stretch;justify-content:flex-start;'>"
             + _active_seg_card
-            + _stat_card("Average Age", "Dominant Bracket", _dom_age_label, 'age', _base_cur,
-                         unit="", month_vals_override=_avg_age_monthly,
-                         current_override=None)
+            + _stat_card("Age Bracket", _dom_age_label, _dom_age_pct if _dom_age_pct is not None else 0, 'age', _base_cur,
+                         unit="%", month_vals_override=_avg_age_monthly,
+                         current_override=_dom_age_pct if time_mode == "All Months" else None)
             + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                          full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
                          current_override=top_income_val if time_mode == "All Months" else None)
