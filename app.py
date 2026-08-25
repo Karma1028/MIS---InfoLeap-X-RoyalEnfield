@@ -468,14 +468,16 @@ top_edu_val = float(top_edu_row[_kpi_col if _kpi_col in edu_table_full.columns e
 # Keep age_table_full for section rendering below
 age_table_full = engine.age_table(df, base_label=segment_value, numeric=True)
 
-# Per-month series for avg age sparkline — uses age_numeric (dq7) when present
+# Per-month % of respondents in dominant age bracket (for sparkline)
 _avg_age_monthly = []
 for _m in engine.month_order:
     _mdf = df[df['month_label'] == _m]
     if len(_mdf) > 0:
-        _ma = _mean_age(_mdf)
-        if _ma == _ma:  # not NaN
-            _avg_age_monthly.append((_m, float(_ma)))
+        _band_counts = _mdf[_AGE_BAND_COL].value_counts()
+        _total = _band_counts.sum()
+        if _total > 0:
+            _dom_pct = round(100 * _band_counts.get(float(_dom_age_code), 0) / _total, 1)
+            _avg_age_monthly.append((_m, _dom_pct))
 
 # Per-month series for FTB % sparkline
 _ftb_monthly = []
@@ -859,8 +861,8 @@ else:
 
     _four_cards_html = (
         f"<div style='display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:stretch;justify-content:flex-start;'>"
-        + _stat_card("Average Age", "Dominant Bracket", _dom_age_label, 'age', _age_base_n,
-                     unit="", month_vals_override=_avg_age_monthly,
+        + _stat_card("Age Bracket", "Dominant Bracket", _dom_age_label, 'age', _age_base_n,
+                     unit="%", month_vals_override=_avg_age_monthly,
                      current_override=None)
         + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                      full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],

@@ -541,15 +541,15 @@ def _render_html_table(table_df, sig_markers=None, accent=RE_RED, col_sig_marker
     header_cells = "".join(
         f"<th style='padding:10px 14px;text-align:center;font-weight:600;font-size:0.79rem;"
         f"letter-spacing:0.02em;"
-        f"color:{'#1F3864' if c == highlight_col else ('#92400E' if c in low_base_cols else '#f8fafc')};"
-        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else ('#FEF3C7' if c in low_base_cols else '#1e293b')};"
+        f"color:{'#1F3864' if c == highlight_col else '#f8fafc'};"
+        f"background:{HIGHLIGHT_HEADER_BG if c == highlight_col else '#1e293b'};"
         f"border-bottom:none;"
         + (f"width:{CATEGORY_COL_WIDTH}px;min-width:{CATEGORY_COL_WIDTH}px;max-width:{CATEGORY_COL_WIDTH}px;"
            "white-space:normal;word-break:break-word;"
            if c == "Unnamed: 0" else
            ("max-width:90px;white-space:nowrap;" if c == highlight_col else "white-space:nowrap;"))
         + "position:sticky;top:0;z-index:2;'>"
-        f"{_header_html(c)}{' ⚠' if c in low_base_cols else ''}</th>"
+        f"{_header_html(c)}</th>"
         for c in cols
     )
     body_rows = []
