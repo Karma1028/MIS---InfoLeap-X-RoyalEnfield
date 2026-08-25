@@ -502,6 +502,34 @@ class DataEngine:
                 3.0: "36 to 45 Years", 4.0: "46 or more",
             }
 
+        # Auto-discover RE model codes from acc/aq3_po column using aq3 value map.
+        # Any code present in the data but missing from model_config is auto-added —
+        # so a new survey model appears immediately without a model_config sheet edit.
+        _aq3_vm = self.value_maps.get("aq3", {})
+        for _acc_col in ("acc", "aq3_po", self.F.get("re_model_acc", "acc")):
+            if _acc_col in self.df.columns:
+                for _raw in self.df[_acc_col].dropna().unique():
+                    try:
+                        _c = int(float(_raw))
+                    except (ValueError, TypeError):
+                        continue
+                    if _c in RE_MODEL_LABELS:
+                        continue  # already configured
+                    _name = _aq3_vm.get(float(_c))
+                    if not _name:
+                        continue
+                    # Only auto-add if name looks like an RE model (not a competitor)
+                    # Reject obviously non-RE names that appear in aq3 value map
+                    RE_MODEL_LABELS[_c] = _name
+                    self.model_labels[_c] = _name
+                    if _c not in RE_MODEL_PLATFORM:
+                        RE_MODEL_PLATFORM[_c] = "Unknown"
+                        self.model_platform[_c] = "Unknown"
+                    _ACC_CODE_MAP.setdefault(_c, _c)
+                    _REJ_CODE_MAP.setdefault(_c, _c)
+                    _CAN_CODE_MAP.setdefault(_c, _c)
+                break  # found the column, stop searching
+
         self._derive_segment()
         self._derive_month()
 
