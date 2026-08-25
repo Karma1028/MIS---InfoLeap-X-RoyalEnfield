@@ -337,14 +337,15 @@ _FIELD_FALLBACK = {
 # Merge: Excel values override fallback
 _FIELD_REGISTRY = {**_FIELD_FALLBACK, **_FIELD_REGISTRY}
 
-# Standard 6-category occupation mapping with full names
+# Standard 6-category occupation mapping — insertion order = display order
 _DEFAULT_OCCUPATION_DISPLAY = {
-    1.0: "Full-time Worker", 2.0: "Full-time Worker",
-    5.0: "Businessman", 6.0: "Businessman", 7.0: "Businessman",
+    1.0: "Full-time Worker", 2.0: "Full-time Worker",        # salaried first
+    5.0: "Businessman",      6.0: "Businessman", 7.0: "Businessman",
     8.0: "Self-employed",
     11.0: "Agriculture",
     12.0: "Students",
-    3.0: "Others", 4.0: "Others", 9.0: "Others", 10.0: "Others", 13.0: "Others", 14.0: "Others", 15.0: "Others",
+    3.0: "Others", 4.0: "Others", 9.0: "Others", 10.0: "Others",
+    13.0: "Others", 14.0: "Others", 15.0: "Others",
 }
 
 # Display groups loaded from display_groups sheet in RE_MIS_Master.xlsx.
@@ -927,7 +928,7 @@ class DataEngine:
 
         if display_groups:
             labels_in_order = []
-            for code in sorted(display_groups.keys()):
+            for code in display_groups.keys():  # preserve insertion/sheet-row order
                 lbl = display_groups.get(code)
                 if lbl and lbl not in labels_in_order:
                     labels_in_order.append(lbl)
