@@ -242,6 +242,7 @@ def load_model_config(xl_or_df=None):
     acc_code_map:  dict[int, int] = {}   # acceptor_code  → model_code
     rej_code_map:  dict[int, int] = {}   # rejector_code  → model_code
     can_code_map:  dict[int, int] = {}   # cancelled_code → model_code
+    dq2b_code_map: dict[int, int] = {}   # model_code → dq2b_code (survey DQ2 response code)
     has_explicit_codes = any(c in df.columns for c in ("acceptor_code", "rejector_code", "cancelled_code"))
 
     for _, row in df.iterrows():
@@ -261,15 +262,18 @@ def load_model_config(xl_or_df=None):
             plat_labels[plat] = lbl
             if active == "YES":
                 labels[code] = name
+            # dq2b_code: which dq2a_N column + dq2b value maps to this RE model
+            def _int_col(col, default):
+                v = row.get(col, default)
+                try:
+                    return int(float(v)) if str(v).strip() not in ("", "nan") else default
+                except (ValueError, TypeError):
+                    return default
+            dq2b_c = _int_col("dq2b_code", None)
+            if dq2b_c is not None:
+                dq2b_code_map[code] = dq2b_c
             if in_survey != "NO":
                 in_survey_codes.add(code)
-                # Explicit segment codes — fall back to model_code if column absent
-                def _int_col(col, default):
-                    v = row.get(col, default)
-                    try:
-                        return int(float(v)) if str(v).strip() not in ("", "nan") else default
-                    except (ValueError, TypeError):
-                        return default
                 acc_c = _int_col("acceptor_code",  code)
                 rej_c = _int_col("rejector_code",  None)
                 can_c = _int_col("cancelled_code", None)
@@ -285,7 +289,7 @@ def load_model_config(xl_or_df=None):
             "model_config sheet found but no active models. "
             "Check model_code is numeric and active=YES for at least one row."
         )
-    return labels, platform, plat_labels, in_survey_codes, acc_code_map, rej_code_map, can_code_map, has_explicit_codes
+    return labels, platform, plat_labels, in_survey_codes, acc_code_map, rej_code_map, can_code_map, has_explicit_codes, dq2b_code_map
 
 
 # Populated after _sync_from_drive() in load_data() so cloud boot succeeds
@@ -299,6 +303,7 @@ _MAX_MODEL_CODE: int = 0      # max of ALL configured codes including future mod
 _ACC_CODE_MAP: dict[int, int] = {}   # acceptor_code  → model_code
 _REJ_CODE_MAP: dict[int, int] = {}   # rejector_code  → model_code
 _CAN_CODE_MAP: dict[int, int] = {}   # cancelled_code → model_code
+_DQ2B_CODE_MAP: dict[int, int] = {}  # model_code → dq2b_code (DQ2 survey response code)
 _HAS_EXPLICIT_CODES: bool = False     # True when model_config has explicit code columns
 
 # Field registry — semantic_key → internal_name, loaded from column_mapping sheet.
@@ -452,7 +457,7 @@ class DataEngine:
 
         # 1. model_config
         (_labels, _platform, _plat_labels,
-         _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES) = load_model_config(xl)
+         _in_survey, _acc_map, _rej_map, _can_map, _HAS_EXPLICIT_CODES, _dq2b_map) = load_model_config(xl)
         RE_MODEL_LABELS.clear();   RE_MODEL_LABELS.update(_labels)
         RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(_platform)
         self.model_labels.clear();    self.model_labels.update(_labels)
@@ -462,6 +467,7 @@ class DataEngine:
         _ACC_CODE_MAP.clear(); _ACC_CODE_MAP.update(_acc_map)
         _REJ_CODE_MAP.clear(); _REJ_CODE_MAP.update(_rej_map)
         _CAN_CODE_MAP.clear(); _CAN_CODE_MAP.update(_can_map)
+        _DQ2B_CODE_MAP.clear(); _DQ2B_CODE_MAP.update(_dq2b_map)
         _ACCEPTOR_MAX_CODE = max(_in_survey) if _in_survey else (max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14)
         _MAX_MODEL_CODE = max(RE_MODEL_PLATFORM.keys()) if RE_MODEL_PLATFORM else 14
 
@@ -1992,54 +1998,71 @@ class DataEngine:
         return self.sort_by_value(tbl) if numeric else tbl
 
     def _load_dq2_codebook(self) -> dict:
-        """Load DQ2a/DQ2b codebook from Excel netting_dq2 sheet (preferred)
-        or fall back to data/dq2_netting_codebook.json.
+        """Load DQ2a/DQ2b codebook.
 
-        Returns dict: {code(int): {'brand': str, 'cc_netting': str, 'model': str}}
+        Returns dict: {dq2b_code(int): {'brand': str, 'cc_netting': str, 'model': str}}
 
-        Excel sheet columns: code | brand | cc_netting | model_name (ref only)
-        Data starts row 3 (row 1 = header, row 2 = instructions).
+        Source priority:
+        1. RE models: auto-generated from model_config (dq2b_code + platform_cc columns).
+           Adding new RE model to model_config auto-populates this — no netting_dq2 change needed.
+        2. Competitor models: read from netting_dq2 Excel sheet (competitor rows only).
+           Adding new competitor: add row to netting_dq2.
+        3. Fallback: JSON codebook (legacy, used if Excel missing).
 
-        When new model added to survey: add row to netting_dq2 sheet AND a
-        corresponding row to datamap_value_labels dq2b section. No code changes.
+        Platform → DQ2 CC bucket:
+          350CC/450CC → '351 and above'  (all RE premium models ≥350CC)
+          650CC       → '501-650'
         """
         if hasattr(self, '_dq2_codebook_cache'):
             return self._dq2_codebook_cache
 
         codebook: dict = {}
+        _PLATFORM_TO_DQ2_BUCKET = {'350CC': '351 and above', '450CC': '351 and above', '650CC': '501-650'}
 
-        # Try Excel sheet first
+        # Step 1: RE models from model_config (via _DQ2B_CODE_MAP populated at load_data)
+        for model_code, dq2b_code in _DQ2B_CODE_MAP.items():
+            name = RE_MODEL_LABELS.get(model_code, '')
+            plat = RE_MODEL_PLATFORM.get(model_code, '')
+            cc_bucket = _PLATFORM_TO_DQ2_BUCKET.get(plat, '351 and above')
+            codebook[dq2b_code] = {
+                'brand':      'RE',
+                'cc_netting': cc_bucket,
+                'model':      name.upper(),
+            }
+
+        # Step 2: Competitor models from netting_dq2 sheet
         try:
             xl = pd.ExcelFile(self.masterfile_path)
             if 'netting_dq2' in xl.sheet_names:
                 sheet = xl.parse('netting_dq2', header=0, skiprows=[1])
-                # Columns: code, brand, cc_netting, model_name (ref)
                 for _, row in sheet.iterrows():
                     try:
                         code = int(float(row.get('code', 0) or 0))
                         if code <= 0:
                             continue
+                        brand = str(row.get('brand', '') or '').strip()
+                        if brand.upper() == 'RE':
+                            continue  # RE entries come from model_config above
+                        model_name_col = next((c for c in sheet.columns if 'model_name' in str(c).lower()), None)
+                        model_name = str(row.get(model_name_col, '') or '').replace('[AUTO from model_config]', '').strip()
                         codebook[code] = {
-                            'brand':      str(row.get('brand', '') or '').strip() or None,
+                            'brand':      brand or None,
                             'cc_netting': str(row.get('cc_netting', '') or '').strip() or None,
-                            'model':      str(row.get('model_name (reference only — do not edit)', '')
-                                              or row.get('model_name', '') or '').strip(),
+                            'model':      model_name,
                         }
                     except (ValueError, TypeError):
                         continue
-                if codebook:
-                    self._dq2_codebook_cache = codebook
-                    return codebook
         except Exception:
             pass
 
-        # Fallback: JSON codebook
-        try:
-            with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
-                raw = json.load(f)
-            codebook = {int(k): v for k, v in raw.items()}
-        except (FileNotFoundError, json.JSONDecodeError):
-            codebook = {}
+        # Step 3: JSON fallback (only if Excel gave nothing at all)
+        if not codebook:
+            try:
+                with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
+                    raw = json.load(f)
+                codebook = {int(k): v for k, v in raw.items()}
+            except (FileNotFoundError, json.JSONDecodeError):
+                codebook = {}
 
         self._dq2_codebook_cache = codebook
         return codebook
@@ -2084,7 +2107,15 @@ class DataEngine:
         return result
 
     def _aq5a_cc_netting(self):
-        """Loads CC-bucket scheme for aq5a codes 1-124 from netting_aq3a_aq5 sheet.
+        """Loads CC-bucket scheme for aq5a/aq5c survey codes from netting_aq3a_aq5 sheet.
+
+        Sheet structure (post-restructure):
+          Col 0 = survey_code (explicit integer — replaces position-based reading)
+          Col 1 = model_name, Col 2 = brand, Col 3 = cc, Col 4 = revised, Col 5 = new_netting
+          Row 3 = header row, rows 4+ = data.
+
+        RE models are included in the sheet for reference but their CC bucket comes
+        from model_config.platform_cc via _re_aware_cc_map() — no duplication needed.
         Cached on instance after first read."""
         if hasattr(self, '_aq5a_cc_netting_cache'):
             return self._aq5a_cc_netting_cache
@@ -2094,16 +2125,22 @@ class DataEngine:
                 "Set DRIVE_FILE_ID in Streamlit Cloud secrets and reload."
             )
         net = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="netting_aq3a_aq5", header=None)
-        # Row 0=blank, row 1=title, row 2=header, rows 3+ = data. Col 5 = New_netting bucket.
-        # Skip non-data rows; keep only rows where col 0 has a numeric position code
+        # Row 0=blank, row 1=title, row 2=header, rows 3+ = data.
+        # Col 0 = survey_code (explicit after restructure), Col 5 = new_netting bucket.
         data = net.iloc[3:].reset_index(drop=True)
         result = {}
-        pos = 1
         for i in range(len(data)):
-            bucket = str(data.iloc[i, 5]).strip()
-            if bucket and bucket not in ('nan', 'New_netting'):
-                result[pos] = bucket
-                pos += 1
+            raw_code = data.iloc[i, 0]
+            bucket   = str(data.iloc[i, 5]).strip()
+            if bucket in ('', 'nan', 'New_netting'):
+                continue
+            try:
+                code = int(float(raw_code))
+                result[code] = bucket
+            except (ValueError, TypeError):
+                # Legacy: no survey_code column yet — fall back to position
+                if not result:
+                    result[i + 1] = bucket
         self._aq5a_cc_netting_cache = result
         return self._aq5a_cc_netting_cache
 
