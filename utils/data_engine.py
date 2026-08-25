@@ -1285,11 +1285,7 @@ class DataEngine:
         cc_netting, which is the exact bucket scheme the live site
         displays ('200-249 CC', '250-350 CC', etc. — confirmed by
         comparing live's 7-row CC Wise table label-for-label)."""
-        try:
-            with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
-                codebook = {int(k): v for k, v in json.load(f).items()}
-        except (FileNotFoundError, json.JSONDecodeError):
-            codebook = {}
+        codebook = self._load_dq2_codebook()
 
         # Base FIXED (2026-06-23): dq1b.notna() gave 878 vs live's fresh
         # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
@@ -1994,6 +1990,59 @@ class DataEngine:
             extra_groups=extra_groups,
         )
         return self.sort_by_value(tbl) if numeric else tbl
+
+    def _load_dq2_codebook(self) -> dict:
+        """Load DQ2a/DQ2b codebook from Excel netting_dq2 sheet (preferred)
+        or fall back to data/dq2_netting_codebook.json.
+
+        Returns dict: {code(int): {'brand': str, 'cc_netting': str, 'model': str}}
+
+        Excel sheet columns: code | brand | cc_netting | model_name (ref only)
+        Data starts row 3 (row 1 = header, row 2 = instructions).
+
+        When new model added to survey: add row to netting_dq2 sheet AND a
+        corresponding row to datamap_value_labels dq2b section. No code changes.
+        """
+        if hasattr(self, '_dq2_codebook_cache'):
+            return self._dq2_codebook_cache
+
+        codebook: dict = {}
+
+        # Try Excel sheet first
+        try:
+            xl = pd.ExcelFile(self.masterfile_path)
+            if 'netting_dq2' in xl.sheet_names:
+                sheet = xl.parse('netting_dq2', header=0, skiprows=1)
+                # Columns: code, brand, cc_netting, model_name (ref)
+                for _, row in sheet.iterrows():
+                    try:
+                        code = int(float(row.get('code', 0) or 0))
+                        if code <= 0:
+                            continue
+                        codebook[code] = {
+                            'brand':      str(row.get('brand', '') or '').strip() or None,
+                            'cc_netting': str(row.get('cc_netting', '') or '').strip() or None,
+                            'model':      str(row.get('model_name (reference only — do not edit)', '')
+                                              or row.get('model_name', '') or '').strip(),
+                        }
+                    except (ValueError, TypeError):
+                        continue
+                if codebook:
+                    self._dq2_codebook_cache = codebook
+                    return codebook
+        except Exception:
+            pass
+
+        # Fallback: JSON codebook
+        try:
+            with open(DQ2_CODEBOOK_PATH, encoding='utf-8') as f:
+                raw = json.load(f)
+            codebook = {int(k): v for k, v in raw.items()}
+        except (FileNotFoundError, json.JSONDecodeError):
+            codebook = {}
+
+        self._dq2_codebook_cache = codebook
+        return codebook
 
     def _re_aware_cc_map(self, use_acc_codes: bool = False) -> dict:
         """Unified CC-bucket map for all codes.
