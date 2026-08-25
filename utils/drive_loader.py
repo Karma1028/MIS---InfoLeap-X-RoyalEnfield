@@ -179,24 +179,14 @@ def download_latest_master(dest_path: str) -> str:
                 _, done = downloader.next_chunk()
         print("[drive] xlsx download complete")
     else:
-        # Export Google Sheet → xlsx
-        import requests as _req
-        from google.auth.transport.requests import Request as AuthRequest
-        creds = _get_credentials()
-        if not creds.valid:
-            creds.refresh(AuthRequest())
-        resp = _req.get(
-            f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
-            params={"mimeType": xlsx_mime},
-            headers={"Authorization": f"Bearer {creds.token}"},
-            stream=True,
-            timeout=120,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Sheet export failed ({resp.status_code}): {resp.text[:200]}")
-        with open(dest_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=65536):
-                f.write(chunk)
+        # Export Google Sheet → xlsx via Drive API (handles auth automatically)
+        service = _get_service()
+        request = service.files().export_media(fileId=file_id, mimeType=xlsx_mime)
+        with io.FileIO(dest_path, "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
         print("[drive] Sheet export complete")
 
     # Validate: xlsx files are ZIP archives starting with PK\x03\x04
