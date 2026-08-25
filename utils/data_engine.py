@@ -506,6 +506,27 @@ class DataEngine:
         # Any code present in the data but missing from model_config is auto-added —
         # so a new survey model appears immediately without a model_config sheet edit.
         _aq3_vm = self.value_maps.get("aq3", {})
+
+        # Load CC-bucket map from netting_aq3a_aq5 to assign correct platform_cc
+        # for auto-discovered models. Maps raw CC bucket string → platform_cc label.
+        _cc_bucket_map: dict[int, str] = {}
+        def _bucket_to_platform(bucket: str) -> str:
+            """'501-650CC' → '650CC', '250-350CC' → '350CC', '351-500CC' → '450CC', etc."""
+            b = str(bucket).strip()
+            if "650" in b: return "650CC"
+            if "450" in b or "440" in b or "351" in b or "400" in b or "500" in b: return "450CC"
+            if "350" in b or "250" in b: return "350CC"
+            return "Unknown"
+        try:
+            _net = xl.parse("netting_aq3a_aq5", header=None)
+            _net_rows = _net.iloc[3:127].reset_index(drop=True)
+            for _i in range(len(_net_rows)):
+                _bucket = str(_net_rows.iloc[_i, 5]).strip()
+                if _bucket and _bucket != "nan":
+                    _cc_bucket_map[_i + 1] = _bucket_to_platform(_bucket)
+        except Exception:
+            pass
+
         for _acc_col in ("acc", "aq3_po", self.F.get("re_model_acc", "acc")):
             if _acc_col in self.df.columns:
                 for _raw in self.df[_acc_col].dropna().unique():
@@ -518,13 +539,12 @@ class DataEngine:
                     _name = _aq3_vm.get(float(_c))
                     if not _name:
                         continue
-                    # Only auto-add if name looks like an RE model (not a competitor)
-                    # Reject obviously non-RE names that appear in aq3 value map
                     RE_MODEL_LABELS[_c] = _name
                     self.model_labels[_c] = _name
                     if _c not in RE_MODEL_PLATFORM:
-                        RE_MODEL_PLATFORM[_c] = "Unknown"
-                        self.model_platform[_c] = "Unknown"
+                        _plat = _cc_bucket_map.get(_c, "Unknown")
+                        RE_MODEL_PLATFORM[_c] = _plat
+                        self.model_platform[_c] = _plat
                     _ACC_CODE_MAP.setdefault(_c, _c)
                     _REJ_CODE_MAP.setdefault(_c, _c)
                     _CAN_CODE_MAP.setdefault(_c, _c)
