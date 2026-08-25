@@ -2012,7 +2012,7 @@ class DataEngine:
         try:
             xl = pd.ExcelFile(self.masterfile_path)
             if 'netting_dq2' in xl.sheet_names:
-                sheet = xl.parse('netting_dq2', header=0, skiprows=1)
+                sheet = xl.parse('netting_dq2', header=0, skiprows=[1])
                 # Columns: code, brand, cc_netting, model_name (ref)
                 for _, row in sheet.iterrows():
                     try:
@@ -2094,8 +2094,17 @@ class DataEngine:
                 "Set DRIVE_FILE_ID in Streamlit Cloud secrets and reload."
             )
         net = pd.read_excel(MASTER_CONFIG_PATH, sheet_name="netting_aq3a_aq5", header=None)
-        net = net.iloc[3:127].reset_index(drop=True)
-        self._aq5a_cc_netting_cache = {i + 1: str(net.iloc[i, 5]).strip() for i in range(len(net))}
+        # Row 0=blank, row 1=title, row 2=header, rows 3+ = data. Col 5 = New_netting bucket.
+        # Skip non-data rows; keep only rows where col 0 has a numeric position code
+        data = net.iloc[3:].reset_index(drop=True)
+        result = {}
+        pos = 1
+        for i in range(len(data)):
+            bucket = str(data.iloc[i, 5]).strip()
+            if bucket and bucket not in ('nan', 'New_netting'):
+                result[pos] = bucket
+                pos += 1
+        self._aq5a_cc_netting_cache = result
         return self._aq5a_cc_netting_cache
 
 
