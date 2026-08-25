@@ -876,7 +876,7 @@ else:
         + _stat_card("Household Income", top_income_row['Unnamed: 0'], top_income_val, 'income', round(_base_cur*top_income_val/100),
                      full_table=income_table_full, row_label_val=top_income_row['Unnamed: 0'],
                      current_override=top_income_val if time_mode == "All Months" else None)
-        + _stat_card("First-Time Buyers", "Buying first bike", ftb_pct, 'ftb', base_n,
+        + _stat_card("First-Time Buyer", "1st 2W Purchase", ftb_pct, 'ftb', base_n,
                      month_vals_override=_ftb_monthly,
                      current_override=ftb_pct if time_mode == "All Months" else None)
         + _stat_card("Education", top_edu_row['Unnamed: 0'], top_edu_val, 'edu', round(_base_cur*top_edu_val/100),
