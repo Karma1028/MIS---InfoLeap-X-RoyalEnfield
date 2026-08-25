@@ -130,66 +130,74 @@ def _file_modified_time(file_id: str) -> str | None:
         return None
 
 
-def download_latest_master(dest_path: str) -> str:
-    """Download master data from whichever source (xlsx in Drive or Google Sheet)
-    was modified most recently. Exports the Sheet as xlsx if it wins.
-    Returns dest_path."""
+def _find_master_in_folder() -> tuple[str | None, str | None]:
+    """Return (file_id, mime_type) for the best RE_MIS_Master file in the folder.
+    Prefers an uploaded .xlsx over the Google Sheet of the same name."""
     service = _get_service()
+    results = service.files().list(
+        q=f"'{DRIVE_FOLDER_ID}' in parents and name contains 'RE_MIS_Master' and trashed = false",
+        fields="files(id,name,mimeType,modifiedTime)",
+        orderBy="modifiedTime desc",
+    ).execute()
+    files = results.get("files", [])
+    xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    sheet_mime = "application/vnd.google-apps.spreadsheet"
+    # Prefer xlsx upload over Google Sheet
+    for f in files:
+        if f["mimeType"] == xlsx_mime:
+            print(f"[drive] found xlsx: {f['name']} (id={f['id']})")
+            return f["id"], xlsx_mime
+    for f in files:
+        if f["mimeType"] == sheet_mime:
+            print(f"[drive] found Google Sheet: {f['name']} (id={f['id']}) — will export as xlsx")
+            return f["id"], sheet_mime
+    return None, None
+
+
+def download_latest_master(dest_path: str) -> str:
+    """Download RE_MIS_Master from Google Drive folder.
+    Prefers an uploaded .xlsx; falls back to exporting the Google Sheet.
+    Returns dest_path."""
     os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    file_id, mime = _find_master_in_folder()
 
-    # ── Get modification times ────────────────────────────────────────────────
-    xlsx_id   = find_file_id(DRIVE_FILES["master"], DRIVE_FOLDER_ID)
-    xlsx_time = _file_modified_time(xlsx_id)  if xlsx_id   else None
-    sheet_time = _file_modified_time(MASTER_SHEET_ID) if MASTER_SHEET_ID else None
-
-    use_sheet = False
-    if sheet_time and xlsx_time:
-        use_sheet = sheet_time > xlsx_time  # lexicographic ISO-8601 compare is valid
-        print(f"[drive] xlsx={xlsx_time}  sheet={sheet_time}  → {'Sheet' if use_sheet else 'xlsx'} wins")
-    elif sheet_time and not xlsx_time:
-        use_sheet = True
-        print("[drive] xlsx not found — using Sheet")
-    elif xlsx_time:
-        print("[drive] Sheet not accessible — using xlsx")
-    else:
-        raise FileNotFoundError("Neither RE_MIS_Master.xlsx nor MASTER_SHEET_ID accessible from Drive.")
-
-    if use_sheet:
-        # Export Google Sheet → xlsx via requests streaming (45s timeout, fallback to Drive xlsx)
-        import requests
-        from google.auth.transport.requests import Request as AuthRequest
-        creds = _get_credentials()
-        if not creds.valid:
-            creds.refresh(AuthRequest())
-        export_resp = requests.get(
-            f"https://www.googleapis.com/drive/v3/files/{MASTER_SHEET_ID}/export",
-            params={"mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-            headers={"Authorization": f"Bearer {creds.token}"},
-            stream=True,
-            timeout=45,
+    if not file_id:
+        raise FileNotFoundError(
+            "RE_MIS_Master not found in Drive folder. "
+            "Upload RE_MIS_Master.xlsx to the Drive folder and reload."
         )
-        if export_resp.status_code == 200:
-            with open(dest_path, "wb") as f:
-                for chunk in export_resp.iter_content(chunk_size=65536):
-                    f.write(chunk)
-            print("[drive] Sheet exported via requests streaming OK")
-        else:
-            print(f"[drive] Sheet export failed ({export_resp.status_code}) — falling back to Drive xlsx")
-            if not xlsx_id:
-                raise FileNotFoundError("Sheet export failed and no Drive xlsx fallback found.")
-            request = service.files().get_media(fileId=xlsx_id)
-            with io.FileIO(dest_path, "wb") as fh:
-                downloader = MediaIoBaseDownload(fh, request)
-                done = False
-                while not done:
-                    _, done = downloader.next_chunk()
-    else:
-        request = service.files().get_media(fileId=xlsx_id)
+
+    xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if mime == xlsx_mime:
+        # Direct binary download
+        service = _get_service()
+        request = service.files().get_media(fileId=file_id)
         with io.FileIO(dest_path, "wb") as fh:
             downloader = MediaIoBaseDownload(fh, request)
             done = False
             while not done:
                 _, done = downloader.next_chunk()
+        print("[drive] xlsx download complete")
+    else:
+        # Export Google Sheet → xlsx
+        import requests as _req
+        from google.auth.transport.requests import Request as AuthRequest
+        creds = _get_credentials()
+        if not creds.valid:
+            creds.refresh(AuthRequest())
+        resp = _req.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
+            params={"mimeType": xlsx_mime},
+            headers={"Authorization": f"Bearer {creds.token}"},
+            stream=True,
+            timeout=120,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Sheet export failed ({resp.status_code}): {resp.text[:200]}")
+        with open(dest_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=65536):
+                f.write(chunk)
+        print("[drive] Sheet export complete")
 
     return dest_path
 
