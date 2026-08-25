@@ -527,6 +527,9 @@ class DataEngine:
         except Exception:
             pass
 
+        # Build set of raw acceptor/rejector codes already claimed by model_config
+        _known_raw_codes: set[int] = set(_ACC_CODE_MAP.keys()) | set(_REJ_CODE_MAP.keys()) | set(_CAN_CODE_MAP.keys())
+
         for _acc_col in ("acc", "aq3_po", self.F.get("re_model_acc", "acc")):
             if _acc_col in self.df.columns:
                 for _raw in self.df[_acc_col].dropna().unique():
@@ -535,7 +538,9 @@ class DataEngine:
                     except (ValueError, TypeError):
                         continue
                     if _c in RE_MODEL_LABELS:
-                        continue  # already configured
+                        continue  # already configured as model_code
+                    if _c in _known_raw_codes:
+                        continue  # raw code already claimed by a model_config entry (e.g. acceptor_code=125 → model 15)
                     _name = _aq3_vm.get(float(_c))
                     if not _name:
                         continue
@@ -861,8 +866,12 @@ class DataEngine:
             else:
                 df = self.df[self.df[_aq3po].between(1, _n)].copy()
             df['segment'] = 'Acceptor'
-            df['re_model_code'] = df[_acc].fillna(df[_aq3po])
-            df['owned_brand_code'] = df['re_model_code']
+            _raw_acc = df[_acc].fillna(df[_aq3po])
+            if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP:
+                df['re_model_code'] = _raw_acc.map(_ACC_CODE_MAP).fillna(_raw_acc)
+            else:
+                df['re_model_code'] = _raw_acc
+            df['owned_brand_code'] = _raw_acc
         elif segment == "Rejector":
             df = self.df[self.df[_grida] == 2].copy()
             df['segment'] = 'Rejector'
