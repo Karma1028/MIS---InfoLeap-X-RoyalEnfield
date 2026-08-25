@@ -199,6 +199,17 @@ def download_latest_master(dest_path: str) -> str:
                 f.write(chunk)
         print("[drive] Sheet export complete")
 
+    # Validate: xlsx files are ZIP archives starting with PK\x03\x04
+    with open(dest_path, "rb") as _f:
+        _magic = _f.read(4)
+    if _magic != b"PK\x03\x04":
+        size = os.path.getsize(dest_path)
+        os.unlink(dest_path)
+        raise RuntimeError(
+            f"Downloaded file is not a valid xlsx (magic={_magic!r}, size={size}B). "
+            "Ensure RE_MIS_Master.xlsx in Drive is a real Excel file, not a Google Sheet."
+        )
+
     return dest_path
 
 

@@ -440,7 +440,14 @@ class DataEngine:
             _sync_from_drive()
 
         # Load all sheets in a single pass using pd.ExcelFile
-        xl = pd.ExcelFile(self.masterfile_path)
+        try:
+            xl = pd.ExcelFile(self.masterfile_path)
+        except Exception as _xl_err:
+            # File on disk is corrupt — delete and re-sync from Drive
+            print(f"[data_engine] Masterfile corrupt ({_xl_err}), deleting and re-syncing from Drive")
+            Path(self.masterfile_path).unlink(missing_ok=True)
+            _sync_from_drive()
+            xl = pd.ExcelFile(self.masterfile_path)
 
         # 1. model_config
         (_labels, _platform, _plat_labels,
