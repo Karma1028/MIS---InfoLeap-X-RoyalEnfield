@@ -1,7 +1,8 @@
 """Login gate for the Royal Enfield x Infoleap Digital Showroom.
 
 Auth backend: Firebase Auth (Email/Password only).
-User roster + audit log stored in Google Sheets (Sheets API v4).
+Admin role: ADMIN_EMAILS in st.secrets (comma-separated string or list).
+Audit log stored in Google Sheets (AUDIT_SHEET_ID).
 """
 import os
 import time
@@ -9,11 +10,24 @@ import uuid
 from datetime import datetime
 import pandas as pd
 import streamlit as st
-import bcrypt
 from utils.branding import brand_header_html, swoosh_strip_html
 
-_USERS_COLS  = ["email", "password", "name", "active", "role"]
 _AUDIT_COLS  = ["timestamp", "email", "event", "session_id"]
+
+
+# ── Admin role ────────────────────────────────────────────────────────────────
+
+def _is_admin(email: str) -> bool:
+    """Return True if email is in ADMIN_EMAILS secret (comma-separated or list)."""
+    try:
+        raw = st.secrets.get("ADMIN_EMAILS", "")
+        if isinstance(raw, str):
+            admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
+        else:
+            admins = [e.strip().lower() for e in raw]
+        return email.strip().lower() in admins
+    except Exception:
+        return False
 
 
 # ── Firebase helpers ──────────────────────────────────────────────────────────
@@ -59,7 +73,8 @@ def _firebase_login(email: str, password: str) -> dict | None:
         )
         if resp.status_code == 200:
             d = resp.json()
-            return {"email": d["email"], "uid": d["localId"], "name": email.split("@")[0], "role": "user"}
+            role = "admin" if _is_admin(d["email"]) else "user"
+            return {"email": d["email"], "uid": d["localId"], "name": email.split("@")[0], "role": role}
         error = resp.json().get("error", {}).get("message", "UNKNOWN")
         _FIREBASE_ERRORS = {
             "EMAIL_NOT_FOUND": "Email not registered.",
@@ -74,18 +89,12 @@ def _firebase_login(email: str, password: str) -> dict | None:
 
 # ── Sheets helpers ────────────────────────────────────────────────────────────
 
-def _users_sid() -> str | None:
-    from utils.sheets_client import users_sheet_id
-    return users_sheet_id()
-
-
 def _audit_sid() -> str | None:
     from utils.sheets_client import audit_sheet_id
     return audit_sheet_id()
 
 
 def _sheet_to_df(rows: list[list], cols: list[str]) -> pd.DataFrame:
-    """Convert raw Sheets rows (list-of-lists) to DataFrame with given columns."""
     if not rows:
         return pd.DataFrame(columns=cols)
     header = [str(c).strip() for c in rows[0]]
@@ -95,35 +104,6 @@ def _sheet_to_df(rows: list[list], cols: list[str]) -> pd.DataFrame:
         if c not in df.columns:
             df[c] = ""
     return df[cols]
-
-
-def _load_users_df() -> pd.DataFrame:
-    sid = _users_sid()
-    if not sid:
-        return pd.DataFrame(columns=_USERS_COLS)
-    try:
-        from utils.sheets_client import read_sheet, ensure_header
-        ensure_header(sid, _USERS_COLS)
-        rows = read_sheet(sid)
-        return _sheet_to_df(rows, _USERS_COLS)
-    except Exception as e:
-        print(f"[auth] users sheet read error: {e}")
-        return pd.DataFrame(columns=_USERS_COLS)
-
-
-# ── Password helpers ──────────────────────────────────────────────────────────
-
-def _hash_password(pwd: str) -> str:
-    return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
-
-
-def _verify_password(pwd: str, stored: str) -> bool:
-    try:
-        if stored.startswith("$2"):
-            return bcrypt.checkpw(pwd.encode(), stored.encode())
-        return pwd == stored
-    except Exception:
-        return False
 
 
 # ── Audit log ─────────────────────────────────────────────────────────────────
@@ -157,69 +137,6 @@ def load_audit_log(n: int = 100) -> pd.DataFrame:
     except Exception as e:
         print(f"[auth] audit log read error: {e}")
         return pd.DataFrame(columns=_AUDIT_COLS)
-
-
-# ── User CRUD ─────────────────────────────────────────────────────────────────
-
-def add_user(email: str, name: str, password: str, role: str = "user") -> str:
-    sid = _users_sid()
-    if not sid:
-        return "Users sheet not configured (USERS_SHEET_ID missing)."
-    df = _load_users_df()
-    key = email.strip().lower()
-    if key in df["email"].str.strip().str.lower().values:
-        return f"User {key} already exists."
-    try:
-        from utils.sheets_client import ensure_header, append_row
-        ensure_header(sid, _USERS_COLS)
-        append_row(sid, [key, _hash_password(password), name.strip(), "Y", role.strip().lower()])
-        _log_event(key, "USER_ADDED")
-        return ""
-    except Exception as e:
-        return f"Failed to add user: {e}"
-
-
-def set_user_active(email: str, active: bool) -> str:
-    sid = _users_sid()
-    if not sid:
-        return "Users sheet not configured."
-    df = _load_users_df()
-    key = email.strip().lower()
-    mask = df["email"].str.strip().str.lower() == key
-    if not mask.any():
-        return f"User {email} not found."
-    row_idx = df[mask].index[0] + 2  # +1 header, +1 1-based
-    df.loc[mask, "active"] = "Y" if active else "N"
-    row = df.loc[df[mask].index[0], _USERS_COLS].tolist()
-    try:
-        from utils.sheets_client import update_row
-        update_row(sid, row_idx, row)
-        evt = "USER_ACTIVATED" if active else "USER_REVOKED"
-        _log_event(email, evt)
-        return ""
-    except Exception as e:
-        return f"Failed to update user: {e}"
-
-
-def _load_users() -> dict:
-    df = _load_users_df()
-    users = {}
-    for _, r in df.iterrows():
-        em = str(r["email"]).strip().lower()
-        if em and em != "nan":
-            pwd    = str(r["password"]) if pd.notna(r.get("password")) else ""
-            active = str(r.get("active", "Y")).strip().upper() != "N"
-            role   = str(r.get("role", "user")).strip().lower()
-            users[em] = {"password": pwd, "active": active, "name": str(r.get("name", "")), "role": role}
-    return users
-
-
-def list_users():
-    users = _load_users()
-    return [
-        {"email": em, "name": info["name"], "active": "Yes" if info["active"] else "No"}
-        for em, info in users.items()
-    ]
 
 
 # ── UI helpers ────────────────────────────────────────────────────────────────

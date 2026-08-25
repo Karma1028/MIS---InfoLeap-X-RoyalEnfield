@@ -1,6 +1,6 @@
 """Settings page — user administration, audit log, and model config management."""
 import streamlit as st
-from auth import list_users, add_user, set_user_active, load_audit_log
+from auth import load_audit_log
 
 _SECTION_CSS = """
 <style>
@@ -67,91 +67,14 @@ def render_settings_page():
     """, unsafe_allow_html=True)
 
     # ── Session info cards ────────────────────────────────────────────────
-    users = list_users()
-    current = next((u for u in users if u["email"] == current_email), None)
-    if current:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Name", current["name"] or "—")
-        c2.metric("Role", "Administrator" if is_admin else "Viewer")
-        c3.metric("Account status", "✅ Active" if current["active"] == "Yes" else "🔴 Inactive")
+    c1, c2 = st.columns(2)
+    c1.metric("Name", current_name or "—")
+    c2.metric("Role", "Administrator" if is_admin else "Viewer")
 
     # ═══════════════════════════════════════════════════════════════════════
     # ADMIN SECTIONS
     # ═══════════════════════════════════════════════════════════════════════
     if is_admin:
-
-        # ── User Management ───────────────────────────────────────────────
-        st.markdown('<div class="section-label">👥 User Management</div>', unsafe_allow_html=True)
-        with st.expander("Manage portal users — grant, revoke, or add access", expanded=False):
-            st.markdown(
-                '<div class="info-box">🔐 <strong>Access control:</strong> '
-                'Active users can sign in via Firebase. Revoking a user blocks login '
-                'immediately — their Firebase account is unaffected so you can restore anytime. '
-                'Admin users see this Settings panel and can add/revoke others.</div>',
-                unsafe_allow_html=True,
-            )
-
-            # User list
-            hc1, hc2, hc3, hc4, hc5 = st.columns([2.2, 3.2, 1.2, 1.0, 1.2])
-            hc1.markdown("**Name**"); hc2.markdown("**Email**")
-            hc3.markdown("**Status**"); hc4.markdown("**Role**"); hc5.markdown("**Action**")
-            st.markdown("<hr style='margin:0.3rem 0 0.5rem;'>", unsafe_allow_html=True)
-
-            # Reload with role info
-            from auth import _load_users as _lu
-            _users_full = _lu()
-
-            for u in users:
-                c1, c2, c3, c4, c5 = st.columns([2.2, 3.2, 1.2, 1.0, 1.2])
-                c1.write(u["name"] or "—")
-                c2.write(u["email"])
-                badge = "badge-active" if u["active"] == "Yes" else "badge-inactive"
-                label = "Active" if u["active"] == "Yes" else "Inactive"
-                c3.markdown(f'<span class="{badge}">{label}</span>', unsafe_allow_html=True)
-                role = _users_full.get(u["email"], {}).get("role", "user")
-                role_html = '<span class="badge-admin">admin</span>' if role == "admin" else \
-                            '<span style="color:#64748B;font-size:0.8rem">user</span>'
-                c4.markdown(role_html, unsafe_allow_html=True)
-                if u["email"] != current_email:
-                    is_active = u["active"] == "Yes"
-                    btn_label = "Revoke" if is_active else "Restore"
-                    if c5.button(btn_label, key=f"toggle_{u['email']}", use_container_width=True):
-                        err = set_user_active(u["email"], not is_active)
-                        if err:
-                            st.error(err)
-                        else:
-                            st.success(f"{u['email']} {'revoked' if is_active else 'restored'}.")
-                            st.rerun()
-                else:
-                    c5.markdown('<span style="color:#94A3B8;font-size:0.8rem">— you —</span>', unsafe_allow_html=True)
-
-            st.markdown("---")
-            st.markdown("**Add New User**")
-            st.markdown(
-                '<div class="info-box">New users are added to this portal\'s user list. '
-                'They still need a matching Firebase account (created via Firebase Console → '
-                'Authentication → Add user) to be able to sign in.</div>',
-                unsafe_allow_html=True,
-            )
-            with st.form("add_user_form"):
-                nc1, nc2 = st.columns(2)
-                new_email = nc1.text_input("Email address", placeholder="user@example.com")
-                new_name  = nc2.text_input("Full name", placeholder="First Last")
-                nc3, nc4  = st.columns(2)
-                new_pass  = nc3.text_input("Temporary password", type="password",
-                                           placeholder="Min 6 characters")
-                new_role  = nc4.selectbox("Role", ["user", "admin"], index=0,
-                                          help="Admin = full settings access. User = dashboard only.")
-                if st.form_submit_button("➕ Add User", use_container_width=True, type="primary"):
-                    if not new_email.strip() or not new_pass.strip():
-                        st.warning("Email and password are required.")
-                    else:
-                        err = add_user(new_email, new_name, new_pass, role=new_role)
-                        if err:
-                            st.error(err)
-                        else:
-                            st.success(f"✅ {new_email.strip().lower()} added successfully.")
-                            st.rerun()
 
         # ── Model Config Setup ────────────────────────────────────────────
         st.markdown('<div class="section-label">🗂️ Model Configuration</div>', unsafe_allow_html=True)
@@ -193,6 +116,14 @@ def render_settings_page():
                 "Safe to re-run anytime — idempotent. "
                 "After running, click **Reload Data** on the main dashboard to pick up changes."
             )
+
+        st.markdown(
+            '<div class="info-box">👥 <strong>User Management:</strong> '
+            'Add or disable users directly in '
+            '<a href="https://console.firebase.google.com" target="_blank">Firebase Console → Authentication</a>. '
+            'To grant admin access, add the user\'s email to <code>ADMIN_EMAILS</code> in Streamlit secrets.</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── Audit Log (all users) ─────────────────────────────────────────────
     st.markdown('<div class="section-label">📋 Login Activity</div>', unsafe_allow_html=True)

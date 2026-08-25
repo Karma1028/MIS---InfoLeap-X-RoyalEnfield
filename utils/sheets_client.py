@@ -86,9 +86,5 @@ def ensure_header(sheet_id: str, headers: list, range_: str = "Sheet1") -> None:
 
 # ── Sheet ID helpers ──────────────────────────────────────────────────────────
 
-def users_sheet_id() -> str | None:
-    return _sheet_id("USERS_SHEET_ID", "USERS_SHEET_ID")
-
-
 def audit_sheet_id() -> str | None:
     return _sheet_id("AUDIT_SHEET_ID", "AUDIT_SHEET_ID")
