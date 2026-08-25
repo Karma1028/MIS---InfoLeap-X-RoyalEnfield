@@ -869,9 +869,12 @@ class DataEngine:
             _raw_acc = df[_acc].fillna(df[_aq3po])
             if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP:
                 df['re_model_code'] = _raw_acc.map(_ACC_CODE_MAP).fillna(_raw_acc)
+                # Normalize owned_brand_code to model_code so RE detection in
+                # brand_owned_table works dynamically (e.g. Bullet 650 raw=125 → 15)
+                df['owned_brand_code'] = df['re_model_code']
             else:
                 df['re_model_code'] = _raw_acc
-            df['owned_brand_code'] = _raw_acc
+                df['owned_brand_code'] = _raw_acc
         elif segment == "Rejector":
             df = self.df[self.df[_grida] == 2].copy()
             df['segment'] = 'Rejector'
@@ -1230,17 +1233,12 @@ class DataEngine:
             return row
 
         if by == "brand":
-            re_union = sub[model_col].between(1, _MAX_MODEL_CODE or 14)
+            # Dynamic: use all configured RE model_codes (not hardcoded 1-14)
+            re_model_codes = set(RE_MODEL_LABELS.keys())
+            re_union = sub[model_col].isin(re_model_codes)
             rows.append(pct_row("Royal Enfield", re_union))
-            for code in range(1, 15):
-                rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), sub[model_col] == code))
-            # FIX (2026-06-19): this loop used to stop at RE's 14 codes —
-            # but 'Brand Owned (Purchased Instead of RE)' is fundamentally
-            # about what COMPETITORS they bought, which was entirely
-            # missing. Mirrors live's pattern of brand rollup + member
-            # models, grouped by manufacturer derived the same way
-            # owned_manufacturer is (acc_map label's "BRAND - Model - cc"
-            # prefix), for codes 15-123 (124 = catch-all 'Other').
+            for code in sorted(re_model_codes):
+                rows.append(pct_row(RE_MODEL_LABELS.get(code, f"Model {code}"), sub[model_col] == code))
             for manufacturer in self.manufacturers():
                 if manufacturer == "Royal Enfield":
                     continue
@@ -1250,14 +1248,10 @@ class DataEngine:
                 rows.append(pct_row(manufacturer, sub[model_col].isin(codes)))
                 for code in sorted(codes):
                     rows.append(pct_row(acc_map.get(float(code), f"Model {int(code)}"), sub[model_col] == code))
-        else:  # CC-wise — real netting-sheet bucket scheme (same source as
-            # Brand Considered's CC-wise), confirmed against the scraped
-            # '150-199CC/200-249CC/250-350CC/351-500CC/501-650CC' labels —
-            # the old RE_MODEL_PLATFORM + 'Competitor (CC unmapped)' version
-            # never resolved any competitor model to a real CC bucket.
-            cc_netting = self._aq5a_cc_netting()
-            for bucket in sorted(set(cc_netting.values())):
-                codes = [c for c, v in cc_netting.items() if v == bucket]
+        else:  # CC-wise — RE models use RE_MODEL_PLATFORM; competitors use netting sheet
+            cc_map = self._re_aware_cc_map()
+            for bucket in sorted(set(cc_map.values())):
+                codes = [c for c, v in cc_map.items() if v == bucket]
                 label = f"{bucket}CC" if bucket[0].isdigit() else bucket
                 rows.append(pct_row(label, sub[model_col].isin(codes)))
         return pd.DataFrame(rows)
@@ -1784,15 +1778,21 @@ class DataEngine:
             return row
 
         if by == "brand":
-            rows.append(pct_row("Royal Enfield", considered_mask(range(1, 15))))
-            for code in range(1, 15):
-                rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), considered_mask([code])))
-            # FIX (2026-06-19): same gap as Brand Owned — only RE's 14 codes
-            # were ever listed, no competitor brand rollups/models, even
-            # though aq5a covers all 124 codes and live shows HONDA/TVS/
-            # TRIUMPH/etc. rollups right after RE's.
+            # Dynamic RE model codes: use raw acceptor_codes from _ACC_CODE_MAP
+            # (aq5a columns use raw survey codes, e.g. aq5a_125 for Bullet 650)
+            re_raw_codes = sorted(_ACC_CODE_MAP.keys()) if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP else list(range(1, _MAX_MODEL_CODE + 1))
+            rows.append(pct_row("Royal Enfield", considered_mask(re_raw_codes)))
+            # Sub-rows: one per RE model, label from RE_MODEL_LABELS
+            for raw_code in re_raw_codes:
+                model_code = _ACC_CODE_MAP.get(raw_code, raw_code) if _HAS_EXPLICIT_CODES else raw_code
+                label = RE_MODEL_LABELS.get(model_code) or acc_map.get(float(raw_code), f"Model {raw_code}")
+                rows.append(pct_row(label, considered_mask([raw_code])))
+            # Competitor brands — all aq5a codes not claimed by RE model_config
+            known_re_raw = set(re_raw_codes)
             manufacturer_codes = {}
-            for code in range(15, 124):
+            for code in range(1, 125):
+                if code in known_re_raw:
+                    continue
                 label = acc_map.get(float(code), "")
                 manufacturer = label.split(" - ")[0].strip() if " - " in label else label
                 manufacturer = {"RIUMPH": "TRIUMPH"}.get(manufacturer, manufacturer)
@@ -1802,10 +1802,10 @@ class DataEngine:
                 rows.append(pct_row(manufacturer, considered_mask(codes)))
                 for code in sorted(codes):
                     rows.append(pct_row(acc_map.get(float(code), f"Model {code}"), considered_mask([code])))
-        else:  # CC-wise, using the real netting-sheet CC buckets
-            cc_netting = self._aq5a_cc_netting()
-            for bucket in sorted(set(cc_netting.values())):
-                codes = [c for c, v in cc_netting.items() if v == bucket]
+        else:  # CC-wise — RE models use RE_MODEL_PLATFORM; competitors use netting sheet
+            cc_map = self._re_aware_cc_map(use_acc_codes=True)
+            for bucket in sorted(set(cc_map.values())):
+                codes = [c for c, v in cc_map.items() if v == bucket]
                 rows.append(pct_row(f"{bucket}CC" if bucket[0].isdigit() else bucket, considered_mask(codes)))
         return pd.DataFrame(rows)
 
@@ -1994,6 +1994,45 @@ class DataEngine:
             extra_groups=extra_groups,
         )
         return self.sort_by_value(tbl) if numeric else tbl
+
+    def _re_aware_cc_map(self, use_acc_codes: bool = False) -> dict:
+        """Unified CC-bucket map for all codes.
+
+        For brand_owned_table (use_acc_codes=False): owned_brand_code is
+        normalized to model_code (1-N) for RE models, so RE_MODEL_PLATFORM
+        is the authoritative source. Competitors use the netting sheet.
+
+        For brand_considered_table (use_acc_codes=True): aq5a columns use raw
+        acceptor_codes (e.g. 125 for Bullet 650), not model_codes. RE raw codes
+        come from _ACC_CODE_MAP.keys(); CC bucket from RE_MODEL_PLATFORM via
+        the model_code mapping. Competitors use the netting sheet for all codes
+        not claimed by model_config.
+
+        Platform → netting-style bucket string (matches live dashboard labels).
+        """
+        platform_to_bucket = {"350CC": "250-350", "450CC": "351-500", "650CC": "501-650"}
+        competitor_netting = self._aq5a_cc_netting()
+
+        if use_acc_codes:
+            # aq5a codes: RE = raw acceptor codes; competitors = everything else
+            known_re_raw = set(_ACC_CODE_MAP.keys()) if _HAS_EXPLICIT_CODES and _ACC_CODE_MAP else set(range(1, _MAX_MODEL_CODE + 1))
+            result = {code: bucket for code, bucket in competitor_netting.items() if code not in known_re_raw}
+            for raw_code in known_re_raw:
+                model_code = _ACC_CODE_MAP.get(raw_code, raw_code) if _HAS_EXPLICIT_CODES else raw_code
+                plat = RE_MODEL_PLATFORM.get(model_code)
+                bucket = platform_to_bucket.get(plat)
+                if bucket:
+                    result[raw_code] = bucket
+        else:
+            # owned_brand_code normalized to model_code for RE; raw for competitors
+            re_model_codes = set(RE_MODEL_PLATFORM.keys())
+            result = {code: bucket for code, bucket in competitor_netting.items() if code not in re_model_codes}
+            for model_code, plat in RE_MODEL_PLATFORM.items():
+                bucket = platform_to_bucket.get(plat)
+                if bucket:
+                    result[model_code] = bucket
+
+        return result
 
     def _aq5a_cc_netting(self):
         """Loads CC-bucket scheme for aq5a codes 1-124 from netting_aq3a_aq5 sheet.
