@@ -1424,6 +1424,20 @@ def _filter_brand_table(tbl, selected_brands, rollup_labels):
     return tbl.iloc[keep_idx].reset_index(drop=True)
 
 
+def _back_to_top():
+    """Small 'Back to top' button using JS to scroll Streamlit's main container."""
+    import streamlit.components.v1 as _c
+    _c.html(
+        "<button onclick=\"(window.parent.document.querySelector('.stMain')"
+        "||window.parent.document.querySelector('section.main')"
+        "||window.parent.document.body).scrollTo({top:0,behavior:'smooth'})\" "
+        "style='font-size:10px;color:#999;background:none;border:1px solid #ddd;"
+        "border-radius:10px;padding:2px 10px;cursor:pointer;float:right;"
+        "margin-bottom:4px'>↑ Top</button>",
+        height=28,
+    )
+
+
 def section(title, table_fn, caption=None, chart_type="bar", cap_chart=None, brand_filter_labels=None, color=None, show_chart=True):
     """Renders one metric: chart + data table + significance markers vs the
     unfiltered Overview baseline.
@@ -1745,6 +1759,7 @@ section("Education", lambda d, s: _tbl_education(d, base_label=s, numeric=True, 
 section("Occupation", lambda d, s: _tbl_occupation(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
 section("Household Income", lambda d, s: _tbl_income(d, base_label=s, numeric=True, extra_groups=effective_extra_groups), chart_type="stacked_bar")
 
+_back_to_top()
 st.markdown('<div id="sec-buyer-type"></div>', unsafe_allow_html=True)
 st.markdown("### Type of Buyer")
 st.caption("Was this purchase an additional bike, a replacement, or a first-time 2W purchase? This shapes the entire decision context.")
@@ -1767,6 +1782,7 @@ REASONS_COLOR = "#D6742D"
 # earlier blanket hide is no longer warranted either.
 # Additional+Replaced: Acceptor + Overall
 if segment_value in ("Acceptor", "All"):
+    _back_to_top()
     st.markdown('<div id="sec-addrepl"></div>', unsafe_allow_html=True)
     st.markdown("### Additional + Replaced")
     st.caption("What did these respondents own before this purchase? CC-wise and Brand-wise breakdown of the bike being added or replaced.")
@@ -1779,6 +1795,7 @@ if segment_value in ("Acceptor", "All"):
 
 # Brand Owned: Rejector + Cancelled only (they own a competitor bike)
 if segment_value in ("Rejector", "Cancelled"):
+    _back_to_top()
     st.markdown('<div id="sec-brand-owned"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Owned")
     st.caption("Current bike ownership — what brand and CC segment does this respondent already ride?")
@@ -1791,6 +1808,7 @@ if segment_value in ("Rejector", "Cancelled"):
 
 # Brand Considered: Acceptors only
 if segment_value == "Acceptor":
+    _back_to_top()
     st.markdown('<div id="sec-brand-considered"></div>', unsafe_allow_html=True)
     st.markdown("### Brand Considered")
     st.caption("Which other brands did this respondent evaluate before deciding? CC-wise and Brand-wise breakdown.")
@@ -1803,6 +1821,7 @@ if segment_value == "Acceptor":
                             color=BRAND_CONSIDERED_COLOR, show_chart=False)
 
 
+_back_to_top()
 st.markdown('<div id="sec-reasons"></div>', unsafe_allow_html=True)
 st.markdown("### Reasons & Motivations")
 # Deterministic, exact reproduction (2026-07-27) via each respondent's own
