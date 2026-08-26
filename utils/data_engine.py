@@ -423,8 +423,11 @@ class DataEngine:
                     self.age_grp_display = cached_data["age_grp_display"]
                     self.load_timestamp = cached_data["load_timestamp"]
                     self.month_order = cached_data.get("month_order", [])
+                    self.fy_quarter_order = cached_data.get("fy_quarter_order", [])
 
                     # Update module globals and instance attrs
+                    MONTH_ORDER[:] = self.month_order
+                    FY_QUARTER_ORDER[:] = self.fy_quarter_order
                     RE_MODEL_LABELS.clear(); RE_MODEL_LABELS.update(cached_data["model_labels"])
                     RE_MODEL_PLATFORM.clear(); RE_MODEL_PLATFORM.update(cached_data["model_platform"])
                     self.model_labels.clear(); self.model_labels.update(cached_data["model_labels"])
