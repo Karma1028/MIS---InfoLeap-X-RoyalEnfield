@@ -138,8 +138,8 @@ def load_field_registry(xl_or_df=None):
             sk  = str(row.get("semantic_key", "")).strip()
             raw = str(row.get("raw_column", "")).strip()
             if sk and raw and sk != "nan" and raw != "nan":
-                # age_raw special case: df column is renamed to age_numeric
-                result[sk] = "age_numeric" if sk == "age_raw" else raw
+                if sk not in result:  # first match wins — ignore duplicate semantic keys
+                    result[sk] = "age_numeric" if sk == "age_raw" else raw
         return result
     except Exception:
         return {}
