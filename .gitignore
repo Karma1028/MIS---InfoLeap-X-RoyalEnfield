@@ -22,6 +22,8 @@ data/*.xls
 *.log
 *.png
 *.txt
+!runtime.txt
+!requirements.txt
 *.html
 playwright_screens*/
 test_clicks/
