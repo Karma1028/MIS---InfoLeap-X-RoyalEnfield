@@ -86,6 +86,14 @@ def render_theme_css(accent=RE_RED):
             border-radius: 0 !important;
         }}
 
+        /* Columns — transparent backgrounds */
+        div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"] > div {{
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+        }}
+
         /* Sidebar */
         [data-testid="stSidebar"] {{
             background-color: var(--card);
