@@ -721,6 +721,10 @@ class DataEngine:
             return None
         if 1 <= code <= 14:
             return "Royal Enfield"
+        # RE models with model_code > 14 (e.g. Flying Flea = 16) must also
+        # resolve to "Royal Enfield", not a competitor brand from the acc codebook.
+        if int(code) in RE_MODEL_LABELS:
+            return "Royal Enfield"
         if code == 124:
             return "Other"
         acc_map = self.value_maps.get('acc', {})
