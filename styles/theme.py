@@ -78,16 +78,12 @@ def render_theme_css(accent=RE_RED):
 
         h1 {{ border-bottom: 3px solid var(--accent); padding-bottom: 0.4rem; display: inline-block; }}
 
-        /* Cards */
+        /* Cards — transparent, no borders */
         div[data-testid="stVerticalBlockBorderWrapper"] {{
-            background-color: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-            transition: box-shadow 0.15s ease;
-        }}
-        div[data-testid="stVerticalBlockBorderWrapper"]:hover {{
-            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
         }}
 
         /* Sidebar */
