@@ -453,7 +453,13 @@ class DataEngine:
             print(f"[data_engine] Masterfile corrupt ({_xl_err}), deleting and re-syncing from Drive")
             Path(self.masterfile_path).unlink(missing_ok=True)
             _sync_from_drive()
-            xl = pd.ExcelFile(self.masterfile_path)
+            try:
+                xl = pd.ExcelFile(self.masterfile_path)
+            except Exception as _xl_err2:
+                raise RuntimeError(
+                    f"RE_MIS_Master.xlsx still unreadable after re-sync: {_xl_err2}. "
+                    "Check Drive folder has a valid .xlsx file."
+                ) from _xl_err2
 
         # 1. model_config
         (_labels, _platform, _plat_labels,

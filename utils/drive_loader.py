@@ -168,37 +168,40 @@ def download_latest_master(dest_path: str) -> str:
         )
 
     xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    if mime == xlsx_mime:
-        # Direct binary download
+    # Download to a temp file first, then atomically rename — prevents concurrent
+    # sessions from corrupting the shared dest_path mid-write.
+    tmp_path = dest_path + ".tmp"
+    try:
         service = _get_service()
-        request = service.files().get_media(fileId=file_id)
-        with io.FileIO(dest_path, "wb") as fh:
+        if mime == xlsx_mime:
+            request = service.files().get_media(fileId=file_id)
+        else:
+            request = service.files().export_media(fileId=file_id, mimeType=xlsx_mime)
+        with io.FileIO(tmp_path, "wb") as fh:
             downloader = MediaIoBaseDownload(fh, request)
             done = False
             while not done:
                 _, done = downloader.next_chunk()
         print("[drive] xlsx download complete")
-    else:
-        # Export Google Sheet → xlsx via Drive API (handles auth automatically)
-        service = _get_service()
-        request = service.files().export_media(fileId=file_id, mimeType=xlsx_mime)
-        with io.FileIO(dest_path, "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-        print("[drive] Sheet export complete")
 
-    # Validate: xlsx files are ZIP archives starting with PK\x03\x04
-    with open(dest_path, "rb") as _f:
-        _magic = _f.read(4)
-    if _magic != b"PK\x03\x04":
-        size = os.path.getsize(dest_path)
-        os.unlink(dest_path)
-        raise RuntimeError(
-            f"Downloaded file is not a valid xlsx (magic={_magic!r}, size={size}B). "
-            "Ensure RE_MIS_Master.xlsx in Drive is a real Excel file, not a Google Sheet."
-        )
+        # Validate: xlsx files are ZIP archives starting with PK\x03\x04
+        with open(tmp_path, "rb") as _f:
+            _magic = _f.read(4)
+        if _magic != b"PK\x03\x04":
+            size = os.path.getsize(tmp_path)
+            raise RuntimeError(
+                f"Downloaded file is not a valid xlsx (magic={_magic!r}, size={size}B). "
+                "Ensure RE_MIS_Master.xlsx in Drive is a real Excel file, not a Google Sheet."
+            )
+
+        # Atomic replace — safe even if another thread already wrote dest_path
+        os.replace(tmp_path, dest_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
     return dest_path
 
