@@ -455,9 +455,11 @@ top_income_val = float(top_income_row[_kpi_col if _kpi_col in income_table_full.
 # Card 3: First-Time Buyer count and % — full filtered df (already month-scoped by df)
 _ftb_df = df if time_mode == "All Months" else _df_cur
 _dq1a = engine.F.get('buyer_type', 'dq1a')
-_ftb_mask = _ftb_df[_dq1a].isin([3.0, 4.0])
+if _dq1a not in _ftb_df.columns:
+    _dq1a = 'dq1a' if 'dq1a' in _ftb_df.columns else None
+_ftb_mask = _ftb_df[_dq1a].isin([3.0, 4.0]) if _dq1a else pd.Series(False, index=_ftb_df.index)
 ftb_count = int(_ftb_mask.sum())
-_ftb_base = int(_ftb_df[_dq1a].notna().sum())
+_ftb_base = int(_ftb_df[_dq1a].notna().sum()) if _dq1a else 0
 ftb_pct = ftb_count / _ftb_base * 100 if _ftb_base else 0.0
 
 # Card 4: Education

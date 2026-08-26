@@ -1307,7 +1307,10 @@ class DataEngine:
         # scrape "All" base of 2137 — dq1a.isin([1,2]) (1="Added another
         # vehicle", 2="Replaced existing vehicle") matches live exactly.
         # dq1b is a narrower follow-up field, not the segmentation gate.
-        sub = df[df['dq1a'].isin([1, 2])]
+        _dq1a_col = self.F.get('buyer_type', 'dq1a')
+        if _dq1a_col not in df.columns:
+            _dq1a_col = 'dq1a' if 'dq1a' in df.columns else None
+        sub = df[df[_dq1a_col].isin([1, 2])] if _dq1a_col else df.iloc[0:0]
         base_n = len(sub)
         quarter_groups = self.quarter_combined_groups(extra_groups)
         extra_cols = list(quarter_groups.keys())
