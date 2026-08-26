@@ -612,12 +612,14 @@ def render_comparison_page(engine):
             _safe_fn = re.sub(r'[^\w]+', '_', metric_name.lower()).strip('_')
             _dl1, _dl2 = st.columns(2)
             with _dl1:
+                _m1_slug = re.sub(r'[^\w]+', '_', m1_short.lower())
                 st.download_button("⬇ CSV", data=tbl1_t.to_csv(index=False),
-                                   file_name=f"{_safe_fn}_{re.sub(r'[^\w]+','_',m1_short.lower())}.csv",
+                                   file_name=f"{_safe_fn}_{_m1_slug}.csv",
                                    mime="text/csv", key=f"dl_cmp_a_{metric_name}")
             with _dl2:
+                _m2_slug = re.sub(r'[^\w]+', '_', m2_short.lower())
                 st.download_button("⬇ CSV", data=tbl2_t.to_csv(index=False),
-                                   file_name=f"{_safe_fn}_{re.sub(r'[^\w]+','_',m2_short.lower())}.csv",
+                                   file_name=f"{_safe_fn}_{_m2_slug}.csv",
                                    mime="text/csv", key=f"dl_cmp_b_{metric_name}")
             # Bottom insight line
             if cat1 and cat2:
