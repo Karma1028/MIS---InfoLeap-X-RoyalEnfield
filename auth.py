@@ -193,7 +193,9 @@ def render_login() -> bool:
             text-align:center; color:#7A7670; font-size:0.95rem; margin-top:0.2rem; margin-bottom:1.8rem;
         }
         [data-testid="stVerticalBlockBorderWrapper"] {
-            box-shadow: 0 4px 24px rgba(26,26,26,0.06);
+            box-shadow: none !important;
+            border: none !important;
+            background: transparent !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -202,7 +204,7 @@ def render_login() -> bool:
     with mid:
         st.markdown("<div style='height:9vh'></div>", unsafe_allow_html=True)
         st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.container(border=False):
             st.markdown("<div style='padding:0.8rem 0.5rem 0 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
@@ -212,7 +214,7 @@ def render_login() -> bool:
             )
 
         st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.container(border=False):
             st.markdown("##### Sign in")
 
             with st.form("login_form"):
@@ -272,7 +274,9 @@ def render_landing() -> bool:
         .landing-tagline { text-align:center; color:#7A7670; font-size:1.05rem; margin-top:0.4rem; margin-bottom:0.4rem; }
         .landing-sub { text-align:center; color:#9A958D; font-size:0.85rem; margin-bottom:1.4rem; }
         [data-testid="stVerticalBlockBorderWrapper"] {
-            box-shadow: 0 4px 24px rgba(26,26,26,0.06);
+            box-shadow: none !important;
+            border: none !important;
+            background: transparent !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -281,7 +285,7 @@ def render_landing() -> bool:
     with mid:
         st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
         st.markdown(swoosh_strip_html(), unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.container(border=False):
             st.markdown("<div style='padding:0.8rem 0.5rem 1.6rem 0.5rem;'>", unsafe_allow_html=True)
             _render_brand_header()
             st.markdown(
