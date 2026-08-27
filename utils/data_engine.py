@@ -424,6 +424,7 @@ class DataEngine:
                     self.load_timestamp = cached_data["load_timestamp"]
                     self.month_order = cached_data.get("month_order", [])
                     self.fy_quarter_order = cached_data.get("fy_quarter_order", [])
+                    self._month_to_fy_quarter = self._build_month_fy_quarter_map()
 
                     # Update module globals and instance attrs
                     MONTH_ORDER[:] = self.month_order
@@ -572,6 +573,7 @@ class DataEngine:
 
         self._derive_segment()
         self._derive_month()
+        self._month_to_fy_quarter = self._build_month_fy_quarter_map()
 
         # Drop incomplete/blank submissions (no grida, no SubmissionDate —
         # genuinely empty quota rows, not real respondents). Unrelated to
@@ -581,9 +583,10 @@ class DataEngine:
         # Dynamic month list
         present_months = self.df['month_label'].dropna().unique().tolist()
         present_months.sort(key=lambda m: pd.to_datetime(m.replace("'", " "), format="%B %Y"))
-        fy_quarters = sorted(set(month_label_to_fy_quarter(m) for m in present_months),
+        _mtq = self._month_to_fy_quarter
+        fy_quarters = sorted(set(_mtq.get(m, month_label_to_fy_quarter(m)) for m in present_months),
                               key=lambda q: present_months.index(
-                                  next(m for m in present_months if month_label_to_fy_quarter(m) == q)))
+                                  next(m for m in present_months if _mtq.get(m, month_label_to_fy_quarter(m)) == q)))
         self.month_order = present_months
         self.fy_quarter_order = fy_quarters
         MONTH_ORDER[:] = present_months          # kept for backward compat / direct module use
@@ -745,6 +748,30 @@ class DataEngine:
         # one-model "RIUMPH" brand rollup instead of joining TRIUMPH.
         return {"RIUMPH": "TRIUMPH"}.get(name, name)
 
+    def _build_month_fy_quarter_map(self):
+        """Build {month_label: fy_quarter_string} using Quarter column in raw_data if present.
+        Quarter col values: 1=Q1(AMJ), 2=Q2(JAS), 3=Q3(OND), 4=Q4(JFM).
+        Falls back to month_label_to_fy_quarter() for any month without a valid Quarter value."""
+        _Q_INIT = {1: "AMJ", 2: "JAS", 3: "OND", 4: "JFM"}
+        mapping = {}
+        df = self.df
+        if 'Quarter' in df.columns:
+            for m in df['month_label'].dropna().unique():
+                rows = df[df['month_label'] == m]
+                q_vals = pd.to_numeric(rows['Quarter'], errors='coerce').dropna()
+                if len(q_vals) > 0:
+                    q_num = int(q_vals.mode().iloc[0])
+                    if q_num in _Q_INIT:
+                        # derive FY year from month_label for correct year suffix
+                        auto_q = month_label_to_fy_quarter(m)
+                        year_suffix = auto_q.split("'")[1]
+                        mapping[m] = f"{_Q_INIT[q_num]}'{year_suffix}"
+        # fill missing with auto-derive
+        for m in df['month_label'].dropna().unique():
+            if m not in mapping:
+                mapping[m] = month_label_to_fy_quarter(m)
+        return mapping
+
     def _derive_segment(self):
         """
         Global fallback segment/model columns on self.df — used for Overview
@@ -843,8 +870,9 @@ class DataEngine:
         groups = {}
         out = {}
         if include_quarters:
+            _mtq = getattr(self, '_month_to_fy_quarter', {})
             for m in self.month_order:
-                q = month_label_to_fy_quarter(m)
+                q = _mtq.get(m, month_label_to_fy_quarter(m))
                 groups.setdefault(q, []).append(m)
             quarters_to_show = self.fy_quarter_order[:-1] if len(self.fy_quarter_order) > 1 else []
             for q in quarters_to_show:
